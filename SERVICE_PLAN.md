@@ -4,8 +4,10 @@
 
 ```yaml
 last_updated: 2026-08-21
-workspace: D:\project\wisdom-super-observer
+source_workspace: D:\project\wisdom-super-observer
+portable_workspace: 사용자가 선택한 경로\wisdom-super-observer
 repository: https://github.com/himangga01/wisdom-super-observer.git
+handoff_source_of_truth: origin/main
 current_stage: 아이디어 구체화 및 외부 연동 기술 조사
 implementation_status: 본 서비스 구현 시작 전
 next_focus: Android 장치 연결 후 SuperLive Plus APK 정적 분석 및 Tapo 실제 모델 확인
@@ -846,49 +848,91 @@ streams:
 - Home Assistant Tapo Control: `https://github.com/JurajNyiri/HomeAssistant-Tapo-Control`
 - Tapo Rust/Python API: `https://github.com/mihai-dinculescu/tapo`
 
-## 18. GitHub 저장소 및 작업 인수인계
+## 18. GitHub 저장소 및 다른 PC 작업 인수인계
 
-### 연결 상태
+### 현재 기준 상태
 
 ```yaml
-local_repository: D:\project\wisdom-super-observer
-local_branch: main
+source_pc_checkout: D:\project\wisdom-super-observer
+repository: https://github.com/himangga01/wisdom-super-observer.git
+canonical_branch: main
 remote_name: origin
-remote_url: https://github.com/himangga01/wisdom-super-observer.git
-github_account: himangga01
+remote_default_branch: main
+source_of_truth: origin/main
+github_account_used_for_initial_publish: himangga01
 git_protocol: https
-remote_state_at_2026_08_21: empty_repository
-commit_created: false
-push_executed: false
+initial_commit_completed: true
+initial_push_completed: true
+remote_is_empty_now: false
+repository_contents_at_handoff:
+  - SERVICE_PLAN.md
+application_implementation_started: false
 ```
 
-- 2026년 8월 21일 현재 로컬 폴더를 Git 저장소로 초기화하고 `main` 브랜치를 생성했다.
-- GitHub CLI는 `himangga01` 계정으로 인증되어 있으며 Git의 GitHub 인증 도우미 연결을 설정했다.
-- 원격 `origin`은 `https://github.com/himangga01/wisdom-super-observer.git`이다.
-- 원격 저장소는 연결 당시 커밋과 파일이 없는 빈 저장소였다.
-- 이번 작업에서는 커밋과 푸시를 실행하지 않았다. 사용자가 이후 명시적으로 요청할 때 변경 파일을 확인하고 선택적으로 스테이징한다.
+- 원격 저장소는 처음 연결할 때 비어 있었지만, 2026년 8월 21일 `SERVICE_PLAN.md`의 최초 커밋과 `main` 푸시를 완료했다.
+- 다른 PC에서는 로컬 경로가 달라도 되며, 항상 GitHub의 `origin/main`을 인수인계 기준으로 사용한다.
+- 현재 저장소에는 서비스 소스코드가 없고 통합 계획·조사·인수인계 문서만 있다. 애플리케이션이 이미 구현됐다고 가정하면 안 된다.
+- 이 PC의 GitHub CLI 인증, 브라우저 로그인 세션, 카메라 및 오더퀸 로그인 상태는 Git 저장소에 포함되지 않으며 다른 PC로 자동 이전되지 않는다.
 
-### 최초 커밋·푸시 예정 절차
+### 다른 PC에서 처음 시작하는 절차
+
+원하는 상위 폴더에서 다음 명령을 실행한다.
 
 ```powershell
-git status --short
-git diff -- SERVICE_PLAN.md
-git add -- SERVICE_PLAN.md
-git commit -m "docs: add integrated service plan"
-git push -u origin main
+git clone https://github.com/himangga01/wisdom-super-observer.git
+Set-Location .\wisdom-super-observer
+git switch main
+git pull --ff-only origin main
+git status --short --branch
+git log -1 --oneline
 ```
 
-- 다른 파일이 추가된 경우 `git add .`를 사용하지 않고 사용자가 승인한 파일 경로만 `git add -- <path>`로 추가한다.
-- 최초 푸시 이후에는 작업 단위별 기능 브랜치와 의도적인 커밋을 사용한다.
-- 자격증명, 카메라 시리얼, 캡처 원본, APK, 네이티브 SDK 바이너리는 검토 없이 저장소에 추가하지 않는다.
+정상적인 최초 재개 상태는 현재 브랜치가 `main`이고 `main...origin/main` 뒤에 변경 파일이 표시되지 않는 상태다. GitHub에 푸시할 작업이 있을 때만 해당 PC에서 저장소 권한이 있는 계정으로 별도 인증한다.
 
-### 새 대화에서 작업을 재개하는 방법
+### 이미 복제한 PC에서 최신 상태로 맞추는 절차
 
-1. 작업 디렉터리를 `D:\project\wisdom-super-observer`로 연다.
-2. 이 `SERVICE_PLAN.md`의 한국어 영역을 먼저 읽고, 세부 인터페이스가 필요하면 하단 AI Implementation Context를 읽는다.
-3. `git status --short`와 `git remote -v`로 현재 상태를 확인한다.
-4. `16. 현재 작업 상태와 재개 지점`에서 완료·미완료 항목을 확인한다.
-5. 다음 외부 장치 또는 계정 작업은 사용자 승인을 받은 뒤 진행한다.
+```powershell
+git status --short --branch
+git fetch origin
+git switch main
+git pull --ff-only origin main
+```
+
+- 첫 번째 상태 확인에서 수정·미추적 파일이 보이면 덮어쓰기, 강제 체크아웃, reset을 실행하지 말고 변경 내용을 먼저 사용자에게 보고한다.
+- 사용자가 지시한 파일만 수정하고 `git add -- <승인된-경로>`처럼 경로를 명시해 스테이징한다.
+- 커밋과 푸시는 사용자가 요청하거나 승인한 경우에만 수행한다. 최종 공유 기준 브랜치는 `main`이다.
+
+### 새 PC에 별도로 준비할 항목
+
+- 필수: Git과 이 GitHub 저장소를 읽을 수 있는 네트워크 환경
+- 푸시가 필요한 경우: 저장소 권한이 있는 GitHub 계정 인증. 기존 PC의 토큰이나 브라우저 프로필을 복사하지 않는다.
+- 현재 다음 장치 조사에 필요한 도구: Android Platform Tools(`adb`). 설치와 실제 장치 명령 실행은 사용자의 별도 지시 또는 승인을 받은 뒤 진행한다.
+- 이후 APK 정적 분석 도구인 JADX, apktool, Java, Ghidra 등은 `15. SuperLive Plus APK 분석 계획` 단계에 진입할 때 필요한 범위만 준비한다.
+- Autonat, 오더퀸, Tapo 접속에는 새 PC에서 사용자가 직접 제공하거나 로그인한 세션이 필요하다. 저장소 문서만으로 로그인할 수 없도록 유지한다.
+
+### 저장소로 이전하지 않는 자료
+
+- 로그인 아이디, 비밀번호, 인증 토큰, 쿠키와 브라우저 프로필
+- 카메라 QR, 장비 시리얼, 매장 식별용 비밀정보
+- 원본 CCTV 영상, 고객 얼굴이 포함된 캡처 및 사건 증거 원본
+- 추출한 APK와 디컴파일 결과 전체
+- 비공개 또는 재배포 권한이 확인되지 않은 TVT SDK와 네이티브 바이너리
+
+해당 자료가 작업에 필요하면 새 PC에서 별도 비밀 저장소나 임시 로컬 작업 경로를 사용하고, Git 상태를 확인한 뒤 저장소에 포함되지 않았는지 확인한다.
+
+### 다른 PC 또는 새 AI 대화에서 재개하는 순서
+
+1. 저장소를 복제하거나 `origin/main`으로 최신화한다.
+2. 이 문서의 한국어 영역을 처음부터 `18. GitHub 저장소 및 다른 PC 작업 인수인계`까지 먼저 읽는다.
+3. 하단 `AI Implementation Context (English)`를 읽어 구조화된 요구사항과 금지사항을 확인한다.
+4. `16. 현재 작업 상태와 재개 지점` 및 Phase 0 체크리스트를 기준으로 실제 완료 여부를 판단한다.
+5. 현재 구현 상태가 `본 서비스 구현 시작 전`임을 유지하고, 문서의 조사 결과만으로 장비 연동이 성공했다고 간주하지 않는다.
+6. 외부 계정 접속, Android 장치 확인, APK 추출, 동적 분석, 카메라 시험은 각각 사용자 지시 또는 승인을 받은 뒤 읽기 전용 범위로 진행한다.
+7. 문서를 변경할 때는 한국어 영역을 먼저 갱신하고 영문 AI 영역에 동일한 상태를 반영한다.
+
+새 AI 대화에는 다음 문장을 함께 전달하면 된다.
+
+> `wisdom-super-observer` 저장소의 `main`을 기준으로 작업한다. `SERVICE_PLAN.md`의 한국어 영역과 영문 AI 영역을 모두 읽고, 현재 완료·미완료 상태와 절대 준수사항을 먼저 확인한다. 사용자가 지시한 작업만 수행하며 외부 계정·장비는 조회 전용으로 다루고, 변경 작업이 필요하면 먼저 승인을 받는다.
 
 ---
 
@@ -899,8 +943,10 @@ git push -u origin main
 ```yaml
 product_name: Wisdom Super Observer
 product_type: Multi-tenant unmanned-store monitoring and analytics platform
-workspace: D:\project\wisdom-super-observer
+source_workspace: D:\project\wisdom-super-observer
+portable_workspace: any_user_selected_path/wisdom-super-observer
 repository: https://github.com/himangga01/wisdom-super-observer.git
+handoff_source_of_truth: origin/main
 current_stage: pre-implementation_integration_research
 current_next_focus: connect_Android_device_then_inspect_SuperLive_Plus_APK_and_identify_Tapo_models
 primary_users:
@@ -1235,6 +1281,7 @@ completed:
   - OrderQueen_read_only_dashboard_plan
   - public_Autonat_architecture_research
   - SuperLive_Plus_analysis_strategy
+  - integrated_plan_published_to_origin_main
 not_started:
   - adb_device_detection
   - APK_extraction
@@ -1314,29 +1361,58 @@ prohibited_live_test:
 
 ```yaml
 git:
-  worktree: D:\project\wisdom-super-observer
-  branch: main
+  source_pc_checkout: D:\project\wisdom-super-observer
+  canonical_branch: main
+  source_of_truth: origin/main
   remote:
     name: origin
     url: https://github.com/himangga01/wisdom-super-observer.git
-  github_cli_account: himangga01
-  authentication: configured_https_via_gh
+    default_branch: main
+  initial_publish_account: himangga01
+  source_pc_authentication: configured_https_via_gh
   remote_was_empty_when_connected: true
-  initial_commit_created: false
-  initial_push_executed: false
-initial_publish_scope:
-  include:
+  remote_is_empty_now: false
+  initial_commit_created: true
+  initial_push_executed: true
+repository_state_at_handoff:
+  tracked_files:
     - SERVICE_PLAN.md
-  exclude_until_explicit_review:
+  application_implementation_started: false
+fresh_machine_bootstrap:
+  - git_clone_https_repository
+  - enter_wisdom_super_observer_directory
+  - git_switch_main
+  - git_pull_ff_only_origin_main
+  - inspect_git_status_short_branch
+  - inspect_latest_commit
+existing_checkout_refresh:
+  - inspect_worktree_before_any_update
+  - git_fetch_origin
+  - git_switch_main
+  - git_pull_ff_only_origin_main
+  - stop_and_report_if_local_changes_exist
+local_environment_not_transferred_by_git:
+  - GitHub_authentication_and_tokens
+  - browser_login_sessions_and_cookies
+  - Autonat_OrderQueen_and_Tapo_sessions
+  - Android_ADB_device_authorization
+never_commit:
     - credentials
+    - auth_tokens_cookies_or_browser_profiles
     - device_serials_or_QR_values
     - raw_CCTV_media
     - extracted_APKs
     - proprietary_TVT_SDK_binaries
-suggested_initial_commit: "docs: add integrated service plan"
 resume_sequence:
+  - synchronize_with_origin_main
   - read_SERVICE_PLAN_Korean_section
-  - inspect_git_status_and_remote
-  - check_section_16_current_state
+  - read_AI_Implementation_Context_English_section
+  - check_section_16_and_phase_0_current_state
+  - remember_application_code_has_not_started
   - obtain_user_approval_before_external_device_or_account_actions
+  - update_Korean_first_then_mirror_machine_context_in_English
+publication_policy:
+  canonical_shared_branch: main
+  stage_only_explicitly_approved_paths: true
+  commit_and_push_only_when_requested_or_approved: true
 ```
