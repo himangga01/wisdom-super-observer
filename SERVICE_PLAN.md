@@ -3,7 +3,7 @@
 > **통합 인수인계 문서:** 이 파일은 현재까지 합의된 서비스 범위, 연동 조사 결과, 미확정 사항, 다음 작업 지점을 한곳에 정리한 기준 문서다. 새 대화나 다른 작업 환경에서 이어갈 때 이 파일을 먼저 읽는다.
 
 ```yaml
-last_updated: 2026-08-21
+last_updated: 2026-09-21
 source_workspace: D:\project\wisdom-super-observer
 portable_workspace: 사용자가 선택한 경로\wisdom-super-observer
 repository: https://github.com/himangga01/wisdom-super-observer.git
@@ -15,11 +15,13 @@ next_focus: Android 장치 연결 후 SuperLive Plus APK 정적 분석 및 Tapo 
 
 > **중요:** 계정 아이디, 비밀번호, 장비 QR/시리얼과 같은 비밀정보는 이 문서에 기록하지 않는다. 필요한 자격증명은 사용자가 보유하고 있으며 실제 연동 시 별도 비밀 저장소 또는 실행 환경을 사용한다.
 
-> **작업 원칙:** 사용자가 승인한 작업만 수행한다. Autonat, 오더퀸 및 CCTV 장비는 조회 전용으로 다루며 설정 변경, 상품 수정, 거래 취소, 업로드 등 외부 상태를 바꾸는 작업은 하지 않는다.
+> **작업 원칙:** 사용자가 승인한 작업만 수행한다. Autonat·CCTV 장비와 도매몰은 조회 전용으로 다룬다. 오더퀸 판매 동기화는 조회 전용이며, 사용자 요청에 따른 신규 상품 등록만 별도 쓰기 흐름으로 허용한다. 기존 상품 수정, 거래 취소, 설정 변경, 일괄 업로드는 이 예외에 포함하지 않는다. 이번 변경은 기능 계획 추가이며 실제 사이트 등록을 실행한 상태가 아니다.
 
 **목표:** 여러 무인매장 점주가 웹과 앱에서 CCTV 이상행동 감지, 알림·경고방송, 키오스크 결제 확인, 상품 판매 분석을 통합 관리할 수 있는 멀티테넌트 서비스를 구축한다.
 
 **아키텍처:** 카메라별 어댑터가 영상 또는 감지 이벤트를 수집하고, YOLO 기반 영상 분석기가 사람·행동·구역 이벤트를 1차 판별한다. 의미 판단이 필요한 사건만 GPT에 대표 이미지를 전달해 재확인·요약하며, 오더퀸 로그인 세션 기반 조회 커넥터가 매장·거래·상품 판매 데이터를 읽기 전용으로 동기화한다.
+
+상품 등록은 텍스트·사진·도매몰 상품 페이지·주문 이력에서 상품 후보를 추출하고, 바코드·품명·판매가를 검증한 뒤 별도 등록 실행기가 오더퀸 사이트에 신규 상품을 등록한다.
 
 **권장 기술 스택:** Next.js/React, React Native 또는 Flutter, FastAPI, PostgreSQL, Redis, S3/MinIO, FFmpeg/OpenCV, YOLO, ByteTrack/BoT-SORT, Docker, GPU 추론 서버, Web Push/FCM/APNs.
 
@@ -29,7 +31,7 @@ next_focus: Android 장치 연결 후 SuperLive Plus APK 정적 분석 및 Tapo 
 - 한 점주는 매장을 1개 또는 여러 개 소유할 수 있다.
 - 관리자는 웹과 모바일 앱에서 동일한 매장·사건·판매 데이터를 확인할 수 있어야 한다.
 - CCTV와 오더퀸 연동은 점주가 권한을 가진 계정과 매장만 대상으로 한다.
-- 오더퀸은 조회 전용 화이트리스트만 사용하며 저장·수정·삭제·취소·업로드 API는 호출하지 않는다.
+- 오더퀸 조회 커넥터는 조회 전용 화이트리스트만 사용한다. 별도 상품 등록 실행기만 사용자 요청 범위의 신규 상품 저장을 허용하며, 기존 상품 수정·삭제·거래 취소·일괄 업로드는 허용하지 않는다.
 - 오더퀸 동기화는 대시보드 진입 시 1회 실행하고, 이후에는 사용자가 새로고침 버튼을 눌렀을 때만 실행한다.
 - CCTV 이상행동 판정은 YOLO와 규칙 엔진을 기본으로 하고, GPT는 사건 재확인과 자연어 요약에 제한적으로 사용한다.
 - LLM 공급자는 우선 GPT만 사용한다. 사용자가 요구한 웹 로그인 계정 기반 연결 방식과 Hermes의 세션 연동 방식은 구현 전 지원 범위와 안정성을 확인한다.
@@ -43,7 +45,7 @@ next_focus: Android 장치 연결 후 SuperLive Plus APK 정적 분석 및 Tapo 
 - 최초 검토 대상은 사용자가 운영하는 2개 매장이지만, 제품은 특정 점주나 2개 매장 전용으로 만들지 않는다.
 - 점주별 보유 매장 수를 오더퀸과 카메라 연결 정보에서 동적으로 파악해 1개 매장과 여러 매장을 모두 지원한다.
 - 점주와 관리자는 웹과 모바일 앱에서 같은 사건·카메라·판매 정보를 확인할 수 있어야 한다.
-- 기능 범위는 현재 문서에 확정된 이상행동, 도움 요청, 사건 요약, 규칙 생성기, 직원 방문 모드, 반복 사건, 결제 매칭, 판매 분석으로 제한한다.
+- 기능 범위는 현재 문서에 확정된 이상행동, 도움 요청, 사건 요약, 규칙 생성기, 직원 방문 모드, 반복 사건, 결제 매칭, 판매 분석, 다중 입력 기반 오더퀸 신규 상품 등록이다.
 
 ### AI 판정
 
@@ -59,6 +61,7 @@ next_focus: Android 장치 연결 후 SuperLive Plus APK 정적 분석 및 Tapo 
 - 구형 Autonat IE/ActiveX 접근 방식은 조사·비상 접근 후보로 유지한다.
 - Autonat 운영 연동의 우선순위는 매장 LAN의 RTSP/ONVIF, TVT SDK/AutoNAT, NVMS 2.0 브리지, ActiveX 브리지 순이다.
 - TVT SuperLive Plus Android 앱은 P2P Live/Alarm/Talk 구현을 파악하기 위한 정적·동적 분석 대상으로 선정했다.
+- **SuperLive Plus APK 리버스 엔지니어링은 필수 사전 작업이다.** APK 확보·정적 분석·JNI/네이티브 호출 흐름 파악을 초기 조사에서 수행한다. Tapo/RTSP가 동작해도 이 분석을 생략하거나 선택 작업으로 전환하지 않는다. 동적 추적은 정적 분석으로 확인하지 못한 경로를 검증할 때 해당 실행 범위 안에서 진행한다.
 - Tapo 상시 전원형 카메라는 RTSP/ONVIF와 go2rtc를 우선 사용하며 Flask MJPEG 방식은 PoC로만 사용한다.
 
 ### 알림과 대응
@@ -70,7 +73,7 @@ next_focus: Android 장치 연결 후 SuperLive Plus APK 정적 분석 및 Tapo 
 ### 오더퀸과 판매 대시보드
 
 - 오더퀸의 점주별 매장, 거래, 거래상품, 결제, 취소, 상품, 가격·품절, POS 자료를 조회 전용으로 연결한다.
-- 모든 조사와 운영 연동에서 상품·가격·품절·행사·거래를 수정하거나 취소하지 않는다.
+- 판매 조회·동기화에서는 상품·가격·품절·행사·거래를 수정하거나 취소하지 않는다. 신규 상품 등록은 별도 기능으로 분리한다.
 - 대시보드 진입 시 한 번 조회·업데이트하고, 화면을 연 상태에서는 자동 폴링하지 않으며 이후 사용자가 새로고침할 때 갱신한다.
 - 과거 데이터는 매장별 실제 최초 매출 월을 찾아 백필하고, 상품별 수량·매출·판매속도·추세·간헐성·품절 영향을 분석한다.
 - CCTV 방문 세션과 결제 시각을 연결하되 미결제를 범죄나 절도로 자동 확정하지 않는다.
@@ -164,6 +167,16 @@ Tenant(점주/사업자)
 - 상품·바코드·분류별 상세 분석
 - 신규 상품과 데이터 부족 상품은 신뢰도 낮음으로 표시
 - 판매 0과 품절로 인한 판매 0을 구분
+
+### 다중 입력 기반 오더퀸 상품 등록 — 2026-09-21 추가
+
+- 사용자가 제공한 바코드, 품명, 가격을 이용해 대상 매장의 오더퀸 사이트에 신규 상품을 등록한다.
+- 입력은 텍스트, 사진, 도매몰 상품 페이지 URL, 도매몰 내 주문 히스토리를 지원한다.
+- 도매몰은 Playwright로 직접 접속하고 렌더링된 페이지를 파싱해 상품 정보를 수집한다. 주문 히스토리는 주문 상세와 상품 상세를 연결해 주문한 상품들의 바코드·품명·가격을 파악한다.
+- 사진은 바코드 판독과 OCR로 정보를 추출한다. 없는 값이나 판독이 불확실한 값을 추측하여 등록하지 않는다.
+- 도매몰 가격은 매입가·판매가 후보·박스 가격·낱개 가격을 구분한다. 오더퀸에 넣을 판매가가 명확하지 않으면 사용자 입력 또는 확정된 변환 규칙이 필요하다.
+- 한 번에 여러 상품을 수집할 수 있으며, 상품별 출처·추출값·검증 결과·등록 결과를 표시한다.
+- 실제 등록 화면의 필수 항목과 저장·조회 동작은 아직 검증 전이다. 도매몰마다 바코드와 가격이 모두 제공된다고 가정하지 않는다.
 
 ## 3. CCTV 분석 설계
 
@@ -291,6 +304,7 @@ stopTalk(camera)
 
 ### 금지 정책
 
+- 아래 차단 정책은 조회 커넥터에 적용한다. 신규 상품 등록 실행기는 `6-1`의 한정된 예외를 따르며 조회 커넥터의 권한을 확대하지 않는다.
 - 이름에 `SAVE`, `DEL`, `CANCEL`, `UPDATE`, `RESET`, `UPLOAD`, `SOLDOUT_SEND`, `PRICE_SAVE` 등이 포함된 변경 API 차단
 - 엑셀 업로드와 상품·가격·품절·행사·거래 취소 기능 호출 금지
 - 서비스 계층에서 조회 화이트리스트 외 URL 요청을 거부
@@ -320,6 +334,61 @@ Tenant connection
 - 이후 사용자가 새로고침 버튼을 누르면 다시 조회
 - 대시보드에서 나갔다가 다시 진입하면 1회 동기화
 - 동기화 중복 실행 방지와 매장별 잠금 적용
+
+## 6-1. 상품 정보 수집 및 오더퀸 신규 등록 계획
+
+### 처리 흐름
+
+```text
+텍스트 / 사진 / 도매몰 URL / 주문 히스토리
+→ 입력별 정보 추출 및 원문·출처 연결
+→ 바코드·품명·가격·포장단위 정규화
+→ 대상 매장 지정 및 누락·중복·가격 의미 검증
+→ 등록할 상품과 판매가 확정
+→ 오더퀸 사이트 신규 상품 등록
+→ 등록 결과 재조회 및 상품별 성공·실패·확인 필요 기록
+```
+
+### 수집과 정규화
+
+- 텍스트: 단일·복수 상품의 바코드, 품명, 가격을 파싱한다.
+- 사진: 바코드 디코딩과 OCR 결과를 대조하고 불확실한 필드를 표시한다.
+- 상품 페이지: Playwright로 직접 접근해 상품명·옵션·가격·바코드·포장단위를 웹 파싱한다.
+- 주문 히스토리: 사용자가 지정한 주문 또는 기간의 목록·페이지·주문 상세를 읽고 주문 상품을 추출한다. 필요하면 상품 상세로 이동해 누락 정보를 보완한다.
+- 주문 당시 가격과 현재 상품 페이지 가격을 구분하고 출처를 보존한다. 옵션별·낱개/묶음별 바코드를 혼동하지 않는다.
+- 바코드는 선행 0을 보존하는 문자열로 저장하고 형식·길이·해당 규격의 체크섬을 검증한다.
+- 매입가, 통화, 세금 포함 여부, 포장 수량, 단가 및 등록용 판매가를 구분한다. 매입가를 판매가로 자동 대입하거나 임의 마진을 적용하지 않는다.
+- 도매몰 로그인 세션은 점주별로 격리한다. 주문 조회에 불필요한 배송지·연락처·결제정보는 저장하지 않는다.
+
+### 도매몰 계정 저장 및 자동 로그인 — 2026-09-21 추가
+
+- 점주는 여러 도매몰의 사이트 주소, 계정 아이디, 비밀번호를 저장·변경·삭제할 수 있다. 계정과 로그인 세션은 점주·도매몰·계정 단위로 분리한다.
+- 상품 페이지 또는 주문 히스토리 수집 시 유효한 저장 세션을 우선 재사용한다. 세션이 없거나 만료됐으면 저장된 아이디·비밀번호로 Playwright가 자동 로그인한 뒤 요청된 수집 작업을 이어간다.
+- 로그인 성공은 인증된 계정 화면 등 사이트별 확인 기준으로 검증한다. 로그인 실패 화면을 상품·주문 데이터로 파싱하지 않는다.
+- 아이디·비밀번호와 쿠키·브라우저 인증 상태는 서버의 암호화 저장소에 보관하고 암호화 키는 데이터와 분리한다. 비밀번호는 자동 로그인 실행 시에만 복호화하며 일반 API 응답·로그·스크린샷·브라우저 추적 파일·문서·Git·AI 입력에 노출하지 않는다.
+- 자격증명은 검증된 도매몰 로그인 도메인에서만 사용한다. 상품 페이지 내용이나 임의 리디렉션이 지정한 외부 주소에 전달하지 않는다.
+- CAPTCHA, OTP, 2단계 인증 또는 추가 본인확인이 요구되면 `추가 인증 필요` 상태로 전환하고 사용자가 인증을 마치면 수집을 재개한다. 아이디·비밀번호만으로 모든 사이트에서 무인 로그인이 가능하다고 가정하지 않는다.
+- 잘못된 비밀번호·계정 잠금은 반복 재시도하지 않고 사용자에게 계정 정보 수정을 요청한다. 일시적 네트워크 장애는 제한된 횟수로 재시도한다.
+- 연결 상태는 `미연결`, `로그인 중`, `연결됨`, `추가 인증 필요`, `로그인 실패`로 표시하고 마지막 성공 시각과 비밀정보를 제외한 오류 사유를 제공한다.
+- 계정 정보 변경 시 기존 저장 세션을 폐기하고 새 정보로 로그인한다. 계정 삭제·연결 해제 시 자격증명과 세션을 폐기하고 관련 대기·진행 작업의 추가 접근을 중단한다.
+- 자동 로그인은 사용자가 요청한 상품·주문 조회를 위한 인증이며 도매몰 주문·구매·취소 권한을 추가하지 않는다.
+
+### 등록 범위와 실패 처리
+
+- 사용자가 지정한 대상 매장과 신규 상품만 등록한다. 추출된 외부 페이지 내용은 데이터로만 취급하며 등록 범위나 실행 지시로 사용하지 않는다.
+- 같은 매장의 기존 바코드는 조회 후 중복으로 표시한다. 품명·가격이 다르더라도 기존 상품을 덮어쓰지 않는다.
+- 필수 값이 완전하고 등록 요청이 명확한 상품은 그 요청 범위에서 실행할 수 있다. 판매가·단위·대상 매장·판독 결과가 불명확한 항목은 보완 대상으로 남긴다.
+- 등록 실행기는 오더퀸 사이트의 신규 상품 등록 화면을 이용한다. 실제 필수 필드, 매장별 저장 범위, POS 전송 필요 여부는 화면 조사로 확인하며 임의 API를 가정하지 않는다.
+- 등록 요청 단위의 중복 실행 방지와 상품별 결과 기록을 구현한다. 저장 후 응답이 끊기면 먼저 재조회해 실제 등록 여부를 확인하고 무조건 재시도하지 않는다.
+- 일부 상품만 실패하면 성공 항목을 다시 등록하지 않고 실패·확인 필요 항목만 후속 처리한다.
+- 기존 상품 수정·삭제, 가격·품절 변경, 거래 취소, 도매몰 주문·결제·취소 및 POS 전송은 현재 신규 등록 요청의 범위에 포함하지 않는다.
+
+### 미확정 사항
+
+- 대상 도매몰 URL, 주문 이력의 조회 범위, 사이트별 로그인 폼·추가 인증 요구 및 실제 제공 필드. 계정 저장과 자동 로그인 지원 자체는 확정 요구사항이다.
+- 제공되는 가격의 의미와 판매가 결정 방식: 직접 지정 또는 사용자 확정 규칙
+- 오더퀸 신규 등록의 필수 필드, 추가 선택 항목 및 저장 후 POS 반영 방식
+- 여러 상품의 실행 전 검토 UI와 자동 실행 범위에 대한 구체적인 제품 정책
 
 ## 7. 상품 판매 분석 로직
 
@@ -391,6 +460,8 @@ services/
   video-worker/           # 스트림 처리, YOLO, 추적, 규칙 엔진
   llm-worker/             # GPT 이미지 판정과 사건 요약
   orderqueen-connector/   # 로그인 세션과 읽기 전용 동기화
+  product-intake/         # 텍스트·사진·도매몰·주문 이력 상품 정보 추출
+  product-registration/   # 오더퀸 신규 상품 등록 및 결과 확인
   notification-worker/    # 웹·모바일 알림과 재시도
   broadcast-gateway/      # 매장 경고방송과 TTS
 packages/
@@ -415,6 +486,8 @@ docs/                     # API, 운영, 개인정보 정책
 - Product, ProductPriceState, Transaction, TransactionItem, Cancellation
 - DailyProductMetric, ProductTrend, DemandPattern
 - PaymentMatch, ReviewDecision, ModelFeedback
+- ProductImportJob, ProductCandidate, ProductSource, WholesaleConnection, WholesaleCredential, WholesaleSession
+- ProductRegistrationJob, ProductRegistrationItem
 
 ## 10. 오픈소스 활용 계획
 
@@ -448,6 +521,7 @@ docs/                     # API, 운영, 개인정보 정책
 - [ ] 매장 내부에서 DVR RTSP/ONVIF/HTTP CGI 접근 가능 여부를 읽기 전용으로 확인
 - [ ] TVT SDK 또는 `pytvt`로 장비 시리얼 기반 AutoNAT 로그인과 조회 기능 확인
 - [ ] SuperLive Plus APK에서 P2P Live/Alarm/Talk 네이티브 함수와 호출 흐름 확인
+- [ ] 필수 선행 조사: 설치된 base/split APK 확보, 버전·해시·ABI 기록, Java/Kotlin → JNI → 네이티브 함수 호출 지도와 미해결 경로 작성
 - [ ] P2P를 통해 H.264/H.265 압축 프레임 1개를 읽기 전용으로 확보
 - [ ] 사용하는 Tapo 모델의 RTSP/ONVIF 지원 확인
 - [ ] YOLO로 사람 탐지와 구역 체류 이벤트 생성
@@ -455,7 +529,7 @@ docs/                     # API, 운영, 개인정보 정책
 - [ ] 오더퀸 읽기 전용 커넥터의 로그인, 매장목록, 월별매출, 상품판매 조회 확정
 - [ ] 매장 경고방송 장치와 전달 방식 확정
 
-**완료 기준:** 한 매장에서 카메라 이벤트, 대표 이미지 분석, 오더퀸 조회가 각각 독립적으로 성공한다.
+**완료 기준:** 필수 SuperLive Plus APK 정적 분석과 근거가 있는 호출 지도를 완료하고, 한 매장에서 카메라 이벤트, 대표 이미지 분석, 오더퀸 조회가 각각 독립적으로 성공한다. 다른 카메라의 정상 동작이나 공개 자료 조사만으로 APK 분석을 완료 처리하지 않는다.
 
 ### Phase 1: 멀티테넌트 기반과 웹 대시보드
 
@@ -518,6 +592,30 @@ docs/                     # API, 운영, 개인정보 정책
 - [ ] 오탐률, 알림 지연, 카메라 연결률 운영 대시보드 구축
 
 **완료 기준:** 반복 행동 패턴을 자동 표시하고 검증된 새 모델을 안전하게 배포·롤백할 수 있다.
+
+### Phase 7: 다중 입력 기반 오더퀸 상품 등록
+
+판매 조회 커넥터와 상품 마스터가 준비된 Phase 4 이후 진행할 수 있으며, Phase 5·6 완료가 필수 선행 조건은 아니다.
+
+- [ ] 대상 도매몰·샘플 입력·가격 의미·판매가 정책 확인
+- [ ] 오더퀸 신규 상품 등록 화면의 필수 항목·중복 처리·저장 범위 조사
+- [ ] 텍스트 단일·복수 상품 파서 구현
+- [ ] 사진 바코드 판독·OCR·불확실성 표시 구현
+- [ ] Playwright 기반 도매몰 로그인·상품 페이지 파싱 구현
+- [ ] 도매몰별 계정 아이디·비밀번호 저장·변경·삭제 UI와 암호화 저장 구현
+- [ ] 점주·사이트·계정별 세션 격리·재사용·만료 시 자동 재로그인 구현
+- [ ] 로그인 성공 검증·추가 인증 인계·수집 재개·실패 재시도 제한 구현
+- [ ] 계정 변경 시 세션 초기화 및 연결 해제 시 자격증명·세션 폐기 구현
+- [ ] 인증정보 로그·캡처·추적 파일 노출 방지와 로그인 대상 도메인 검증
+- [ ] 주문 히스토리 페이지 순회·주문 상세·상품 상세 연결 구현
+- [ ] 바코드·옵션·포장단위·매입가·판매가 정규화 구현
+- [ ] 출처·누락값·중복·충돌을 확인하는 상품 검토 화면 구현
+- [ ] 점주·대상 매장 권한 검증과 기존 바코드 조회 구현
+- [ ] 조회 커넥터와 분리된 오더퀸 신규 등록 실행기 구현
+- [ ] 저장 결과 재조회·중복 실행 방지·부분 실패 복구·감사로그 구현
+- [ ] 잘못된 바코드·불명확한 가격·세션 만료·화면 변경·저장 응답 유실 검증
+
+**완료 기준:** 네 입력 경로에서 상품 후보를 수집하고, 확정된 바코드·품명·판매가로 지정 매장에 신규 등록한 뒤 결과를 재조회할 수 있다. 저장된 도매몰 계정으로 자동 로그인하고 세션 만료 후 재로그인하여 수집을 재개할 수 있으며 추가 인증이 필요한 경우 사용자에게 인계한다. 누락·중복·불확실한 항목은 구분되며 기존 상품을 덮어쓰지 않는다. 기존 MVP에 포함할지와 출시 순서는 별도 확정한다.
 
 ## 12. 보안·개인정보·운영 기준
 
@@ -602,6 +700,8 @@ TVT SDK/NVMS: 6036/TCP
 - `pytvt` NAT 조사: `https://github.com/dannielperez/pytvt/blob/main/src/pytvt/sdk/nat_capabilities.md`
 
 ## 15. SuperLive Plus APK 분석 계획
+
+**필수 여부와 순서:** 사용자가 필수로 확정한 작업이다. `APK 확보 → 정적 분석 → 호출 지도 및 미해결 경로 정리 → 필요한 동적 검증 → TVT 커넥터 구현·실장 검증` 순으로 진행한다. APK 정적 분석은 초기 사전 조사에 배치하며, TVT 커넥터 구현보다 먼저 완료한다. 매장 LAN/RTSP 우선이라는 운영 전송 방식의 선택은 이 분석의 필수 여부를 바꾸지 않는다. 장치·APK가 준비되지 않으면 준비 대기로 기록하고, 분석을 생략한 채 전체 CCTV 연동 작업이 완료됐다고 보고하지 않는다. 독립적인 상품·판매 기반 작업은 병행할 수 있다.
 
 ### 조사 대상과 이유
 
@@ -694,6 +794,8 @@ Talk/Broadcast 오디오 송신 함수
 
 ### 다음 작업
 
+아래 Android 연결·APK 확보·정적 분석은 선택 과제가 아니라 필수 재개 작업이다. 실제 장치 명령, APK 복사 및 동적 추적은 각각 실행 범위가 정해진 상태에서 진행한다.
+
 1. 사용자가 Android폰을 USB 데이터 케이블로 연결하고 USB 디버깅을 허용한다.
 2. 사용자 승인 후 `adb devices`로 연결 상태만 확인한다.
 3. 별도 승인 후 설치된 SuperLive Plus의 base/split APK를 읽기 전용으로 복사한다.
@@ -703,7 +805,7 @@ Talk/Broadcast 오디오 송신 함수
 ### 절대 준수사항
 
 - 문서와 저장소에 로그인 아이디, 비밀번호, 장비 시리얼/QR을 기록하지 않는다.
-- 오더퀸은 조회 API만 호출하며 상품·가격·품절·거래를 수정하지 않는다.
+- 오더퀸 판매 동기화는 조회 API만 호출한다. `6-1`의 별도 신규 상품 등록 외 기존 상품·가격·품절·거래 변경은 허용하지 않는다.
 - CCTV와 Autonat 장비 설정을 변경하지 않는다.
 - 사용자의 명시적 승인 없이 APK 추출, 동적 후킹, 실제 장비 접속 시험을 진행하지 않는다.
 
@@ -932,7 +1034,7 @@ git pull --ff-only origin main
 
 새 AI 대화에는 다음 문장을 함께 전달하면 된다.
 
-> `wisdom-super-observer` 저장소의 `main`을 기준으로 작업한다. `SERVICE_PLAN.md`의 한국어 영역과 영문 AI 영역을 모두 읽고, 현재 완료·미완료 상태와 절대 준수사항을 먼저 확인한다. 사용자가 지시한 작업만 수행하며 외부 계정·장비는 조회 전용으로 다루고, 변경 작업이 필요하면 먼저 승인을 받는다.
+> `wisdom-super-observer` 저장소의 `main`을 기준으로 작업한다. `SERVICE_PLAN.md`의 한국어 영역과 영문 AI 영역을 모두 읽고, 현재 완료·미완료 상태와 절대 준수사항을 먼저 확인한다. 외부 조회와 오더퀸 신규 상품 등록의 권한을 분리하고, 사용자가 지시한 범위만 수행한다. 신규 등록 예외는 `6-1`을 따른다.
 
 ---
 
@@ -963,6 +1065,7 @@ core_domains:
   - OrderQueen sales synchronization
   - Product sales analytics
   - CCTV visit and payment matching
+  - Multi-source product intake and OrderQueen new-product registration
 ```
 
 ## Confirmed Functional Requirements
@@ -1030,7 +1133,8 @@ llm_pipeline:
 ```yaml
 authentication: isolated_owner_web_session
 api_type: undocumented_internal_web_API
-access_policy: strict_read_only_allowlist
+access_policy: strict_read_only_allowlist_for_sales_connector
+new_product_registration: separate_site_writer_scoped_to_user_request_see_contract_below
 response_formats:
   list: text_html_fragment
   chart_and_lookup: application_json
@@ -1082,6 +1186,66 @@ card_approvals: SAL01030_LIST.itp
 product_catalog: MNU01020_LST.itp
 price_and_soldout_read: MNU01050_LST.itp
 pos_lookup: SYS02010_POSLIST.itp
+```
+
+## Product Intake and Registration Contract (Added 2026-09-21)
+
+```yaml
+status: planned_not_implemented_or_live_validated
+inputs:
+  - text_single_or_multiple_products
+  - photos_with_barcode_decoding_and_OCR
+  - wholesale_product_pages_via_Playwright_and_rendered_page_parsing
+  - wholesale_order_history_with_pagination_order_details_and_product_details
+target: new_products_in_user_specified_OrderQueen_store_via_website
+wholesale_authentication:
+  requirement: saved_username_password_and_automatic_Playwright_login
+  management: create_update_delete_connections_for_multiple_wholesale_sites
+  isolation: per_tenant_site_and_account_credentials_and_sessions
+  storage: encrypted_server_side_credentials_cookies_and_browser_auth_state_with_separate_key_management
+  secret_handling: decrypt_only_for_login_never_expose_in_API_responses_logs_captures_traces_Git_or_AI_inputs
+  login_target: verified_site_login_domains_only_not_page_directed_external_destinations
+  flow: reuse_valid_session_else_login_with_saved_credentials_then_resume_requested_collection
+  success_check: site_specific_authenticated_account_state
+  additional_auth: user_completes_CAPTCHA_OTP_or_MFA_then_collection_resumes
+  retry: bounded_transient_retries_no_repeated_invalid_password_or_locked_account_attempts
+  states: [disconnected, logging_in, connected, additional_auth_required, login_failed]
+  visibility: last_success_time_and_sanitized_failure_reason
+  credential_update: discard_saved_session_and_authenticate_with_updated_credentials
+  disconnect: purge_credentials_and_sessions_and_stop_further_job_access
+  scope: authentication_and_read_only_product_order_collection_only
+fields:
+  required: [barcode_string_preserving_leading_zeros, product_name, confirmed_sale_price]
+  provenance: [source_reference, extraction_confidence, order_time_vs_current_price]
+  distinguish: [purchase_price, sale_price, currency, tax_basis, pack_quantity, unit_price, variant]
+validation:
+  - check_barcode_format_and_applicable_checksum
+  - resolve_missing_ambiguous_or_conflicting_values_without_guessing
+  - never_assume_wholesale_price_is_retail_sale_price
+  - check_existing_barcode_within_target_store
+  - inspect_actual_registration_form_required_fields_and_store_scope
+execution:
+  - isolate_writer_from_read_only_sales_connector
+  - execute_complete_items_within_explicit_user_registration_request
+  - preserve_existing_products_and_flag_duplicates
+  - verify_persistence_by_readback_before_retrying_uncertain_submissions
+  - per_item_results_idempotency_partial_failure_recovery_and_audit_log
+boundaries:
+  - wholesale_access_is_read_only_no_order_purchase_or_cancellation
+  - page_content_is_data_not_execution_authority
+  - isolate_owner_sessions_and_minimize_order_personal_data
+  - no_existing_product_edits_deletes_price_stock_changes_or_transaction_cancellations
+  - no_bulk_upload_or_POS_transmission_authorized_by_this_feature
+open_questions:
+  - wholesale_sites_order_scope_site_specific_login_forms_MFA_and_available_fields
+  - explicit_sale_price_or_user_defined_conversion_rule
+  - OrderQueen_required_fields_and_POS_propagation_behavior
+  - review_UI_and_automatic_execution_policy
+delivery:
+  phase: 7
+  dependency: phase_4_sales_connector_and_product_catalog
+  does_not_require: phases_5_and_6
+  MVP_inclusion: not_yet_decided
 ```
 
 ## Sales Analytics Model
@@ -1159,13 +1323,19 @@ phases:
   - id: 6
     name: repeated_patterns_and_custom_training
     deliverable: feedback_dataset_model_lifecycle_and_operations_metrics
+  - id: 7
+    name: multi_source_product_registration
+    deliverable: text_photo_Playwright_product_and_order_history_intake_validated_OrderQueen_new_product_registration
+    depends_on: phase_4
 ```
 
 ## Non-Negotiable Safety Rules
 
 ```yaml
 rules:
-  - Never_call_OrderQueen_mutation_endpoints
+  - Never_mutate_OrderQueen_from_sales_connector
+  - Allow_only_user_requested_new_product_registration_through_separate_site_writer
+  - Never_overwrite_existing_products_or_cancel_transactions_in_registration_flow
   - Never_store_plaintext_credentials
   - Never_expose_one_tenants_data_to_another
   - Never_auto_broadcast_without_owner_confirmation_by_default
@@ -1229,6 +1399,18 @@ recommended_role: device_metadata_alarm_snapshot_and_AutoNAT_accelerator
 ## SuperLive Plus Reverse-Engineering Brief
 
 ```yaml
+requirement: mandatory_user_confirmed
+priority: initial_prerequisite_research
+static_analysis_gate: required_before_TVT_connector_implementation
+cannot_be_replaced_by: working_Tapo_RTSP_or_public_research_only
+sequence:
+  - obtain_authorized_base_and_split_APKs
+  - static_Java_Kotlin_JNI_native_analysis
+  - evidence_backed_call_map_and_unresolved_paths
+  - scoped_dynamic_validation_where_needed
+  - TVT_connector_implementation_and_runtime_validation
+missing_device_or_APK: pending_required_work_not_optional_or_complete
+independent_sales_foundation_work: may_proceed_in_parallel
 target:
   package: com.tvt.superliveplus
   developer: TVT_HK_LIMITED
@@ -1275,6 +1457,9 @@ implementation_options:
 ## Resume Checklist
 
 ```yaml
+mandatory_next_work:
+  - acquire_SuperLive_Plus_APKs_from_authorized_Android_device
+  - complete_static_reverse_engineering_and_JNI_native_call_map
 completed:
   - product_scope_and_multi_tenant_requirements
   - YOLO_plus_GPT_responsibility_split
@@ -1294,7 +1479,7 @@ next_actions_requiring_user_approval:
   - pull_installed_base_and_split_APKs
   - perform_dynamic_Frida_tracing
 secrets_policy: never_write_credentials_or_device_identifiers_to_repository_docs
-external_mutation_policy: read_only_only
+external_mutation_policy: read_only_except_user_requested_OrderQueen_new_product_registration
 ```
 
 ## Tapo Integration Research
