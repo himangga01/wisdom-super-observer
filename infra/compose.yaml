@@ -1,0 +1,51 @@
+# Local integration fixtures only. No real TVT, Tyco, identity or device account.
+name: wso-test
+services:
+  postgres:
+    image: postgres:17.11-alpine3.24
+    profiles: [test]
+    environment:
+      POSTGRES_DB: wso
+      POSTGRES_USER: wso
+      POSTGRES_PASSWORD: ${WSO_TEST_DB_PASSWORD:-change-me-test-only}
+    ports:
+      - "127.0.0.1:54320:5432"
+    volumes:
+      - postgres-test-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U wso -d wso"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  valkey:
+    image: valkey/valkey:9.1.2-alpine3.24
+    profiles: [test]
+    ports:
+      - "127.0.0.1:56379:6379"
+    healthcheck:
+      test: [CMD, valkey-cli, ping]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  s3-candidate:
+    image: chrislusf/seaweedfs:4.47
+    profiles: [test]
+    command: [server, -s3, -ip.bind=0.0.0.0, -volume.max=0]
+    ports:
+      - "127.0.0.1:58333:8333"
+    volumes:
+      - seaweed-test-data:/data
+
+  mock-external:
+    image: mockserver/mockserver:5.15.0
+    profiles: [test]
+    environment:
+      MOCKSERVER_SERVER_PORT: "1080"
+    ports:
+      - "127.0.0.1:51080:1080"
+
+volumes:
+  postgres-test-data:
+  seaweed-test-data:

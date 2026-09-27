@@ -1,0 +1,27 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "scope_kind": {
+      "const": "STORE",
+      "default": "STORE",
+      "title": "Scope Kind",
+      "type": "string"
+    },
+    "store_id": {
+      "format": "uuid",
+      "title": "Store Id",
+      "type": "string"
+    },
+    "tenant_id": {
+      "format": "uuid",
+      "title": "Tenant Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "tenant_id",
+    "store_id"
+  ],
+  "title": "StoreScope",
+  "type": "object"
+}

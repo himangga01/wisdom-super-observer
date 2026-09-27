@@ -1,0 +1,21 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "amount_minor": {
+      "minimum": 0,
+      "title": "Amount Minor",
+      "type": "integer"
+    },
+    "currency": {
+      "const": "KRW",
+      "default": "KRW",
+      "title": "Currency",
+      "type": "string"
+    }
+  },
+  "required": [
+    "amount_minor"
+  ],
+  "title": "Money",
+  "type": "object"
+}

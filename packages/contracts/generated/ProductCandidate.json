@@ -1,0 +1,248 @@
+{
+  "$defs": {
+    "Money": {
+      "additionalProperties": false,
+      "properties": {
+        "amount_minor": {
+          "minimum": 0,
+          "title": "Amount Minor",
+          "type": "integer"
+        },
+        "currency": {
+          "const": "KRW",
+          "default": "KRW",
+          "title": "Currency",
+          "type": "string"
+        }
+      },
+      "required": [
+        "amount_minor"
+      ],
+      "title": "Money",
+      "type": "object"
+    },
+    "VariantOption": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "value"
+      ],
+      "title": "VariantOption",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "barcode": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Barcode"
+    },
+    "confidence": {
+      "maximum": 1,
+      "minimum": 0,
+      "title": "Confidence",
+      "type": "number"
+    },
+    "errors": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Errors",
+      "type": "array"
+    },
+    "id": {
+      "format": "uuid",
+      "title": "Id",
+      "type": "string"
+    },
+    "name": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Name"
+    },
+    "pack_quantity": {
+      "anyOf": [
+        {
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Pack Quantity"
+    },
+    "purchase_price": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Money"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "purchase_price_basis": {
+      "default": "UNKNOWN",
+      "enum": [
+        "PER_PACK",
+        "PER_SELLABLE_UNIT",
+        "UNKNOWN"
+      ],
+      "title": "Purchase Price Basis",
+      "type": "string"
+    },
+    "purchase_tax_basis": {
+      "default": "UNKNOWN",
+      "enum": [
+        "INCLUSIVE",
+        "EXCLUSIVE",
+        "EXEMPT",
+        "UNKNOWN"
+      ],
+      "title": "Purchase Tax Basis",
+      "type": "string"
+    },
+    "registration_fields": {
+      "additionalProperties": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "integer"
+          },
+          {
+            "type": "boolean"
+          }
+        ]
+      },
+      "title": "Registration Fields",
+      "type": "object"
+    },
+    "registration_schema_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Registration Schema Id"
+    },
+    "revision": {
+      "minimum": 1,
+      "title": "Revision",
+      "type": "integer"
+    },
+    "sale_price": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Money"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "sale_price_basis": {
+      "default": "UNKNOWN",
+      "enum": [
+        "PER_SELLABLE_UNIT",
+        "UNKNOWN"
+      ],
+      "title": "Sale Price Basis",
+      "type": "string"
+    },
+    "sale_tax_basis": {
+      "default": "UNKNOWN",
+      "enum": [
+        "INCLUSIVE",
+        "EXCLUSIVE",
+        "EXEMPT",
+        "UNKNOWN"
+      ],
+      "title": "Sale Tax Basis",
+      "type": "string"
+    },
+    "sellable_unit": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Sellable Unit"
+    },
+    "source_kind": {
+      "enum": [
+        "TEXT",
+        "PHOTO",
+        "PRODUCT_PAGE",
+        "ORDER_HISTORY"
+      ],
+      "title": "Source Kind",
+      "type": "string"
+    },
+    "source_ref": {
+      "title": "Source Ref",
+      "type": "string"
+    },
+    "tenant_id": {
+      "format": "uuid",
+      "title": "Tenant Id",
+      "type": "string"
+    },
+    "variant_options": {
+      "items": {
+        "$ref": "#/$defs/VariantOption"
+      },
+      "title": "Variant Options",
+      "type": "array"
+    }
+  },
+  "required": [
+    "id",
+    "tenant_id",
+    "revision",
+    "barcode",
+    "name",
+    "purchase_price",
+    "sale_price",
+    "source_kind",
+    "source_ref",
+    "confidence",
+    "errors"
+  ],
+  "title": "ProductCandidate",
+  "type": "object"
+}

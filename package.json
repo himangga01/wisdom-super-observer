@@ -1,0 +1,14 @@
+{
+  "name": "wisdom-super-observer",
+  "private": true,
+  "packageManager": "pnpm@11.25.0",
+  "scripts": {
+    "test": "pnpm --filter @wso/web test",
+    "typecheck": "pnpm --filter @wso/web typecheck",
+    "lint": "pnpm --filter @wso/web lint",
+    "build": "pnpm --filter @wso/web build"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0"
+  }
+}

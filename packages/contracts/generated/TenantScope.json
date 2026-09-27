@@ -1,0 +1,21 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "scope_kind": {
+      "const": "TENANT",
+      "default": "TENANT",
+      "title": "Scope Kind",
+      "type": "string"
+    },
+    "tenant_id": {
+      "format": "uuid",
+      "title": "Tenant Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "tenant_id"
+  ],
+  "title": "TenantScope",
+  "type": "object"
+}

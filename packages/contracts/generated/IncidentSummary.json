@@ -1,0 +1,80 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "evidence_ids": {
+      "items": {
+        "format": "uuid",
+        "type": "string"
+      },
+      "title": "Evidence Ids",
+      "type": "array"
+    },
+    "incident_id": {
+      "format": "uuid",
+      "title": "Incident Id",
+      "type": "string"
+    },
+    "observed_actions": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Observed Actions",
+      "type": "array"
+    },
+    "suggested_warning_ko": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Suggested Warning Ko"
+    },
+    "summary_ko": {
+      "title": "Summary Ko",
+      "type": "string"
+    },
+    "uncertainty_reasons": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Uncertainty Reasons",
+      "type": "array"
+    },
+    "verdict": {
+      "enum": [
+        "SUPPORTED",
+        "UNCERTAIN",
+        "NOT_SUPPORTED"
+      ],
+      "title": "Verdict",
+      "type": "string"
+    },
+    "visible_person_count": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Visible Person Count"
+    }
+  },
+  "required": [
+    "incident_id",
+    "verdict",
+    "summary_ko",
+    "visible_person_count",
+    "observed_actions",
+    "uncertainty_reasons",
+    "evidence_ids"
+  ],
+  "title": "IncidentSummary",
+  "type": "object"
+}

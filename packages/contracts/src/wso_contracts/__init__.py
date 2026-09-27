@@ -1,0 +1,1 @@
+"""Shared public wire contracts."""

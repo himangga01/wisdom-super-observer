@@ -1,0 +1,35 @@
+[project]
+name = "wso-workspace"
+version = "0.1.0"
+requires-python = ">=3.12,<3.13"
+dependencies = ["wso-api", "wso-contracts", "wso-core"]
+
+[dependency-groups]
+dev = [
+  "httpx>=0.28,<1",
+  "mypy>=1.15,<2",
+  "pytest>=8,<9",
+  "pytest-asyncio>=1,<2",
+  "ruff>=0.12,<1",
+]
+
+[tool.uv.workspace]
+members = ["services/api", "packages/contracts", "packages/core"]
+
+[tool.uv.sources]
+wso-api = { workspace = true }
+wso-contracts = { workspace = true }
+wso-core = { workspace = true }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 88
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+mypy_path = ["services/api/src", "packages/contracts/src", "packages/core/src"]

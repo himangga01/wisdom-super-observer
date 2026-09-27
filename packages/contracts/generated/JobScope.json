@@ -1,0 +1,67 @@
+{
+  "$defs": {
+    "StoreScope": {
+      "additionalProperties": false,
+      "properties": {
+        "scope_kind": {
+          "const": "STORE",
+          "default": "STORE",
+          "title": "Scope Kind",
+          "type": "string"
+        },
+        "store_id": {
+          "format": "uuid",
+          "title": "Store Id",
+          "type": "string"
+        },
+        "tenant_id": {
+          "format": "uuid",
+          "title": "Tenant Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tenant_id",
+        "store_id"
+      ],
+      "title": "StoreScope",
+      "type": "object"
+    },
+    "TenantScope": {
+      "additionalProperties": false,
+      "properties": {
+        "scope_kind": {
+          "const": "TENANT",
+          "default": "TENANT",
+          "title": "Scope Kind",
+          "type": "string"
+        },
+        "tenant_id": {
+          "format": "uuid",
+          "title": "Tenant Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tenant_id"
+      ],
+      "title": "TenantScope",
+      "type": "object"
+    }
+  },
+  "discriminator": {
+    "mapping": {
+      "STORE": "#/$defs/StoreScope",
+      "TENANT": "#/$defs/TenantScope"
+    },
+    "propertyName": "scope_kind"
+  },
+  "oneOf": [
+    {
+      "$ref": "#/$defs/TenantScope"
+    },
+    {
+      "$ref": "#/$defs/StoreScope"
+    }
+  ]
+}
