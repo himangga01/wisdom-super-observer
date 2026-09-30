@@ -35,7 +35,10 @@ try {
     }
     Invoke-Checked python $syncArgs
     Invoke-Checked pnpm @('install', '--frozen-lockfile')
-    $pytestArgs = $uvRun + @('pytest', '-m', 'not live', '--ignore=tests/jobs_recovery', '-q')
+    $pytestArgs = $uvRun + @(
+        'pytest', '-m', 'not live', '--ignore=tests/jobs_recovery',
+        '--ignore=tests/integration/test_private_assets.py', '-q'
+    )
     if ($WithPostgres) {
         $roles = @('ADMIN', 'APP', 'IDENTITY', 'MIGRATOR', 'SESSION', 'WORKER', 'DISPATCH', 'JOB')
         $provided = @($roles | Where-Object {

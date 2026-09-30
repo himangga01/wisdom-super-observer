@@ -8,6 +8,8 @@ dependencies = [
   "alembic>=1.16,<2",
   "cryptography>=50,<51",
   "celery[redis]==5.6.3",
+  "boto3==1.43.105",
+  "Pillow==12.3.0",
 ]
 
 [build-system]

@@ -25,7 +25,10 @@ wso-core = { workspace = true }
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
-markers = ["jobs_recovery: actual Linux Celery/Valkey process recovery acceptance"]
+markers = [
+  "jobs_recovery: actual Linux Celery/Valkey process recovery acceptance",
+  "private_assets: actual Linux private S3 and HTTP lifecycle acceptance",
+]
 
 [tool.ruff]
 target-version = "py312"

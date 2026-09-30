@@ -1,0 +1,95 @@
+name: Private asset baseline RED proof
+
+on:
+  push:
+    branches: ['codex/**']
+    paths:
+      - '.github/workflows/private-assets.yml'
+      - 'scripts/dev/owned-ci-postgres.sh'
+      - 'scripts/check_private_asset_red.py'
+      - 'tests/support/asset_*.py'
+      - 'tests/integration/test_private_assets.py'
+      - 'packages/core/pyproject.toml'
+      - 'pyproject.toml'
+      - 'uv.lock'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: private-assets-red-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  baseline-red:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: .superpowers/ci-private-assets-red
+    env:
+      CI: 'true'
+      WSO_CI_DISPOSABLE_POSTGRES: '1'
+      WSO_TEST_PYTHON: ${{ github.workspace }}/.superpowers/ci-private-assets-red/.venv/bin/python
+      WSO_TEST_RECOVERY_DATABASE_NAME: wso_ci_test
+      WSO_TEST_RECOVERY_DATABASE_OWNER: postgres
+    steps:
+      - name: Check out reviewed fixture infrastructure
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check out sealed T05 product baseline
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: 6565929776c2ff5b9ff55670bc4567b6d2cf4821
+          path: .superpowers/ci-private-assets-red
+          persist-credentials: false
+      - name: Overlay only fixture and dependency infrastructure
+        working-directory: .
+        shell: bash
+        run: |
+          set -euo pipefail
+          task_baseline='.superpowers/ci-private-assets-red'
+          [[ "$(git -C "$task_baseline" rev-parse HEAD)" == 6565929776c2ff5b9ff55670bc4567b6d2cf4821 ]]
+          # No product asset module, contract model, route or migration is copied.
+          for task_path in \
+            pyproject.toml packages/core/pyproject.toml uv.lock \
+            tests/support/asset_provider.py tests/support/asset_harness.py \
+            tests/support/asset_process.py tests/integration/test_private_assets.py \
+            scripts/dev/owned-ci-postgres.sh scripts/check_private_asset_red.py; do
+            mkdir -p "$task_baseline/$(dirname "$task_path")"
+            cp -- "$task_path" "$task_baseline/$task_path"
+          done
+      - name: Python 3.12.10
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12.10'
+      - name: Synchronize immutable Python dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install uv==0.12.19
+          python -m uv sync --locked --all-packages --group dev
+      - name: Provision owned PostgreSQL 17.11
+        shell: bash
+        run: bash scripts/dev/owned-ci-postgres.sh start
+      - name: Observe authenticated missing-feature RED after actual S3 preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .superpowers/verification
+          set +e
+          .venv/bin/python -m pytest tests/integration/test_private_assets.py -q \
+            --tb=short --junitxml=.superpowers/verification/private-assets-red.xml
+          task_pytest_exit=$?
+          set -e
+          .venv/bin/python scripts/check_private_asset_red.py \
+            .superpowers/verification/private-assets-red.xml \
+            .superpowers/verification/private-assets-red-evidence.json \
+            --pytest-exit "$task_pytest_exit"
+      - name: Remove owned PostgreSQL fixture
+        if: always()
+        shell: bash
+        run: bash scripts/dev/owned-ci-postgres.sh cleanup
+      # This job proves baseline RED only, never successful asset implementation.
+      # No upload of logs, credentials, IAM files, cookies or private test output.

@@ -10,10 +10,10 @@ This ledger tracks executable service work. The separate [parity ledger](../inte
 | T02 tenant persistence | Database-issued, one-use tenant grants and private transaction context implemented; former caller-settable GUC boundary replaced | Actual PostgreSQL 17.11: forgery, replay, expiry, rollback, concurrent context installation, membership changes, pool reuse, migration roundtrip and restricted-role denial tests passed; independent task review approved | Production role provisioning and deployment review; new tables must extend this role matrix |
 | T03 web authentication and store selection | OIDC authorization code/PKCE, independently verified RS256 identity, opaque sessions, CSRF logout, tenant/store assignment authorization and functional responsive UI implemented | Integrated Python 139/139 with actual PostgreSQL, FE unit 10/10, HTTPS Chrome auth/navigation 14/14; independent backend/frontend reviews approved | Browser tests use a signed test issuer and test API fixture; actual FastAPI/PG behavior is tested separately. Real identity-provider deployment, provisioning and end-to-end deployment smoke remain pending. TVT account login is W05 |
 | T04 connection credentials and lifecycle | AES-256-GCM tenant/connection/version binding, owner-only lifecycle/store mapping, fenced generation, durable revocation, separate scoped worker capability and responsive connection UI implemented | Independent backend/frontend/worker-runtime reviews approved; latest integrated Python 230/230, FE 15/15 and HTTPS browser 26/26, no PostgreSQL skips | Production KMS/key rotation, later job/session cancellation consumers and actual TVT/Tyco login are pending. Local saved state is NOT_VERIFIED or DISCONNECTED |
-| Linux CI foundation | Pinned Actions and guarded disposable PostgreSQL/Valkey verification workflow implemented; independent review approved | [Actual Linux run 36703370870](https://github.com/himangga01/wisdom-super-observer/actions/runs/36703370870) passed: 230 Python/15 FE/26 HTTPS browser tests, real PostgreSQL migrations and Valkey persistence/empty-volume smoke; actual digests recorded | T05 real worker delivery/recovery, S3 compatibility and deployment checks remain distinct gates |
+| Linux CI foundation | Pinned Actions and guarded disposable PostgreSQL/Valkey verification workflow implemented; independent review approved | [Actual Linux run 36703370870](https://github.com/himangga01/wisdom-super-observer/actions/runs/36703370870) passed: 230 Python/15 FE/26 HTTPS browser tests, real PostgreSQL migrations and Valkey persistence/empty-volume smoke; actual digests recorded | S3 compatibility and deployment checks remain distinct gates; subsequent T05 recovery result is recorded below |
 | W00 atomic parity ledger | Static 77-case seed and desktop API preflight implemented; false-positive paths closed | 31 focused tests passed; checker 77/77 rows, zero errors; headless Chrome/Edge API probe 2/2 | Trusted W24 run registry and comparator; runtime reachability, Android/iOS/media/permission checks, support matrix sign-off; no `MATCHED` rows and `release_ready=false` |
 | W01 TVT bridge feasibility | Static handoff, frozen 199-operation manifest and declaration inventories implemented | 10 schema tests passed; 77 cases / 199 candidate operations; 281 request classes and 299 native declarations inventoried | Vendor rights, runtime fixtures and pilot; all six remote G-P1 families `BLOCKED` |
-| T05 durable jobs | Database-owned requests, outbox/inbox, restricted dispatcher/worker, fencing, cancellation, external uncertainty, status/items API and job-bound secret primitives implemented; task and milestone integration/fix reviews approved | Root integrated Python 449/449, zero skips; subsequent configuration fix verified by 89 targeted cases; no remaining Critical/Important review findings | Ten real Linux process/broker recovery cases must pass. Generic credential handlers fail CAPABILITY_UNSUPPORTED until the owning executor exists; no production IMPORT/REGISTRATION handler |
+| T05 durable jobs | Database-owned requests, outbox/inbox, restricted dispatcher/worker, fencing, cancellation, external uncertainty, status/items API and job-bound secret primitives implemented; task and milestone integration/fix reviews approved | [Actual Linux run 36716200713](https://github.com/himangga01/wisdom-super-observer/actions/runs/36716200713): 537 Python cases and all ten required real process/broker recovery cases, zero skips; no remaining Critical/Important review findings | Generic credential handlers fail CAPABILITY_UNSUPPORTED until the owning executor exists; no production IMPORT/REGISTRATION handler. Deployment and vendor effects remain pending |
 | T05A and W02–W25 service features | Pending | None | Private storage prerequisite and family-specific gates |
 
 ## Latest integrated verification — 2026-09-30
@@ -38,7 +38,7 @@ The subsequent [Linux CI run](../engineering/linux-ci.md#first-recorded-linux-ru
 for commit `5dae70a` completed successfully with 230 Python tests, zero skips,
 15 FE unit tests and 26 HTTPS Chrome cases. It also verified actual disposable
 PostgreSQL and Valkey AOF persistence through SIGKILL/restart plus an isolated
-empty broker volume. T05 worker recovery and APK comparison remain untested.
+empty broker volume. That run did not test T05 worker recovery or APK comparison.
 
 The [provided design reference](../design/2026-09-30-dashboard-reference.md)
 is applied to the login, store and connection screens. Browser screenshots use
@@ -60,9 +60,25 @@ explicit duplicate/orphan ACK observations. The milestone integration review
 found and closed explicit-broker/ambient-Celery configuration and dispatch-generation
 documentation issues. The subsequent scoped fix passed 89 offline configuration
 tests, including 88 new cases, without repeating the earlier full PostgreSQL run.
-Both findings are addressed with no remaining Critical/Important issues. The first
-actual ten-case Linux recovery run remains pending; these targeted results are
-not a new full-suite or process-recovery result.
+Both findings are addressed with no remaining Critical/Important issues. These
+targeted results are not a new full-suite or process-recovery result.
+
+The subsequent [T05 Linux run](../engineering/linux-ci.md#first-t05-recovery-run--2026-09-30)
+at reviewed commit `6565929` passed 537 ordinary Python cases and all ten required
+real Celery/Valkey recovery cases with zero skips. Its strict JUnit gate, Ruff,
+mypy, 15 FE unit cases, typecheck/lint/build, 15 deterministic exports, 77-row
+checker and 26 HTTPS Chrome cases passed. Owned fixtures were removed. This
+closes T05's required actual recovery test gate; S3, live vendor execution,
+device/media comparisons and the APK parity release gate remain open.
+
+## Private asset implementation
+
+T05A is in progress: private upload contracts, bounded S3/crypto/image adapters
+and the real Linux S3/HTTP fixture are being implemented in separate owned files.
+The initial fixture and strict result gates receive independent review. The
+separate [baseline RED probe](../engineering/linux-ci.md#private-asset-baseline-red-probe)
+must prove actual provider and authentication preflight before the missing route
+assertion. No S3/lifecycle acceptance or APK parity is claimed at this stage.
 
 ## Local development
 
@@ -79,7 +95,7 @@ Run the API with `python -m uv run uvicorn wso_api.main:create_app --factory --h
 and serve Next behind the configured trusted HTTPS public origin. Secure cookies
 require HTTPS. Missing auth configuration fails closed; unprovisioned identities
 are not automatically granted membership. Deployment dependency readiness, S3
-compatibility and real worker recovery remain unverified. External TVT adapters remain disabled until their
+compatibility remain unverified. External TVT adapters remain disabled until their
 W01 family gates are documented.
 
 Connection lifecycle configuration and worker trust boundaries are documented
@@ -89,4 +105,4 @@ development database. Explicit PostgreSQL selection requires all eight role URLs
 partial environment configuration fails instead of falling back to local state.
 
 The [durable jobs runbook](../engineering/durable-jobs.md) records the separate
-dispatcher/job role boundaries, broker configuration and pending Linux acceptance.
+dispatcher/job role boundaries, broker configuration and verified Linux recovery acceptance.

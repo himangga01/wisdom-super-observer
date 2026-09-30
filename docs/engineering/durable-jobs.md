@@ -3,8 +3,9 @@
 T05 supplies the shared job execution foundation for later service domains.
 PostgreSQL owns requests, results, cancellation, execution fences and redispatch;
 Celery/Valkey delivers references at least once. A broker acknowledgment is not
-domain completion. Actual Linux recovery acceptance is pending; current local
-PostgreSQL evidence and the earlier broker persistence smoke are distinct.
+domain completion. [Actual Linux recovery run](linux-ci.md#first-t05-recovery-run--2026-09-30)
+passed all ten required cases; local PostgreSQL evidence and the separate broker
+persistence smoke remain distinct results.
 
 ## Persistence and authority
 

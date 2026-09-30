@@ -100,7 +100,7 @@ and queue isolation. Its PostgreSQL fixture requires the exact CI database,
 administrator identity and owned container mapping. Missing Linux/runtime,
 missing mandatory tests, zero collection or any skip/failure/error fail the
 selected gate. See [durable jobs](durable-jobs.md) for the authority and outcome
-boundaries. Actual T05 recovery acceptance remains pending until recorded here.
+boundaries. The actual T05 result is recorded below.
 
 ## First recorded Linux run — 2026-09-30
 
@@ -121,7 +121,58 @@ The pulled runtime inputs were:
 Valkey's actual 9.1.2 server, PING, enabled AOF, SIGKILL/restart persistence and
 separately owned empty-volume checks passed. Owned PostgreSQL and broker
 fixtures were removed successfully. These are recorded test-run digests;
-production image selection and T05 real worker recovery remain pending.
+production image selection remains separate. That first run did not test T05
+real worker recovery; the subsequent result follows.
+
+## First T05 recovery run — 2026-09-30
+
+[Run 36716200713](https://github.com/himangga01/wisdom-super-observer/actions/runs/36716200713)
+completed successfully for reviewed commit `6565929776c2ff5b9ff55670bc4567b6d2cf4821`.
+The ordinary Python suite passed 537 cases with zero skips; the separate actual
+Celery/Valkey recovery suite passed all ten required cases in 257.02 seconds.
+The strict JUnit checker confirmed the exact required set and zero skips.
+
+These real cases cover producer/dispatcher interruption, worker child and full
+process loss before effects, committed-effect replay before ACK, broker AOF
+restart, empty-broker reconstruction, submitted external-write reconciliation,
+unresolved uncertainty blocking resubmission and queue isolation. They use
+actual prefork Celery 5.6.3, Kombu 5.6.2 and Redis client 6.4.0. Original orphan
+reservation restoration, explicit ACK observations and owned pidfd signaling
+were exercised by the accepted fixture. The same PostgreSQL and Valkey digests
+listed above were observed; they are test inputs, not production approval.
+
+Ruff, mypy on 26 source files, FE typecheck/lint/build, 15 FE unit tests,
+15 deterministic generated documents, the 77-row checker and 26 HTTPS Chrome
+cases passed. Separate Valkey persistence smoke and owned-resource cleanup also
+passed. Its legacy message about pending T05 work describes that smoke's own
+scope; the distinct ten-case gate above supplies the recovery result.
+
+The masked run log is retained locally in ignored
+`.superpowers/verification/linux-ci-36716200713.log`. No S3/private asset,
+handset/media, vendor effect, production deployment or APK comparison was tested.
+
+## Private asset baseline RED probe
+
+The separate `Private asset baseline RED proof` workflow prepares a fresh owned
+Linux PostgreSQL fixture and runs only the initial photo-upload case against
+sealed T05 commit `6565929776c2ff5b9ff55670bc4567b6d2cf4821`. An explicit overlay
+copies the provider/HTTP fixture and locked dependency/test infrastructure;
+it copies no asset product code, contracts, routes or migrations. PostgreSQL
+uses the recorded immutable digest above. SeaweedFS 4.47's digest and private
+IAM capabilities must be observed by the provider fixture before any RED proof.
+
+Success of this probe means the actual S3 and authenticated HTTP/CSRF preflight
+passed, then the missing asset route returned 404 versus expected 201. The
+strict RED checker requires pytest exit 1, exactly the named assertion failure,
+zero setup/teardown errors or skips, the sealed source SHA and a bounded
+sanitized receipt. Import errors, provider incompatibility, failed auth and
+an arbitrary failing test cannot satisfy it. No actual run is recorded yet.
+
+This is an initial missing-feature proof, **not successful asset implementation**.
+The full T05A gate still requires all fourteen actual lifecycle/recovery cases
+and its separate strict GREEN checker. Ordinary/offline and local PostgreSQL
+verification explicitly exclude the Linux-only asset acceptance file; the
+separate workflow selects it deliberately and cannot skip a missing runtime.
 
 ## Evidence handling
 
