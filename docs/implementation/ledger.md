@@ -14,7 +14,7 @@ This ledger tracks executable service work. The separate [parity ledger](../inte
 | W00 atomic parity ledger | Static 77-case seed and desktop API preflight implemented; false-positive paths closed | 31 focused tests passed; checker 77/77 rows, zero errors; headless Chrome/Edge API probe 2/2 | Trusted W24 run registry and comparator; runtime reachability, Android/iOS/media/permission checks, support matrix sign-off; no `MATCHED` rows and `release_ready=false` |
 | W01 TVT bridge feasibility | Static handoff, frozen 199-operation manifest and declaration inventories implemented | 10 schema tests passed; 77 cases / 199 candidate operations; 281 request classes and 299 native declarations inventoried | Vendor rights, runtime fixtures and pilot; all six remote G-P1 families `BLOCKED` |
 | T05 durable jobs | Database-owned requests, outbox/inbox, restricted dispatcher/worker, fencing, cancellation, external uncertainty, status/items API and job-bound secret primitives implemented; task and milestone integration/fix reviews approved | [Actual Linux run 36716200713](https://github.com/himangga01/wisdom-super-observer/actions/runs/36716200713): 537 Python cases and all ten required real process/broker recovery cases, zero skips; no remaining Critical/Important review findings | Generic credential handlers fail CAPABILITY_UNSUPPORTED until the owning executor exists; no production IMPORT/REGISTRATION handler. Deployment and vendor effects remain pending |
-| T05A private assets | In progress; source-reviewed contracts/primitives and fixture-only relay topology, with provider relay implementation underway | [Latest foundation run](../engineering/linux-ci.md#latest-recorded-linux-foundation-run) passed; [latest provider attempt](../engineering/linux-ci.md#fifth-private-asset-probe-loopback-publication-check-failed) still failed during setup | Actual provider privacy/IAM and HTTP preflight, complete fourteen-case GREEN acceptance, current product-delta Linux run, and whole APK parity |
+| T05A private assets | In progress; source-reviewed contracts/primitives and fixture-only relay topology; relay deadline fix received scoped approval | [Latest integrated foundation run](../engineering/linux-ci.md#latest-integrated-linux-foundation-run) passed; [latest provider attempt](../engineering/linux-ci.md#fifth-private-asset-probe-loopback-publication-check-failed) still failed during setup | Actual provider privacy/IAM and HTTP preflight, complete fourteen-case GREEN acceptance, later gate/relay changes on Linux, and whole APK parity |
 | W02–W25 service features | Pending | None | Private storage prerequisite and family-specific gates |
 
 ## Previous integrated verification — 2026-09-30
@@ -90,8 +90,8 @@ case result and are not additive. One actual Windows migration round trip,
 included in those focused cases, used a guarded unique disposable database for
 `0003_jobs` → `0003a_assets` → `0003_jobs` → `0003a_assets`, checked asset
 security and preserved T05 behavior, then removed only that database; the
-managed database head remained unchanged. The current product delta has not yet
-been run on Linux.
+managed database head remained unchanged. The integrated Linux run at `0deeb79`
+covers the product foundation; later gate/relay changes are outside that run.
 
 ## Private asset implementation
 
@@ -102,9 +102,11 @@ separate [baseline RED probe](../engineering/linux-ci.md#private-asset-baseline-
 must prove actual provider and authentication preflight before the missing route
 assertion. No S3/lifecycle acceptance or APK parity is claimed at this stage.
 
-The [latest recorded Linux foundation run](../engineering/linux-ci.md#latest-recorded-linux-foundation-run)
-at `d8530ae` passed 887 ordinary Python cases and ten actual Celery/Valkey
-recovery cases, with zero skips, plus frontend/browser gates. The previous
+The [latest integrated Linux foundation run](../engineering/linux-ci.md#latest-integrated-linux-foundation-run)
+at `0deeb79` passed 1200 ordinary Python cases and ten actual Celery/Valkey
+recovery cases, with zero skips, plus frontend/browser gates. It also included
+isolated `0003a_assets` migration/nine-role integration in the ordinary pytest
+invocation; no per-case count is recorded. The prior
 [foundation run](../engineering/linux-ci.md#previous-recorded-foundation-run)
 at `e3865df` passed 855 ordinary cases and ten actual recovery cases.
 
@@ -116,14 +118,22 @@ run captured UID/GID `65532:65532` with mode `0755`; and the newest passed the
 captured. Strict RED receipts were rejected. Pinned [Moby v28.0.4 source](https://github.com/moby/moby/blob/v28.0.4/daemon/network.go#L860)
 explains why port publication is skipped for an Internal network, but the
 observed port shape is unknown. A fixture-only opaque TCP relay design was
-accepted for implementation; the relay and actual Linux connectivity are not
-yet verified.
+accepted for implementation. The original scoped review found three Important
+deadline-validity findings. The author’s fix round 1 addressed I1/I2/I3 and
+received scoped approval with no new Critical or Important findings. Its
+covering selection passed 120 tests in 1.15 seconds, Ruff, four-file formatting
+and configured-source mypy for 40 files; the root’s fresh selection passed 120
+tests in 1.11 seconds with Ruff and formatting passing. These later changes are
+outside the integrated Linux run. Actual Linux relay connectivity is not yet
+verified.
 SeaweedFS remains excluded. The MinIO candidate still requires the unchanged
 privacy/IAM and full fourteen-case lifecycle gates; no provider acceptance is
 claimed.
 
-The current scoped source review/fix rounds have zero unresolved Critical or
-Important implementation findings. The OpenAPI metadata issue was resolved with
+The reviewed two-file result-gate receipt-safety correction passed 247 scoped
+cases and an independent review with zero Critical or Important findings. It
+improves receipt validation only and is outside the integrated Linux run;
+provider acceptance remains open. The OpenAPI metadata issue was resolved with
 required upload-session/download-ticket headers and JPEG/PNG binary schemas,
 without eager request-body parsing or buffering. This source review result does
 not establish actual provider behavior or APK parity.

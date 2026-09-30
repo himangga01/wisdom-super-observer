@@ -248,7 +248,7 @@ PostgreSQL cleanup succeeded. General Chrome/Edge preflight and the separate
 Compose container gate were not selected. This is foundation evidence;
 private-asset provider and lifecycle acceptance remain separate.
 
-### Latest recorded Linux foundation run
+### Previous recorded Linux foundation run
 
 [Run 36751744939, job 110011840693](https://github.com/himangga01/wisdom-super-observer/actions/runs/36751744939/job/110011840693)
 at commit `d8530aeeca3e2c8863597ecbb3dcec1f8a47b9a2` succeeded. It passed 887
@@ -260,6 +260,12 @@ cases in 58.1 seconds all passed. The Valkey persistence smoke and owned fixture
 cleanup also passed. General Chrome/Edge preflight and Compose were not selected.
 This run is foundation evidence; it does not exercise the private-asset provider
 or lifecycle acceptance.
+
+### Latest integrated Linux foundation run
+
+[Run 36760448179, job 110041356232](https://github.com/himangga01/wisdom-super-observer/actions/runs/36760448179/job/110041356232) at product HEAD `0deeb79024fccf6bb7e6e3157aceadd39674da77` succeeded. It passed 1200 ordinary Python cases with zero skips in 129.82 seconds and all ten actual Celery/Valkey recovery cases with zero skips in 247.76 seconds; the recovery checker confirmed the exact ten required cases. Ruff and strict mypy on 40 source files passed, as did frontend typecheck/lint/build and 15 frontend unit cases. Twenty canonical contract exports were verified twice, the 77-row checker passed, and HTTPS Chrome passed 26 cases in 47.1 seconds. Valkey smoke and owned PostgreSQL cleanup succeeded.
+
+This run selected the actual PostgreSQL migration/provisioning gate, including the isolated `0003a_assets` migration and nine-role integration in the ordinary test invocation; only the aggregate pytest count is recorded here. PostgreSQL used the recorded digest `d74eeac9a635390a49bc21bd49fccd973de707e2a53a76ac49b552b8712ec46f`; the pinned Valkey digest was unchanged. This run closes the product-Linux foundation boundary at `0deeb79`. It predates later gate/relay changes, including the scoped relay fix approval, and does not cover them. General Chrome/Edge preflight and Compose were not selected. Provider privacy/IAM, the authenticated baseline RED proof, and the full fourteen-case GREEN gate remain open.
 
 ### Third private asset probe: data volume verification failed
 

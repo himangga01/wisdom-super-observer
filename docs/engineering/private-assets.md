@@ -6,11 +6,13 @@ Contracts and bounded S3/crypto/image primitives are committed at `aedbe2d`.
 The actual S3/HTTP baseline and all fourteen lifecycle acceptance cases remain
 open. This work does not establish APK feature parity.
 
-Scoped implementation review/fix rounds currently have zero unresolved Critical
-or Important findings. The OpenAPI metadata finding is resolved: upload declares
-required `X-Upload-Session` and JPEG/PNG binary content; download declares the
-required `X-Asset-Ticket` and JPEG/PNG binary success content. The fix adds no
-eager upload-body parsing or buffering. These are reviewed source contracts, not
+Reviews of the committed product source at `0deeb79` found no unresolved Critical
+or Important findings. The separate fixture relay review’s three Important
+findings were later addressed in fix round 1, as recorded below. The OpenAPI
+metadata finding is resolved: upload declares required `X-Upload-Session` and
+JPEG/PNG binary content; download declares the required `X-Asset-Ticket` and
+JPEG/PNG binary success content. The fix adds no eager upload-body parsing or
+buffering. These are reviewed source contracts, not
 evidence of provider acceptance.
 
 ## Runtime configuration and database controls
@@ -130,9 +132,27 @@ skips port-mapping options for an Internal network. This is consistent with the
 publication failure, but does not establish what port fields that run returned.
 The accepted fixture-only design removes Docker host publication and specifies
 a bounded opaque TCP relay from literal `127.0.0.1` to the owned MinIO numeric
-address on the Internal bridge. The relay implementation and actual Linux
-connectivity are still in progress and unverified. It is not a production proxy
-or provider-security approval.
+address on the Internal bridge. The original scoped review found three Important
+deadline-validity findings. The author’s fix round 1 addressed I1/I2/I3 and
+received scoped approval with no new Critical or Important findings. Its
+covering selection passed 120 tests in 1.15 seconds, Ruff, formatting of four
+files, and configured-source mypy for 40 files; a fresh root run passed 120 tests
+in 1.11 seconds with Ruff and formatting also passing. This source fix approval
+does not establish actual Linux connectivity. The relay is not a production
+proxy or provider-security approval.
+
+### Integrated product Linux evidence and remaining T05A gates
+
+The [integrated Linux run](linux-ci.md#latest-integrated-linux-foundation-run) at product HEAD `0deeb79024fccf6bb7e6e3157aceadd39674da77` passed 1200 ordinary Python cases and ten actual Celery/Valkey recovery cases, both with zero skips. Its ordinary pytest invocation included the isolated `0003a_assets` migration and nine-role integration; the published evidence is aggregate only. This validates the product foundation through that commit, not provider privacy/IAM or the private asset HTTP lifecycle.
+
+A later two-file receipt-safety correction passed 247 scoped cases
+and received an independent review with zero Critical or Important findings. It
+improves result-gate validation only and does not prove provider behavior. A
+separate four-file fixture relay fix round then addressed the three Important
+findings and received scoped approval with no new Critical or Important findings.
+Neither later change is included in the integrated Linux run. Actual provider
+privacy/IAM, authenticated baseline RED, full fourteen-case GREEN, and relay
+connectivity remain open.
 
 ## Local helper containment
 
@@ -171,6 +191,7 @@ strict GREEN gate requires all fourteen real lifecycle cases, including crypto
 tampering, expiry/revocation, parent crops, genuine Celery restart, multipart
 pagination, orphan cleanup and key rotation. Real PostgreSQL permission,
 lock-wait and migration lifecycle checks are also required. The isolated Windows
-migration round trip has one passing execution, but the current product delta has
-not yet been exercised on Linux. Source/offline results, foundation CI and
-design-only relay acceptance do not substitute for these gates.
+migration round trip has one passing execution. The integrated Linux run covers
+product HEAD `0deeb79`; later gate/relay changes are not covered.
+Source/offline results, foundation CI and relay implementation do not substitute
+for provider and lifecycle acceptance.
