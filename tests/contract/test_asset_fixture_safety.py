@@ -320,6 +320,255 @@ def test_relay_os_call_origin_uses_fixed_type_and_one_call(stage):
     operation.assert_called_once_with()
 
 
+@pytest.mark.parametrize(
+    "absolute,idle,expected",
+    [
+        (200.0, 100.0, "IDLE_CUTOFF"),
+        (100.0, 200.0, "ABSOLUTE_CUTOFF"),
+        (100.0, 100.0, "ABSOLUTE_CUTOFF"),
+    ],
+)
+def test_pump_cutoff_retains_exact_min_bound(
+    tmp_path, monkeypatch, absolute, idle, expected
+):
+    from tests.support import asset_minio
+
+    relay = asset_minio.LoopbackRelay(lambda *_: "172.28.0.2", tmp_path)
+    monkeypatch.setattr(asset_minio.time, "monotonic", Mock(return_value=100.0))
+    with pytest.raises(asset_minio.RelayOriginFailure) as caught:
+        relay._pump(Mock(), Mock(), absolute, idle)
+    assert caught.value.origin == ("PUMP_CUTOFF", expected)
+
+
+def test_stop_cutoff_retains_branch_without_reading_clock(tmp_path, monkeypatch):
+    from tests.support import asset_minio
+
+    relay = asset_minio.LoopbackRelay(lambda *_: "172.28.0.2", tmp_path)
+    relay.stop = Mock(is_set=Mock(return_value=True))
+    clock = Mock(side_effect=AssertionError("clock must stay short circuited"))
+    monkeypatch.setattr(asset_minio.time, "monotonic", clock)
+    with pytest.raises(asset_minio.RelayOriginFailure) as caught:
+        relay._check_cutoff(100.0)
+    assert caught.value.origin == ("CONTROL", "STOPPING_CUTOFF")
+    relay.stop.is_set.assert_called_once_with()
+    clock.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "stopped,now,kind,expected",
+    [
+        (True, 100.0, "IDLE_CUTOFF", "STOPPING_CUTOFF"),
+        (False, 99.0, "IDLE_CUTOFF", None),
+        (False, 100.0, "IDLE_CUTOFF", "IDLE_CUTOFF"),
+        (False, 100.0, "UNKNOWN", "UNKNOWN"),
+    ],
+)
+def test_cutoff_preserves_exact_event_clock_sequence(
+    tmp_path, monkeypatch, stopped, now, kind, expected
+):
+    from tests.support import asset_minio
+
+    relay = asset_minio.LoopbackRelay(lambda *_: "172.28.0.2", tmp_path)
+    events = []
+    relay.stop = Mock(is_set=Mock(side_effect=lambda: events.append("stop") or stopped))
+    clock = Mock(side_effect=lambda: events.append("clock") or now)
+    monkeypatch.setattr(asset_minio.time, "monotonic", clock)
+    if expected is None:
+        relay._check_cutoff(100.0, kind)
+    else:
+        with pytest.raises(asset_minio.RelayOriginFailure) as caught:
+            relay._check_cutoff(100.0, kind)
+        assert caught.value.origin == ("CONTROL", expected)
+    assert events == (["stop"] if stopped else ["stop", "clock"])
+
+
+@pytest.mark.parametrize("stage", ["setblocking", "select", "recv", "send", "shutdown"])
+@pytest.mark.parametrize("bound_kind", ["idle", "absolute", "tie", "stopping"])
+def test_every_late_pump_return_retains_old_bound_and_label(
+    tmp_path, monkeypatch, stage, bound_kind
+):
+    from tests.support import asset_minio
+
+    relay = asset_minio.LoopbackRelay(lambda *_: "172.28.0.2", tmp_path)
+    now = [100.0]
+    checks, controls, late_pair = [], [], []
+    check = relay._check_cutoff
+
+    def observed_check(deadline, kind="UNKNOWN"):
+        checks.append((deadline, kind))
+        check(deadline, kind)
+
+    def late():
+        late_pair.append(checks[-1] if checks else (101.0, "IDLE_CUTOFF"))
+        if bound_kind == "stopping":
+            relay.stop.set()
+        else:
+            now[0] = late_pair[-1][0] + 1
+
+    class Stream:
+        def __init__(self, name):
+            self.name = name
+
+        def setblocking(self, value):
+            controls.append((self.name, "setblocking"))
+            if stage == "setblocking" and self.name == "client":
+                if bound_kind in {"absolute", "tie"}:
+                    late_pair.append((101.0, "ABSOLUTE_CUTOFF"))
+                    now[0] = 102.0
+                else:
+                    late()
+
+        def recv(self, size):
+            controls.append((self.name, "recv"))
+            if stage == "recv":
+                late()
+            return b"" if stage == "shutdown" else b"queued"
+
+        def send(self, block):
+            controls.append((self.name, "send"))
+            late()
+            return 1
+
+        def shutdown(self, how):
+            controls.append((self.name, "shutdown"))
+            late()
+
+    client, backend = Stream("client"), Stream("backend")
+    readiness_calls = []
+
+    def readiness(*_):
+        readiness_calls.append(True)
+        controls.append(("pair", "select"))
+        if stage == "select":
+            late()
+        return ([client], [], []) if len(readiness_calls) == 1 else ([], [backend], [])
+
+    absolute, idle = (
+        (160.0, 101.0)
+        if bound_kind in {"idle", "stopping"}
+        else (101.0, 160.0)
+        if bound_kind == "absolute"
+        else (101.0, 101.0)
+    )
+    monkeypatch.setattr(relay, "_check_cutoff", observed_check)
+    monkeypatch.setattr(asset_minio.time, "monotonic", lambda: now[0])
+    monkeypatch.setattr(asset_minio.select, "select", readiness)
+    with pytest.raises(asset_minio.RelayOriginFailure) as caught:
+        relay._pump(client, backend, absolute, idle)
+    expected = (
+        "STOPPING_CUTOFF"
+        if bound_kind == "stopping"
+        else "IDLE_CUTOFF"
+        if bound_kind == "idle"
+        else "ABSOLUTE_CUTOFF"
+    )
+    assert caught.value.origin == ("PUMP_CUTOFF", expected)
+    assert checks[-1] == late_pair[-1]
+    assert controls[-1][1] == stage
+    assert sum(control[1] == "send" for control in controls) == (stage == "send")
+
+
+def test_healthy_intentional_close_does_not_install_stopping_origin(
+    tmp_path, monkeypatch
+):
+    from tests.support import asset_minio
+
+    entered = threading.Event()
+    pump = asset_minio.LoopbackRelay._pump
+
+    def observed_pump(self, *args):
+        entered.set()
+        pump(self, *args)
+
+    monkeypatch.setattr(asset_minio.LoopbackRelay, "_pump", observed_pump)
+    relay, client, backend, _ = relay_fixture(tmp_path, monkeypatch)
+    try:
+        assert entered.wait(1)
+        relay.close()
+        observed = relay.diagnostic_snapshot()
+        assert observed["state"] == "CLOSED" and observed["failed"] is False
+        assert observed["first_stage"] == observed["first_kind"] == "UNKNOWN"
+        assert (
+            observed["connections"] == observed["sockets"] == observed["workers"] == 0
+        )
+    finally:
+        client.close()
+        backend.close()
+        relay.close()
+
+
+def test_successful_pump_preserves_whole_control_event_clock_order(
+    tmp_path, monkeypatch
+):
+    from tests.support import asset_minio
+
+    relay = asset_minio.LoopbackRelay(lambda *_: "172.28.0.2", tmp_path)
+    events = []
+    relay.stop = Mock(is_set=Mock(side_effect=lambda: events.append("stop") or False))
+    monkeypatch.setattr(
+        asset_minio.time, "monotonic", lambda: events.append("clock") or 100.0
+    )
+
+    class Stream:
+        def __init__(self, name):
+            self.name = name
+
+        def setblocking(self, value):
+            events.append(self.name + ".setblocking")
+            assert value is False
+
+        def recv(self, size):
+            events.append(self.name + ".recv")
+            return b""
+
+        def shutdown(self, how):
+            events.append(self.name + ".shutdown")
+            assert how == socket.SHUT_WR
+
+    client, backend = Stream("client"), Stream("backend")
+
+    def readiness(*_):
+        events.append("select")
+        return [client, backend], [], []
+
+    monkeypatch.setattr(asset_minio.select, "select", readiness)
+    relay._pump(client, backend, 160.0, 110.0)
+    assert events == [
+        "client.setblocking",
+        "stop",
+        "clock",
+        "backend.setblocking",
+        "stop",
+        "clock",
+        "stop",
+        "clock",
+        "clock",
+        "select",
+        "stop",
+        "clock",
+        "stop",
+        "clock",
+        "client.recv",
+        "stop",
+        "clock",
+        "stop",
+        "clock",
+        "backend.shutdown",
+        "stop",
+        "clock",
+        "stop",
+        "clock",
+        "backend.recv",
+        "stop",
+        "clock",
+        "stop",
+        "clock",
+        "client.shutdown",
+        "stop",
+        "clock",
+    ]
+
+
 def test_relay_preserves_opaque_signed_bytes_and_half_close(tmp_path, monkeypatch):
     relay, client, backend, observed = relay_fixture(tmp_path, monkeypatch)
     request = (

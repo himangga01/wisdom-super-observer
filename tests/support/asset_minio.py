@@ -113,6 +113,52 @@ def unavailable_relay_snapshot():
     }
 
 
+def normalize_relay_snapshot(value, *, strict=True):
+    """Pure closed-schema copy; no unsafe object participates in serialization."""
+    unavailable = unavailable_relay_snapshot()
+    if type(value) is not dict:
+        return unavailable
+    keys = tuple(value)
+    if (
+        any(type(key) is not str for key in keys)
+        or set(keys) != set(unavailable)
+        or value["available"] is not True
+    ):
+        return unavailable
+
+    def valid_count(item):
+        return item is None or (type(item) is int and 0 <= item <= 4096)
+
+    def count(item):
+        return item if type(item) is int and 0 <= item <= 4096 else None
+
+    states = {"RUNNING", "STOPPING", "CLOSED", "UNKNOWN"}
+    valid = (
+        type(value["state"]) is str
+        and value["state"] in states
+        and (value["failed"] is None or type(value["failed"]) is bool)
+        and all(
+            valid_count(value[key]) for key in ("connections", "sockets", "workers")
+        )
+        and type(value["first_stage"]) is str
+        and value["first_stage"] in RELAY_STAGES
+        and type(value["first_kind"]) is str
+        and value["first_kind"] in RELAY_KINDS
+    )
+    if strict and not valid:
+        return unavailable
+    return {
+        "available": True,
+        "state": fixed_label(value["state"], states),
+        "failed": value["failed"] if type(value["failed"]) is bool else None,
+        "connections": count(value["connections"]),
+        "sockets": count(value["sockets"]),
+        "workers": count(value["workers"]),
+        "first_stage": fixed_label(value["first_stage"], RELAY_STAGES),
+        "first_kind": fixed_label(value["first_kind"], RELAY_KINDS),
+    }
+
+
 class RelayOriginFailure(RuntimeError):
     def __init__(self, stage, kind, message):
         super().__init__(message)
@@ -327,9 +373,17 @@ class LoopbackRelay:
             identity += (observed.st_dev, observed.st_ino)
         return identity
 
-    def _check_cutoff(self, deadline):
-        if self.stop.is_set() or time.monotonic() >= deadline:
-            raise RelayOriginFailure("CONTROL", "UNKNOWN", "relay control cutoff")
+    def _check_cutoff(self, deadline, kind="UNKNOWN"):
+        if self.stop.is_set():
+            raise RelayOriginFailure(
+                "CONTROL", "STOPPING_CUTOFF", "relay control cutoff"
+            )
+        if time.monotonic() >= deadline:
+            raise RelayOriginFailure(
+                "CONTROL",
+                fixed_label(kind, {"IDLE_CUTOFF", "ABSOLUTE_CUTOFF"}),
+                "relay control cutoff",
+            )
 
     def start(self, *, deadline):
         with self.lock:
@@ -505,15 +559,21 @@ class LoopbackRelay:
         half_closed = [False, False]
         total = 0
 
-        def check(deadline):
-            relay_call("PUMP_CUTOFF", lambda: self._check_cutoff(deadline))
+        def bound():
+            # Absolute owns a numeric tie; label travels with the old deadline.
+            return min(absolute, idle), (
+                "ABSOLUTE_CUTOFF" if absolute <= idle else "IDLE_CUTOFF"
+            )
+
+        def check(deadline, kind):
+            relay_call("PUMP_CUTOFF", lambda: self._check_cutoff(deadline, kind))
 
         for stream in streams:
             relay_call("CONTROL", lambda stream=stream: stream.setblocking(False))
-            check(min(absolute, idle))
+            check(*bound())
         while not all(half_closed):
-            cutoff = min(absolute, idle)
-            check(cutoff)
+            cutoff, kind = bound()
+            check(cutoff, kind)
             readers = [
                 streams[i]
                 for i in range(2)
@@ -529,16 +589,16 @@ class LoopbackRelay:
                     min(0.05, max(0, cutoff - time.monotonic())),
                 ),
             )
-            check(cutoff)
+            check(cutoff, kind)
             for i in range(2):
                 if streams[i] in readable:
-                    cutoff = min(absolute, idle)
-                    check(cutoff)
+                    cutoff, kind = bound()
+                    check(cutoff, kind)
                     block = relay_call(
                         "RECV",
                         lambda i=i: streams[i].recv(self.MAX_BUFFER - len(queues[i])),
                     )
-                    check(cutoff)
+                    check(cutoff, kind)
                     if block:
                         if total + len(block) > self.MAX_BYTES:
                             raise RelayOriginFailure(
@@ -550,24 +610,24 @@ class LoopbackRelay:
                     else:
                         eof[i] = True
                 if queues[i] and streams[1 - i] in writable:
-                    cutoff = min(absolute, idle)
-                    check(cutoff)
+                    cutoff, kind = bound()
+                    check(cutoff, kind)
                     sent = relay_call(
                         "SEND", lambda i=i: streams[1 - i].send(queues[i])
                     )
-                    check(cutoff)
+                    check(cutoff, kind)
                     if sent <= 0:
                         raise RelayOriginFailure("SEND", "UNKNOWN", "relay send failed")
                     del queues[i][:sent]
                     idle = time.monotonic() + self.IDLE_SECONDS
                 if eof[i] and not queues[i] and not half_closed[i]:
-                    cutoff = min(absolute, idle)
-                    check(cutoff)
+                    cutoff, kind = bound()
+                    check(cutoff, kind)
                     relay_call(
                         "HALF_CLOSE",
                         lambda i=i: streams[1 - i].shutdown(socket.SHUT_WR),
                     )
-                    check(cutoff)
+                    check(cutoff, kind)
                     half_closed[i] = True
 
     def assert_healthy(self):

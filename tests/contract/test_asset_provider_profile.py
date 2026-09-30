@@ -1,6 +1,7 @@
 """Offline boundary validators; never actual MinIO acceptance."""
 
 import json
+import threading
 from collections import Counter
 from io import BytesIO, StringIO, TextIOWrapper
 from itertools import product
@@ -13,6 +14,389 @@ from botocore.exceptions import ClientError
 
 from tests.support.asset_minio import EXCEPTION_TYPES, unavailable_relay_snapshot
 from tests.support.asset_provider import AssetProvider, policy_config
+
+
+def test_http_failure_captures_owned_before_and_failure_boundaries(
+    tmp_path, monkeypatch
+):
+    from tests.support.asset_minio import LoopbackRelay
+    from tests.support.asset_provider import HttpProbeFailure
+
+    provider = AssetProvider(tmp_path)
+    relay = LoopbackRelay(lambda *_: "172.28.0.2", tmp_path)
+    relay.state = "RUNNING"
+    provider.relay = relay
+    order = []
+    snapshot = relay.diagnostic_snapshot
+
+    def observe():
+        order.append("snapshot")
+        return snapshot()
+
+    def request(*args, **kwargs):
+        order.append("request")
+        relay._record_failure("PUMP_CUTOFF", "IDLE_CUTOFF")
+        raise httpx.ReadError("secret-native-cause")
+
+    monkeypatch.setattr(relay, "diagnostic_snapshot", observe)
+    monkeypatch.setattr(httpx, "request", request)
+    with pytest.raises(HttpProbeFailure) as caught:
+        provider.raw_http("HEAD", "http://unused.invalid")
+    assert caught.value.relay_before == {
+        **unavailable_relay_snapshot(),
+        "available": True,
+        "state": "RUNNING",
+        "failed": False,
+        "connections": 0,
+        "sockets": 0,
+        "workers": 0,
+    }
+    assert caught.value.relay_at_failure == {
+        **caught.value.relay_before,
+        "failed": True,
+        "first_stage": "PUMP_CUTOFF",
+        "first_kind": "IDLE_CUTOFF",
+    }
+    assert order == ["snapshot", "request", "snapshot"]
+    relay.state = "CLOSED"
+    assert caught.value.relay_before["state"] == "RUNNING"
+    assert caught.value.relay_at_failure["state"] == "RUNNING"
+
+
+def running_snapshot():
+    return {
+        **unavailable_relay_snapshot(),
+        "available": True,
+        "state": "RUNNING",
+        "failed": False,
+        "connections": 0,
+        "sockets": 0,
+        "workers": 0,
+    }
+
+
+def test_success_boundary_observation_precedes_request_and_access_only(
+    tmp_path, monkeypatch
+):
+    provider = AssetProvider(tmp_path)
+    order = []
+    provider.relay = Mock(
+        diagnostic_snapshot=Mock(
+            side_effect=lambda: order.append("snapshot") or running_snapshot()
+        )
+    )
+
+    class Response:
+        @property
+        def status_code(self):
+            order.append("status")
+            return 403
+
+        @property
+        def content(self):
+            order.append("content")
+            return b"private-response"
+
+    request = Mock(side_effect=lambda *a, **kw: order.append("request") or Response())
+    monkeypatch.setattr(httpx, "request", request)
+    assert provider.raw_get("http://unused.invalid") == (403, b"private-response")
+    assert order == ["snapshot", "request", "status", "content"]
+    provider.relay.diagnostic_snapshot.assert_called_once_with()
+    request.assert_called_once_with(
+        "GET",
+        "http://unused.invalid",
+        timeout=5,
+        trust_env=False,
+        follow_redirects=False,
+    )
+
+
+def test_http_boundary_copies_mutable_snapshot_and_existing_poison(
+    tmp_path, monkeypatch
+):
+    from tests.support.asset_provider import HttpProbeFailure
+
+    provider = AssetProvider(tmp_path)
+    shared = {
+        **running_snapshot(),
+        "failed": True,
+        "first_stage": "RECV",
+        "first_kind": "OS_OTHER",
+    }
+    provider.relay = Mock(diagnostic_snapshot=Mock(return_value=shared))
+
+    def request(*a, **kw):
+        shared["state"] = "STOPPING"
+        raise httpx.ReadError("secret-native-cause")
+
+    monkeypatch.setattr(httpx, "request", request)
+    with pytest.raises(HttpProbeFailure) as caught:
+        provider.raw_http("HEAD", "http://unused.invalid")
+    shared["state"] = "CLOSED"
+    shared["first_kind"] = "secret-later-value"
+    assert caught.value.relay_before["state"] == "RUNNING"
+    assert caught.value.relay_at_failure["state"] == "STOPPING"
+    assert caught.value.relay_before["failed"] is True
+    assert (
+        caught.value.relay_before["first_kind"]
+        == caught.value.relay_at_failure["first_kind"]
+        == "OS_OTHER"
+    )
+
+
+def test_busy_owned_relay_snapshots_cannot_block_http_failure(tmp_path, monkeypatch):
+    from tests.support.asset_minio import LoopbackRelay
+    from tests.support.asset_provider import HttpProbeFailure
+
+    provider = AssetProvider(tmp_path)
+    provider.relay = LoopbackRelay(lambda *_: "172.28.0.2", tmp_path)
+    request = Mock(side_effect=httpx.ReadError("secret-native-cause"))
+    monkeypatch.setattr(httpx, "request", request)
+    observed, finished = [], threading.Event()
+
+    def probe():
+        try:
+            provider.raw_http("HEAD", "http://unused.invalid")
+        except HttpProbeFailure as error:
+            observed.append(error)
+        finally:
+            finished.set()
+
+    provider.relay.lock.acquire()
+    worker = threading.Thread(target=probe)
+    worker.start()
+    try:
+        assert finished.wait(0.5)
+    finally:
+        provider.relay.lock.release()
+        worker.join(1)
+    assert not worker.is_alive() and len(observed) == 1
+    assert (
+        observed[0].relay_before
+        == observed[0].relay_at_failure
+        == unavailable_relay_snapshot()
+    )
+    request.assert_called_once()
+
+
+class PrivateString(str):
+    pass
+
+
+class PrivateInteger(int):
+    pass
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("available", 1),
+        ("state", PrivateString("RUNNING")),
+        ("state", "secret-state"),
+        ("failed", 1),
+        ("connections", True),
+        ("connections", 1.0),
+        ("connections", -1),
+        ("connections", 4097),
+        ("connections", PrivateInteger(0)),
+        ("sockets", []),
+        ("workers", {"secret-worker": "secret-id"}),
+        ("first_stage", PrivateString("RECV")),
+        ("first_kind", "secret-kind"),
+        ("secret-extra-key", "secret-url-cookie-body"),
+    ],
+)
+def test_http_boundary_rejects_unsafe_closed_snapshot_fields(
+    tmp_path, monkeypatch, field, value
+):
+    from tests.support.asset_provider import HttpProbeFailure
+
+    provider = AssetProvider(tmp_path)
+    provider.relay = Mock(
+        diagnostic_snapshot=Mock(return_value={**running_snapshot(), field: value})
+    )
+    monkeypatch.setattr(
+        httpx, "request", Mock(side_effect=httpx.ReadError("secret-exception"))
+    )
+    with pytest.raises(HttpProbeFailure) as caught:
+        provider.raw_http("HEAD", "http://unused.invalid")
+    assert (
+        caught.value.relay_before
+        == caught.value.relay_at_failure
+        == unavailable_relay_snapshot()
+    )
+    assert "secret-" not in json.dumps(caught.value.relay_before)
+
+
+@pytest.mark.parametrize("count", [0, 4096, None])
+def test_http_boundary_accepts_only_defined_count_limits(tmp_path, monkeypatch, count):
+    from tests.support.asset_provider import HttpProbeFailure
+
+    expected = {
+        **running_snapshot(),
+        "connections": count,
+        "sockets": count,
+        "workers": count,
+    }
+    provider = AssetProvider(tmp_path)
+    provider.relay = Mock(diagnostic_snapshot=Mock(return_value=expected))
+    monkeypatch.setattr(
+        httpx, "request", Mock(side_effect=httpx.ReadError("fixed failure"))
+    )
+    with pytest.raises(HttpProbeFailure) as caught:
+        provider.raw_http("HEAD", "http://unused.invalid")
+    assert caught.value.relay_before == caught.value.relay_at_failure == expected
+
+
+@pytest.mark.parametrize("snapshot", [None, {}, {"available": True}])
+def test_http_boundary_missing_snapshot_is_canonical_unavailable(
+    tmp_path, monkeypatch, snapshot
+):
+    from tests.support.asset_provider import HttpProbeFailure
+
+    provider = AssetProvider(tmp_path)
+    provider.relay = Mock(diagnostic_snapshot=Mock(return_value=snapshot))
+    monkeypatch.setattr(
+        httpx, "request", Mock(side_effect=httpx.ReadError("fixed failure"))
+    )
+    with pytest.raises(HttpProbeFailure) as caught:
+        provider.raw_http("HEAD", "http://unused.invalid")
+    assert (
+        caught.value.relay_before
+        == caught.value.relay_at_failure
+        == unavailable_relay_snapshot()
+    )
+
+
+@pytest.mark.parametrize("failure", [ValueError, RuntimeError, TypeError])
+def test_snapshot_failure_does_not_replace_http_request_failure(
+    tmp_path, monkeypatch, failure
+):
+    from tests.support.asset_provider import HttpProbeFailure
+
+    provider = AssetProvider(tmp_path)
+    provider.relay = Mock(
+        diagnostic_snapshot=Mock(side_effect=failure("secret-snapshot"))
+    )
+    request = Mock(side_effect=httpx.ReadError("secret-request"))
+    monkeypatch.setattr(httpx, "request", request)
+    with pytest.raises(HttpProbeFailure) as caught:
+        provider.raw_http("HEAD", "http://unused.invalid")
+    assert caught.value.kind == "HTTPX_READ_ERROR"
+    assert (
+        caught.value.relay_before
+        == caught.value.relay_at_failure
+        == unavailable_relay_snapshot()
+    )
+    request.assert_called_once()
+    assert provider.relay.diagnostic_snapshot.call_count == 2
+
+
+@pytest.mark.parametrize("subclass", [True, False])
+def test_snapshot_container_and_key_subclasses_are_rejected_without_callbacks(
+    tmp_path, monkeypatch, subclass
+):
+    from tests.support.asset_provider import HttpProbeFailure
+
+    class UnsafeDictionary(dict):
+        def __iter__(self):
+            pytest.fail("unsafe dictionary iteration must not execute")
+
+    unsafe = (
+        UnsafeDictionary(running_snapshot())
+        if subclass
+        else {PrivateString(key): value for key, value in running_snapshot().items()}
+    )
+    provider = AssetProvider(tmp_path)
+    provider.relay = Mock(diagnostic_snapshot=Mock(return_value=unsafe))
+    monkeypatch.setattr(
+        httpx, "request", Mock(side_effect=httpx.ReadError("secret-request"))
+    )
+    with pytest.raises(HttpProbeFailure) as caught:
+        provider.raw_http("HEAD", "http://unused.invalid")
+    assert (
+        caught.value.relay_before
+        == caught.value.relay_at_failure
+        == unavailable_relay_snapshot()
+    )
+
+
+def test_response_access_failure_retains_request_boundaries_and_status(
+    tmp_path, monkeypatch
+):
+    from tests.support.asset_provider import HttpProbeFailure
+
+    provider = AssetProvider(tmp_path)
+    shared = running_snapshot()
+    order = []
+    provider.relay = Mock(
+        diagnostic_snapshot=Mock(side_effect=lambda: order.append("snapshot") or shared)
+    )
+
+    class Response:
+        @property
+        def status_code(self):
+            order.append("status")
+            shared["failed"] = True
+            return 403
+
+        @property
+        def content(self):
+            order.append("content")
+            raise httpx.DecodingError("secret-response")
+
+    monkeypatch.setattr(
+        httpx,
+        "request",
+        Mock(side_effect=lambda *a, **kw: order.append("request") or Response()),
+    )
+    with pytest.raises(HttpProbeFailure) as caught:
+        provider.raw_http("HEAD", "http://unused.invalid")
+    assert order == ["snapshot", "request", "status", "content", "snapshot"]
+    assert caught.value.status == 403 and caught.value.phase == "HTTP_RESPONSE_ACCESS"
+    assert caught.value.relay_before["failed"] is False
+    assert caught.value.relay_at_failure["failed"] is True
+
+
+def test_first_http_snapshots_survive_required_stream_close(tmp_path, monkeypatch):
+    from tests.support.asset_minio import LoopbackRelay
+
+    provider, admin, actor = acl_diagnostic_fixture(tmp_path)
+    del provider.raw_http
+    relay = LoopbackRelay(lambda *_: "172.28.0.2", tmp_path)
+    relay.state = "RUNNING"
+    provider.relay = relay
+
+    def request(*a, **kw):
+        relay._record_failure("PUMP_CUTOFF", "IDLE_CUTOFF")
+        raise httpx.ReadError("secret-request")
+
+    def close():
+        relay.state = "CLOSED"
+        raise httpx.ConnectError("secret-close")
+
+    stream = Mock(
+        read=Mock(
+            side_effect=lambda: provider.raw_http("HEAD", "http://unused.invalid")
+        ),
+        close=Mock(side_effect=close),
+    )
+    admin.get_object.side_effect = None
+    admin.get_object.return_value = {"Body": stream}
+    monkeypatch.setattr(httpx, "request", request)
+    fields = json.loads(acl_diagnostic_run(provider, actor).split("diagnostic=", 1)[1])
+    assert fields["component"] == "signed_get_read"
+    assert fields["relay_before"] == running_snapshot()
+    assert fields["relay_at_failure"] == {
+        **running_snapshot(),
+        "failed": True,
+        "first_stage": "PUMP_CUTOFF",
+        "first_kind": "IDLE_CUTOFF",
+    }
+    assert fields["close_failed"] is True and relay.state == "CLOSED"
+    assert fields["exception_kind"] == "HTTPX_READ_ERROR"
+    assert fields["call_phase"] == "HTTP_REQUEST"
+    stream.close.assert_called_once_with()
 
 
 @pytest.mark.parametrize(
@@ -69,7 +453,9 @@ def test_http_response_access_preserves_only_obtained_status(
     assert "secret-response-body" not in message
 
 
-def test_http_success_keeps_single_request_and_response_access_order(monkeypatch):
+def test_http_success_keeps_single_request_and_response_access_order(
+    tmp_path, monkeypatch
+):
     order = []
 
     class Response:
@@ -85,7 +471,7 @@ def test_http_success_keeps_single_request_and_response_access_order(monkeypatch
 
     request = Mock(return_value=Response())
     monkeypatch.setattr(httpx, "request", request)
-    assert AssetProvider.raw_http("GET", "http://unused.invalid") == (
+    assert AssetProvider(tmp_path).raw_http("GET", "http://unused.invalid") == (
         403,
         b"private-result",
     )
@@ -133,6 +519,12 @@ def test_operation_kind_survives_required_second_close_failure(tmp_path):
     assert '"call_phase": "OPERATION"' in message
     assert '"close_failed": true' in message
     assert "secret-" not in message
+    fields = json.loads(message.split("diagnostic=", 1)[1])
+    assert (
+        fields["relay_before"]
+        == fields["relay_at_failure"]
+        == unavailable_relay_snapshot()
+    )
     stream.close.assert_called_once_with()
 
 
@@ -732,6 +1124,8 @@ def test_acl_diagnostic_output_normalizes_unapproved_fields():
         "condition": "UNKNOWN",
         "exception_kind": "UNKNOWN",
         "call_phase": "UNKNOWN",
+        "relay_before": unavailable_relay_snapshot(),
+        "relay_at_failure": unavailable_relay_snapshot(),
     }
     for field in ("target", "component"):
         with pytest.raises(RuntimeError, match="invalid fixed ACL diagnostic metadata"):

@@ -30,6 +30,7 @@ from tests.support.asset_minio import (
     download_artifact,
     exception_kind,
     fixed_label,
+    normalize_relay_snapshot,
     private_file,
     provision_users,
     require_linux_ci,
@@ -116,11 +117,13 @@ CALL_PHASES = frozenset(
 
 
 class HttpProbeFailure(RuntimeError):
-    def __init__(self, kind, phase, status):
+    def __init__(self, kind, phase, status, before=None, at_failure=None):
         super().__init__("provider private HTTP probe failed")
         self.kind = fixed_label(kind, EXCEPTION_KINDS)
         self.phase = fixed_label(phase, CALL_PHASES)
         self.status = acl_status(status)
+        self.relay_before = normalize_relay_snapshot(before)
+        self.relay_at_failure = normalize_relay_snapshot(at_failure)
 
 
 def acl_status(value):
@@ -148,6 +151,8 @@ def acl_fields(fields):
         else "UNKNOWN",
         "exception_kind": fixed_label(fields.get("exception_kind"), EXCEPTION_KINDS),
         "call_phase": fixed_label(fields.get("call_phase"), CALL_PHASES),
+        "relay_before": normalize_relay_snapshot(fields.get("relay_before")),
+        "relay_at_failure": normalize_relay_snapshot(fields.get("relay_at_failure")),
     }
     if fields.get("close_failed") is True:
         normalized["close_failed"] = True
@@ -181,6 +186,8 @@ class AclDiagnostic:
             "condition": "UNKNOWN",
             "exception_kind": "UNKNOWN",
             "call_phase": "OPERATION",
+            "relay_before": unavailable_relay_snapshot(),
+            "relay_at_failure": unavailable_relay_snapshot(),
         }
 
     def observe(self, status, code):
@@ -206,6 +213,9 @@ class AclDiagnostic:
         except HttpProbeFailure as error:
             self.observe(error.status, "TRANSPORT_ERROR")
             self.fields.update(exception_kind=error.kind, call_phase=error.phase)
+            self.fields.update(
+                relay_before=error.relay_before, relay_at_failure=error.relay_at_failure
+            )
             self.fail("private ACL HTTP effect failed", "TRANSPORT_ERROR")
         except ClientError as error:
             self.observe(*AssetProvider.error_identity(error))
@@ -811,9 +821,19 @@ class AssetProvider:
                 return
         raise RuntimeError("pinned unsupported-control behavior differs")
 
-    @staticmethod
-    def raw_http(method, url, **kwargs):
+    def relay_snapshot(self, *, strict=True):
+        try:
+            if self.relay is None:
+                return unavailable_relay_snapshot()
+            return normalize_relay_snapshot(
+                self.relay.diagnostic_snapshot(), strict=strict
+            )
+        except Exception:  # noqa: BLE001 -- best-effort owned observation only
+            return unavailable_relay_snapshot()
+
+    def raw_http(self, method, url, **kwargs):
         phase, status = "HTTP_REQUEST", None
+        before = self.relay_snapshot()
         try:
             response = httpx.request(
                 method,
@@ -827,11 +847,13 @@ class AssetProvider:
             status = response.status_code
             return status, response.content
         except Exception as error:  # noqa: BLE001 -- exact approved type metadata only
-            raise HttpProbeFailure(exception_kind(error), phase, status) from None
+            at_failure = self.relay_snapshot()
+            raise HttpProbeFailure(
+                exception_kind(error), phase, status, before, at_failure
+            ) from None
 
-    @staticmethod
-    def raw_get(url):
-        return AssetProvider.raw_http("GET", url)
+    def raw_get(self, url):
+        return self.raw_http("GET", url)
 
     @staticmethod
     def require_private_acl(response):
@@ -1634,39 +1656,7 @@ class AssetProvider:
                 for category in categories
             }
         )
-        relay = unavailable_relay_snapshot()
-        if self.relay is not None:
-            try:
-                relay = self.relay.diagnostic_snapshot()
-            except Exception:  # noqa: BLE001 -- diagnostic unavailable must not replace refusal
-                relay = unavailable_relay_snapshot()
-        # Only the real relay's closed schema is accepted; no dynamic objects/raw values.
-        if (
-            type(relay) is not dict
-            or set(relay) != set(unavailable_relay_snapshot())
-            or relay.get("available") is not True
-        ):
-            relay = unavailable_relay_snapshot()
-        else:
-            from tests.support.asset_minio import RELAY_KINDS, RELAY_STAGES
-
-            def count(value):
-                return value if type(value) is int and 0 <= value <= 4096 else None
-
-            relay = {
-                "available": relay.get("available") is True,
-                "state": fixed_label(
-                    relay.get("state"), {"RUNNING", "STOPPING", "CLOSED"}
-                ),
-                "failed": relay.get("failed")
-                if type(relay.get("failed")) is bool
-                else None,
-                "connections": count(relay.get("connections")),
-                "sockets": count(relay.get("sockets")),
-                "workers": count(relay.get("workers")),
-                "first_stage": fixed_label(relay.get("first_stage"), RELAY_STAGES),
-                "first_kind": fixed_label(relay.get("first_kind"), RELAY_KINDS),
-            }
+        relay = self.relay_snapshot(strict=False)
         try:
             print(
                 "WSO_ASSET_PROVIDER_CLOSE_DIAGNOSTIC="
