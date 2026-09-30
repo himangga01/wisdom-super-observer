@@ -94,6 +94,27 @@ selected broker gate must fail on missing runtime/tests, zero collection,
 failures, or any skip. Use the separately owned empty broker fixture to prove
 reconciliation instead of assuming AOF guarantees delivery.
 
+## First recorded Linux run — 2026-09-30
+
+[Run 36703370870](https://github.com/himangga01/wisdom-super-observer/actions/runs/36703370870)
+completed successfully for commit `5dae70a8ffaad4660841221abd59ffbc5b524ded`.
+Actual PostgreSQL migration/provisioning and Python tests passed (230 passed,
+zero skips). Ruff, strict mypy, FE typecheck/lint, 15 unit tests, production
+build, deterministic contracts and the 77-case checker passed. The HTTPS
+authentication/connection Chrome suite passed 26/26. The local Windows run
+separately checked desktop Chrome/Edge; this Linux run did not run that Edge
+preflight or a handset/media comparison.
+
+The pulled runtime inputs were:
+
+- PostgreSQL: `postgres@sha256:d74eeac9a635390a49bc21bd49fccd973de707e2a53a76ac49b552b8712ec46f`.
+- Valkey: `valkey/valkey@sha256:48332870af354a799964c0012ae1194a0bf2bf894eb508f945810596dc2d8d11`.
+
+Valkey's actual 9.1.2 server, PING, enabled AOF, SIGKILL/restart persistence and
+separately owned empty-volume checks passed. Owned PostgreSQL and broker
+fixtures were removed successfully. These are recorded test-run digests;
+production image selection and T05 real worker recovery remain pending.
+
 ## Evidence handling
 
 The workflow uploads no artifacts. Auth state, browser traces/screenshots and

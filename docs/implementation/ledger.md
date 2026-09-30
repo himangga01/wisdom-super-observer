@@ -10,7 +10,7 @@ This ledger tracks executable service work. The separate [parity ledger](../inte
 | T02 tenant persistence | Database-issued, one-use tenant grants and private transaction context implemented; former caller-settable GUC boundary replaced | Actual PostgreSQL 17.11: forgery, replay, expiry, rollback, concurrent context installation, membership changes, pool reuse, migration roundtrip and restricted-role denial tests passed; independent task review approved | Production role provisioning and deployment review; new tables must extend this role matrix |
 | T03 web authentication and store selection | OIDC authorization code/PKCE, independently verified RS256 identity, opaque sessions, CSRF logout, tenant/store assignment authorization and functional responsive UI implemented | Integrated Python 139/139 with actual PostgreSQL, FE unit 10/10, HTTPS Chrome auth/navigation 14/14; independent backend/frontend reviews approved | Browser tests use a signed test issuer and test API fixture; actual FastAPI/PG behavior is tested separately. Real identity-provider deployment, provisioning and end-to-end deployment smoke remain pending. TVT account login is W05 |
 | T04 connection credentials and lifecycle | AES-256-GCM tenant/connection/version binding, owner-only lifecycle/store mapping, fenced generation, durable revocation, separate scoped worker capability and responsive connection UI implemented | Independent backend/frontend/worker-runtime reviews approved; latest integrated Python 230/230, FE 15/15 and HTTPS browser 26/26, no PostgreSQL skips | Production KMS/key rotation, later job/session cancellation consumers and actual TVT/Tyco login are pending. Local saved state is NOT_VERIFIED or DISCONNECTED |
-| Linux CI foundation | Pinned Actions and guarded disposable PostgreSQL/Valkey verification workflow implemented; independent review approved | 31 provisioning safety tests and shell/YAML syntax passed; no local Linux runtime claim | First remote run and actual pulled image digests/Valkey persistence smoke pending; T05 worker delivery/recovery is a distinct gate |
+| Linux CI foundation | Pinned Actions and guarded disposable PostgreSQL/Valkey verification workflow implemented; independent review approved | [Actual Linux run 36703370870](https://github.com/himangga01/wisdom-super-observer/actions/runs/36703370870) passed: 230 Python/15 FE/26 HTTPS browser tests, real PostgreSQL migrations and Valkey persistence/empty-volume smoke; actual digests recorded | T05 real worker delivery/recovery, S3 compatibility and deployment checks remain distinct gates |
 | W00 atomic parity ledger | Static 77-case seed and desktop API preflight implemented; false-positive paths closed | 31 focused tests passed; checker 77/77 rows, zero errors; headless Chrome/Edge API probe 2/2 | Trusted W24 run registry and comparator; runtime reachability, Android/iOS/media/permission checks, support matrix sign-off; no `MATCHED` rows and `release_ready=false` |
 | W01 TVT bridge feasibility | Static handoff, frozen 199-operation manifest and declaration inventories implemented | 10 schema tests passed; 77 cases / 199 candidate operations; 281 request classes and 299 native declarations inventoried | Vendor rights, runtime fixtures and pilot; all six remote G-P1 families `BLOCKED` |
 | T05–T05A and W02–W25 service features | Pending | None | Prerequisite contracts, infrastructure and family-specific gates |
@@ -29,9 +29,15 @@ API preflight passed 2/2; the separate HTTPS authentication/browser suite passed
 The browser suite logs Next's experimental self-signed certificate warning and
 Playwright color-environment warnings. Its intentional API-outage case logs a
 sanitized `Service unavailable` error. These are separate from the successful
-checks. Valkey/S3/Compose, handset/PWA and TVT runtime were not exercised. There
+checks. This local run did not exercise Valkey/S3/Compose, handset/PWA or TVT. There
 are still zero verified APK `MATCHED` cases and all six remote G-P1 families
 remain `BLOCKED`.
+
+The subsequent [Linux CI run](../engineering/linux-ci.md#first-recorded-linux-run--2026-09-30)
+for commit `5dae70a` completed successfully with 230 Python tests, zero skips,
+15 FE unit tests and 26 HTTPS Chrome cases. It also verified actual disposable
+PostgreSQL and Valkey AOF persistence through SIGKILL/restart plus an isolated
+empty broker volume. T05 worker recovery and APK comparison remain untested.
 
 The [provided design reference](../design/2026-09-30-dashboard-reference.md)
 is applied to the login, store and connection screens. Browser screenshots use
@@ -59,8 +65,8 @@ and distinct role URLs described in [web authentication](../engineering/web-auth
 Run the API with `python -m uv run uvicorn wso_api.main:create_app --factory --host 127.0.0.1 --port 8000`
 and serve Next behind the configured trusted HTTPS public origin. Secure cookies
 require HTTPS. Missing auth configuration fails closed; unprovisioned identities
-are not automatically granted membership. Dependency readiness and S3/Valkey
-selection remain unverified. External TVT adapters remain disabled until their
+are not automatically granted membership. Deployment dependency readiness, S3
+compatibility and real worker recovery remain unverified. External TVT adapters remain disabled until their
 W01 family gates are documented.
 
 Connection lifecycle configuration and worker trust boundaries are documented
