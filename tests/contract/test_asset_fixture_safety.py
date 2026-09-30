@@ -42,6 +42,284 @@ def receive_eof(stream):
     return bytes(result)
 
 
+def test_relay_validation_failure_retains_first_origin(tmp_path, monkeypatch):
+    def refuse(*_):
+        raise ValueError("secret-target")
+
+    relay, client, backend, _ = relay_fixture(tmp_path, monkeypatch, refuse)
+    try:
+        assert receive_eof(client) == b""
+        observed = relay.diagnostic_snapshot()
+        assert observed["first_stage"] == "VALIDATION"
+        assert observed["first_kind"] == "BUILTIN_VALUE"
+    finally:
+        client.close()
+        backend.close()
+        relay.close()
+
+
+def test_relay_first_record_is_concurrent_immutable_and_survives_close(tmp_path):
+    from tests.support.asset_minio import LoopbackRelay
+
+    relay = LoopbackRelay(lambda *_: "172.28.0.2", tmp_path)
+    barrier = threading.Barrier(9)
+    origins = [("RECV", "OS_OTHER"), ("SEND", "BUILTIN_VALUE")] * 4
+
+    def record(origin):
+        barrier.wait(timeout=1)
+        relay._record_failure(*origin)
+
+    workers = [threading.Thread(target=record, args=(origin,)) for origin in origins]
+    for worker in workers:
+        worker.start()
+    barrier.wait(timeout=1)
+    for worker in workers:
+        worker.join(1)
+        assert not worker.is_alive()
+    first = relay.first_origin
+    assert first in origins and relay.failed is True
+    relay._record_failure("CONTROL", "BUILTIN_RUNTIME")
+    assert relay.first_origin is first
+    relay.close()
+    observed = relay.diagnostic_snapshot()
+    assert observed["state"] == "CLOSED"
+    assert (observed["first_stage"], observed["first_kind"]) == first
+
+
+def test_relay_admission_is_poisoned_before_metadata_lock_wait(tmp_path):
+    from tests.support.asset_minio import LoopbackRelay
+
+    relay = LoopbackRelay(lambda *_: "172.28.0.2", tmp_path)
+    entered, release = threading.Event(), threading.Event()
+
+    class HeldMetadataLock:
+        def __enter__(self):
+            entered.set()
+            assert release.wait(1)
+
+        def __exit__(self, *_):
+            return False
+
+    relay.lock = HeldMetadataLock()
+    worker = threading.Thread(target=relay._record_failure, args=("RECV", "OS_OTHER"))
+    worker.start()
+    try:
+        assert entered.wait(0.5)
+        assert relay.failed is True
+        assert relay.first_origin is None
+    finally:
+        release.set()
+        worker.join(1)
+    assert relay.first_origin == ("RECV", "OS_OTHER")
+
+
+def test_dependent_admission_cannot_mask_pending_worker_origin(tmp_path, monkeypatch):
+    from tests.support.asset_minio import LoopbackRelay
+
+    relay = LoopbackRelay(lambda *_: "172.28.0.2", tmp_path)
+    relay.state = "RUNNING"
+    held, poisoned = threading.Event(), threading.Event()
+    lock = threading.Lock()
+    client = Mock()
+
+    class ObservedLock:
+        def __enter__(self):
+            if threading.current_thread() is causal:
+                poisoned.set()
+            lock.acquire()
+            if threading.current_thread() is acceptor:
+                held.set()
+                assert poisoned.wait(1)
+
+        def __exit__(self, *_):
+            lock.release()
+
+    calls = []
+
+    def accept():
+        calls.append(True)
+        if len(calls) == 1:
+            return client, None
+        relay.stop.set()
+        raise OSError("controlled listener close")
+
+    relay.lock = ObservedLock()
+    relay.listener = Mock(accept=Mock(side_effect=accept))
+    relay.listener_identity = "owned"
+    monkeypatch.setattr(relay, "socket_identity", Mock(return_value="owned"))
+    acceptor = threading.Thread(target=relay._accept)
+    causal = threading.Thread(target=relay._record_failure, args=("RECV", "OS_OTHER"))
+    acceptor.start()
+    try:
+        assert held.wait(0.5)
+        causal.start()
+        acceptor.join(1)
+        causal.join(1)
+        assert not acceptor.is_alive() and not causal.is_alive()
+        assert relay.failed is True
+        assert relay.first_origin == ("RECV", "OS_OTHER")
+        client.close.assert_called_once_with()
+        assert not relay.sockets and relay.connections == 0
+    finally:
+        relay.stop.set()
+        poisoned.set()
+        acceptor.join(1)
+        if causal.ident is not None:
+            causal.join(1)
+
+
+def test_dependent_backend_refusal_cannot_mask_pending_worker_origin(tmp_path):
+    from tests.support.asset_minio import LoopbackRelay
+
+    relay = LoopbackRelay(lambda *_: "172.28.0.2", tmp_path)
+    relay.state = "RUNNING"
+    relay.connections = 1
+    poisoned, release_origin, backend_waiting = (
+        threading.Event(),
+        threading.Event(),
+        threading.Event(),
+    )
+    lock = threading.Lock()
+    client = Mock()
+
+    class OrderedLock:
+        def __enter__(self):
+            if threading.current_thread() is causal:
+                poisoned.set()
+                assert release_origin.wait(1)
+            else:
+                backend_waiting.set()
+            lock.acquire()
+
+        def __exit__(self, *_):
+            lock.release()
+
+    relay.lock = OrderedLock()
+    causal = threading.Thread(target=relay._record_failure, args=("RECV", "OS_OTHER"))
+    dependent = threading.Thread(target=relay._worker, args=(client, time.monotonic()))
+    lock.acquire()
+    causal.start()
+    try:
+        assert poisoned.wait(0.5)
+        assert relay.failed is True and relay.first_origin is None
+        dependent.start()
+        assert backend_waiting.wait(0.5)
+    finally:
+        lock.release()
+    try:
+        dependent.join(1)
+        assert not dependent.is_alive()
+        assert relay.first_origin is None
+        client.close.assert_called_once_with()
+        assert relay.connections == 0 and not relay.sockets
+    finally:
+        release_origin.set()
+        causal.join(1)
+        if dependent.ident is not None:
+            dependent.join(1)
+    assert not causal.is_alive()
+    assert relay.first_origin == ("RECV", "OS_OTHER")
+
+
+def test_relay_busy_snapshot_returns_without_waiting_for_owned_lock(tmp_path):
+    from tests.support.asset_minio import LoopbackRelay, unavailable_relay_snapshot
+
+    relay = LoopbackRelay(lambda *_: "172.28.0.2", tmp_path)
+    observed, finished = [], threading.Event()
+
+    def snapshot():
+        observed.append(relay.diagnostic_snapshot())
+        finished.set()
+
+    relay.lock.acquire()
+    worker = threading.Thread(target=snapshot)
+    worker.start()
+    try:
+        assert finished.wait(0.5)
+        assert observed == [unavailable_relay_snapshot()]
+    finally:
+        relay.lock.release()
+        worker.join(1)
+    assert not relay.failed and relay.first_origin is None
+
+
+@pytest.mark.parametrize("count", [True, 1.0, -1, 4097, None])
+def test_relay_snapshot_bounds_counts_and_normalizes_unsafe_labels(tmp_path, count):
+    from tests.support.asset_minio import LoopbackRelay
+
+    relay = LoopbackRelay(lambda *_: "172.28.0.2", tmp_path)
+    relay.connections = count
+    relay.state = "secret-state"
+    relay.first_origin = ("secret-stage", "secret-kind")
+    observed = relay.diagnostic_snapshot()
+    assert observed["connections"] is None
+    assert (
+        observed["state"]
+        == observed["first_stage"]
+        == observed["first_kind"]
+        == "UNKNOWN"
+    )
+    assert "secret-" not in json.dumps(observed)
+
+
+def test_relay_snapshot_bounds_all_owned_inventory_counts(tmp_path):
+    from tests.support.asset_minio import LoopbackRelay
+
+    relay = LoopbackRelay(lambda *_: "172.28.0.2", tmp_path)
+    relay.threads = set(range(4097))
+    relay.sockets = set(range(4097))
+    observed = relay.diagnostic_snapshot()
+    assert observed["workers"] is None and observed["sockets"] is None
+
+
+def test_relay_connect_failure_preserves_native_kind_and_cleanup(tmp_path, monkeypatch):
+    from tests.support import asset_minio
+
+    relay = asset_minio.LoopbackRelay(lambda *_: "172.28.0.2", tmp_path)
+    relay.state = "RUNNING"
+    stream = Mock(connect=Mock(side_effect=TimeoutError("secret-address")))
+    monkeypatch.setattr(asset_minio.socket, "socket", Mock(return_value=stream))
+    with pytest.raises(asset_minio.RelayOriginFailure) as caught:
+        relay._connect(("172.28.0.2", 9000), time.monotonic() + 2)
+    assert caught.value.origin == ("CONNECT", "OS_TIMEOUT")
+    assert "secret-address" not in str(caught.value)
+    stream.close.assert_called_once_with()
+    assert not relay.sockets
+
+
+@pytest.mark.parametrize(
+    "stage", ["CONNECT", "PUMP_CUTOFF", "RECV", "SEND", "HALF_CLOSE", "CONTROL"]
+)
+def test_relay_worker_preserves_typed_failure_origin(tmp_path, stage):
+    from tests.support.asset_minio import LoopbackRelay, RelayOriginFailure
+
+    relay = LoopbackRelay(lambda *_: "172.28.0.2", tmp_path)
+    relay.state = "RUNNING"
+    relay.connections = 1
+    client, upstream = Mock(), Mock()
+    relay._connect = Mock(return_value=upstream)
+    relay._pump = Mock(
+        side_effect=RelayOriginFailure(stage, "OS_OTHER", "fixed failure")
+    )
+    relay._worker(client, time.monotonic())
+    assert relay.first_origin == (stage, "OS_OTHER")
+    assert relay.failed and relay.connections == 0
+    client.close.assert_called_once_with()
+    upstream.close.assert_called_once_with()
+
+
+@pytest.mark.parametrize("stage", ["RECV", "SEND", "HALF_CLOSE", "CONTROL"])
+def test_relay_os_call_origin_uses_fixed_type_and_one_call(stage):
+    from tests.support.asset_minio import RelayOriginFailure, relay_call
+
+    operation = Mock(side_effect=OSError("secret-address"))
+    with pytest.raises(RelayOriginFailure) as caught:
+        relay_call(stage, operation)
+    assert caught.value.origin == (stage, "OS_OTHER")
+    assert "secret-address" not in str(caught.value)
+    operation.assert_called_once_with()
+
+
 def test_relay_preserves_opaque_signed_bytes_and_half_close(tmp_path, monkeypatch):
     relay, client, backend, observed = relay_fixture(tmp_path, monkeypatch)
     request = (

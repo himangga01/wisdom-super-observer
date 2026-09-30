@@ -34,6 +34,110 @@ ARTIFACTS = {
 }
 LOCAL_DOCKER_ENDPOINT = "unix:///var/run/docker.sock"
 
+EXCEPTION_TYPES = {
+    httpx.ReadTimeout: "HTTPX_READ_TIMEOUT",
+    httpx.ConnectTimeout: "HTTPX_CONNECT_TIMEOUT",
+    httpx.WriteTimeout: "HTTPX_WRITE_TIMEOUT",
+    httpx.PoolTimeout: "HTTPX_POOL_TIMEOUT",
+    httpx.ConnectError: "HTTPX_CONNECT_ERROR",
+    httpx.ReadError: "HTTPX_READ_ERROR",
+    httpx.WriteError: "HTTPX_WRITE_ERROR",
+    httpx.RemoteProtocolError: "HTTPX_REMOTE_PROTOCOL_ERROR",
+    httpx.LocalProtocolError: "HTTPX_LOCAL_PROTOCOL_ERROR",
+    httpx.DecodingError: "HTTPX_DECODING_ERROR",
+    httpx.UnsupportedProtocol: "HTTPX_UNSUPPORTED_PROTOCOL",
+    TypeError: "BUILTIN_TYPE",
+    ValueError: "BUILTIN_VALUE",
+    AssertionError: "BUILTIN_ASSERTION",
+    AttributeError: "BUILTIN_ATTRIBUTE",
+    KeyError: "BUILTIN_KEY",
+    IndexError: "BUILTIN_INDEX",
+    NameError: "BUILTIN_NAME",
+    UnboundLocalError: "BUILTIN_NAME",
+    RuntimeError: "BUILTIN_RUNTIME",
+}
+EXCEPTION_KINDS = frozenset(EXCEPTION_TYPES.values()) | {
+    "HTTPX_OTHER",
+    "OS_TIMEOUT",
+    "OS_OTHER",
+    "UNKNOWN",
+}
+RELAY_STAGES = frozenset(
+    {
+        "ADMISSION",
+        "VALIDATION",
+        "CONNECT",
+        "PUMP_CUTOFF",
+        "RECV",
+        "SEND",
+        "HALF_CLOSE",
+        "CONTROL",
+        "UNKNOWN",
+    }
+)
+RELAY_KINDS = EXCEPTION_KINDS | {
+    "IDLE_CUTOFF",
+    "ABSOLUTE_CUTOFF",
+    "STOPPING_CUTOFF",
+    "BYTE_LIMIT",
+}
+
+
+def exception_kind(error):
+    known = EXCEPTION_TYPES.get(type(error))
+    if known is not None:
+        return known
+    if isinstance(error, httpx.HTTPError):
+        return "HTTPX_OTHER"
+    if isinstance(error, TimeoutError):
+        return "OS_TIMEOUT"
+    if isinstance(error, OSError):
+        return "OS_OTHER"
+    return "UNKNOWN"
+
+
+def fixed_label(value, choices):
+    return value if type(value) is str and value in choices else "UNKNOWN"
+
+
+def unavailable_relay_snapshot():
+    return {
+        "available": False,
+        "state": "UNKNOWN",
+        "failed": None,
+        "connections": None,
+        "sockets": None,
+        "workers": None,
+        "first_stage": "UNKNOWN",
+        "first_kind": "UNKNOWN",
+    }
+
+
+class RelayOriginFailure(RuntimeError):
+    def __init__(self, stage, kind, message):
+        super().__init__(message)
+        self.origin = (fixed_label(stage, RELAY_STAGES), fixed_label(kind, RELAY_KINDS))
+
+
+class RelayPoisonRefusal(RuntimeError):
+    """Dependent refusal preserves the already-pending failure's origin."""
+
+
+def relay_call(stage, operation):
+    try:
+        return operation()
+    except RelayOriginFailure as error:
+        message = (
+            "relay control cutoff"
+            if stage == "PUMP_CUTOFF"
+            else "owned relay control failed"
+        )
+        raise RelayOriginFailure(stage, error.origin[1], message) from None
+    except Exception as error:  # noqa: BLE001 -- fixed type classification only
+        raise RelayOriginFailure(
+            stage, exception_kind(error), "owned relay operation failed"
+        ) from None
+
 
 class RelayCommands:
     """Exact inspect child handles, bounded streams and cancellation ownership."""
@@ -160,6 +264,48 @@ class LoopbackRelay:
         self.failed = False
         self.state = "NEW"
         self.listener = None
+        self.first_origin = None
+
+    def _record_failure(self, stage, kind, *, locked=False):
+        # Preserve the original admission poison before synchronizing metadata.
+        self.failed = True
+
+        def record():
+            if self.first_origin is None:
+                self.first_origin = (
+                    fixed_label(stage, RELAY_STAGES),
+                    fixed_label(kind, RELAY_KINDS),
+                )
+
+        if locked:
+            record()
+        else:
+            with self.lock:
+                record()
+
+    def diagnostic_snapshot(self):
+        if not self.lock.acquire(blocking=False):
+            return unavailable_relay_snapshot()
+        try:
+
+            def count(value):
+                return value if type(value) is int and 0 <= value <= 4096 else None
+
+            origin = self.first_origin
+            if type(origin) is not tuple or len(origin) != 2:
+                origin = ("UNKNOWN", "UNKNOWN")
+            return {
+                "available": True,
+                "state": fixed_label(self.state, {"RUNNING", "STOPPING", "CLOSED"}),
+                "failed": self.failed if type(self.failed) is bool else None,
+                "connections": count(self.connections),
+                "sockets": count(len(self.sockets)),
+                "workers": count(len(self.threads)),
+                "first_stage": fixed_label(origin[0], RELAY_STAGES),
+                "first_kind": fixed_label(origin[1], RELAY_KINDS),
+            }
+        finally:
+            self.lock.release()
 
     @property
     def live_threads(self):
@@ -183,7 +329,7 @@ class LoopbackRelay:
 
     def _check_cutoff(self, deadline):
         if self.stop.is_set() or time.monotonic() >= deadline:
-            raise RuntimeError("relay control cutoff")
+            raise RelayOriginFailure("CONTROL", "UNKNOWN", "relay control cutoff")
 
     def start(self, *, deadline):
         with self.lock:
@@ -216,8 +362,13 @@ class LoopbackRelay:
                 self.state = "RUNNING"
                 acceptor.start()
                 self._check_cutoff(deadline)
-            except Exception:  # noqa: BLE001 -- retain all partial startup ownership
-                self.failed = True
+            except Exception as error:  # noqa: BLE001 -- retain all partial startup ownership
+                kind = (
+                    error.origin[1]
+                    if isinstance(error, RelayOriginFailure)
+                    else exception_kind(error)
+                )
+                self._record_failure("CONTROL", kind, locked=True)
                 self.state = "STOPPING"
                 self.stop.set()
                 if listener is not None:
@@ -227,15 +378,17 @@ class LoopbackRelay:
 
     def _accept(self):
         while not self.stop.is_set():
+            phase = "CONTROL"
             try:
                 if self.socket_identity(self.listener) != self.listener_identity:
                     raise RuntimeError("relay listener identity differs")
+                phase = "ADMISSION"
                 client, _ = self.listener.accept()
             except TimeoutError:
                 continue
-            except (OSError, RuntimeError):
+            except (OSError, RuntimeError) as error:
                 if not self.stop.is_set():
-                    self.failed = True
+                    self._record_failure(phase, exception_kind(error))
                 return
             accepted = time.monotonic()
             with self.lock:
@@ -246,8 +399,8 @@ class LoopbackRelay:
                     or self.connections >= self.MAX_CONNECTIONS
                 ):
                     client.close()
-                    if self.state == "RUNNING":
-                        self.failed = True
+                    if self.state == "RUNNING" and not self.failed:
+                        self._record_failure("ADMISSION", "UNKNOWN", locked=True)
                     continue
                 for thread in tuple(self.threads):
                     if not thread.is_alive():
@@ -264,8 +417,10 @@ class LoopbackRelay:
                 self.threads.add(worker)
                 try:
                     worker.start()
-                except RuntimeError:
-                    self.failed = True
+                except RuntimeError as error:
+                    self._record_failure(
+                        "ADMISSION", exception_kind(error), locked=True
+                    )
                     client.close()
                     self.sockets.discard(client)
                     self.connections -= 1
@@ -273,6 +428,8 @@ class LoopbackRelay:
     def _register_backend(self):
         with self.lock:
             if self.state != "RUNNING" or self.failed or self.stop.is_set():
+                if self.failed:
+                    raise RelayPoisonRefusal("relay stopped before connect")
                 raise RuntimeError("relay stopped before connect")
             stream = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.sockets.add(stream)
@@ -288,14 +445,22 @@ class LoopbackRelay:
             stream.connect(target)
             self._check_cutoff(connect_cutoff)
             return stream
-        except Exception:  # noqa: BLE001 -- close registered socket; expose no raw details
+        except Exception as error:  # noqa: BLE001 -- close registered socket; expose no raw details
             stream.close()
             with self.lock:
                 self.sockets.discard(stream)
-            raise RuntimeError("owned relay connect failed") from None
+            kind = (
+                error.origin[1]
+                if isinstance(error, RelayOriginFailure)
+                else exception_kind(error)
+            )
+            raise RelayOriginFailure(
+                "CONNECT", kind, "owned relay connect failed"
+            ) from None
 
     def _worker(self, client, accepted):
         upstream = None
+        phase = "VALIDATION"
         try:
             absolute = accepted + self.ABSOLUTE_SECONDS
             initial_idle = accepted + self.IDLE_SECONDS
@@ -305,16 +470,25 @@ class LoopbackRelay:
             address = self.validate(cutoff, self.stop, self.commands)
             ipaddress.IPv4Address(address)  # Numeric only; no resolver/fallback.
             if self.stop.is_set() or time.monotonic() >= cutoff:
-                raise RuntimeError("relay validation cutoff")
+                raise RelayOriginFailure(
+                    "VALIDATION", "UNKNOWN", "relay validation cutoff"
+                )
+            phase = "CONNECT"
             upstream = self._connect((address, 9000), min(absolute, initial_idle))
+            phase = "CONTROL"
             with self.lock:
                 if self.state != "RUNNING" or self.stop.is_set():
                     raise RuntimeError("relay stopped before forwarding")
                 self.sockets.add(upstream)
             self._pump(client, upstream, absolute, initial_idle)
-        except Exception:  # noqa: BLE001 -- poison transport and settle exact handles
-            if not self.stop.is_set():
-                self.failed = True
+        except Exception as error:  # noqa: BLE001 -- poison transport and settle exact handles
+            if not self.stop.is_set() and not isinstance(error, RelayPoisonRefusal):
+                stage, kind = (
+                    error.origin
+                    if isinstance(error, RelayOriginFailure)
+                    else (phase, exception_kind(error))
+                )
+                self._record_failure(stage, kind)
         finally:
             for stream in (client, upstream):
                 if stream:
@@ -330,34 +504,46 @@ class LoopbackRelay:
         eof = [False, False]
         half_closed = [False, False]
         total = 0
+
+        def check(deadline):
+            relay_call("PUMP_CUTOFF", lambda: self._check_cutoff(deadline))
+
         for stream in streams:
-            stream.setblocking(False)
-            self._check_cutoff(min(absolute, idle))
+            relay_call("CONTROL", lambda stream=stream: stream.setblocking(False))
+            check(min(absolute, idle))
         while not all(half_closed):
             cutoff = min(absolute, idle)
-            self._check_cutoff(cutoff)
+            check(cutoff)
             readers = [
                 streams[i]
                 for i in range(2)
                 if not eof[i] and len(queues[i]) < self.MAX_BUFFER
             ]
             writers = [streams[1 - i] for i in range(2) if queues[i]]
-            readable, writable, _ = select.select(
-                readers,
-                writers,
-                [],
-                min(0.05, max(0, cutoff - time.monotonic())),
+            readable, writable, _ = relay_call(
+                "CONTROL",
+                lambda readers=readers, writers=writers, cutoff=cutoff: select.select(
+                    readers,
+                    writers,
+                    [],
+                    min(0.05, max(0, cutoff - time.monotonic())),
+                ),
             )
-            self._check_cutoff(cutoff)
+            check(cutoff)
             for i in range(2):
                 if streams[i] in readable:
                     cutoff = min(absolute, idle)
-                    self._check_cutoff(cutoff)
-                    block = streams[i].recv(self.MAX_BUFFER - len(queues[i]))
-                    self._check_cutoff(cutoff)
+                    check(cutoff)
+                    block = relay_call(
+                        "RECV",
+                        lambda i=i: streams[i].recv(self.MAX_BUFFER - len(queues[i])),
+                    )
+                    check(cutoff)
                     if block:
                         if total + len(block) > self.MAX_BYTES:
-                            raise RuntimeError("relay byte bound")
+                            raise RelayOriginFailure(
+                                "RECV", "BYTE_LIMIT", "relay byte bound"
+                            )
                         queues[i].extend(block)
                         total += len(block)
                         idle = time.monotonic() + self.IDLE_SECONDS
@@ -365,18 +551,23 @@ class LoopbackRelay:
                         eof[i] = True
                 if queues[i] and streams[1 - i] in writable:
                     cutoff = min(absolute, idle)
-                    self._check_cutoff(cutoff)
-                    sent = streams[1 - i].send(queues[i])
-                    self._check_cutoff(cutoff)
+                    check(cutoff)
+                    sent = relay_call(
+                        "SEND", lambda i=i: streams[1 - i].send(queues[i])
+                    )
+                    check(cutoff)
                     if sent <= 0:
-                        raise RuntimeError("relay send failed")
+                        raise RelayOriginFailure("SEND", "UNKNOWN", "relay send failed")
                     del queues[i][:sent]
                     idle = time.monotonic() + self.IDLE_SECONDS
                 if eof[i] and not queues[i] and not half_closed[i]:
                     cutoff = min(absolute, idle)
-                    self._check_cutoff(cutoff)
-                    streams[1 - i].shutdown(socket.SHUT_WR)
-                    self._check_cutoff(cutoff)
+                    check(cutoff)
+                    relay_call(
+                        "HALF_CLOSE",
+                        lambda i=i: streams[1 - i].shutdown(socket.SHUT_WR),
+                    )
+                    check(cutoff)
                     half_closed[i] = True
 
     def assert_healthy(self):

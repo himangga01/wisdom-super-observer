@@ -2,15 +2,340 @@
 
 import json
 from collections import Counter
-from io import BytesIO
+from io import BytesIO, StringIO, TextIOWrapper
 from itertools import product
 from unittest.mock import Mock
 from xml.etree import ElementTree
 
+import httpx
 import pytest
 from botocore.exceptions import ClientError
 
+from tests.support.asset_minio import EXCEPTION_TYPES, unavailable_relay_snapshot
 from tests.support.asset_provider import AssetProvider, policy_config
+
+
+@pytest.mark.parametrize(
+    "error_type,kind",
+    [
+        *EXCEPTION_TYPES.items(),
+        (TimeoutError, "OS_TIMEOUT"),
+        (OSError, "OS_OTHER"),
+        (httpx.HTTPError, "HTTPX_OTHER"),
+        (Exception, "UNKNOWN"),
+    ],
+)
+def test_http_request_kind_whitelist(tmp_path, monkeypatch, error_type, kind):
+    provider, _, actor = acl_diagnostic_fixture(tmp_path)
+    del provider.raw_http
+    request = Mock(side_effect=error_type("secret-url-body-cookie"))
+    monkeypatch.setattr(httpx, "request", request)
+    message = acl_diagnostic_run(provider, actor)
+    assert f'"exception_kind": "{kind}"' in message
+    assert '"call_phase": "HTTP_REQUEST"' in message
+    assert '"observed_status": null' in message
+    assert "secret-url-body-cookie" not in message
+    request.assert_called_once()
+
+
+@pytest.mark.parametrize("status", [403, True, 503.0, 99, 600, None])
+def test_http_response_access_preserves_only_obtained_status(
+    tmp_path, monkeypatch, status
+):
+    provider, _, actor = acl_diagnostic_fixture(tmp_path)
+    del provider.raw_http
+    order = []
+
+    class Response:
+        @property
+        def status_code(self):
+            order.append("status")
+            return status
+
+        @property
+        def content(self):
+            order.append("content")
+            raise httpx.DecodingError("secret-response-body")
+
+    monkeypatch.setattr(httpx, "request", Mock(return_value=Response()))
+    message = acl_diagnostic_run(provider, actor)
+    assert '"call_phase": "HTTP_RESPONSE_ACCESS"' in message
+    assert '"exception_kind": "HTTPX_DECODING_ERROR"' in message
+    assert (
+        f'"observed_status": {403 if type(status) is int and status == 403 else "null"}'
+        in message
+    )
+    assert order == ["status", "content"]
+    assert "secret-response-body" not in message
+
+
+def test_http_success_keeps_single_request_and_response_access_order(monkeypatch):
+    order = []
+
+    class Response:
+        @property
+        def status_code(self):
+            order.append("status")
+            return 403
+
+        @property
+        def content(self):
+            order.append("content")
+            return b"private-result"
+
+    request = Mock(return_value=Response())
+    monkeypatch.setattr(httpx, "request", request)
+    assert AssetProvider.raw_http("GET", "http://unused.invalid") == (
+        403,
+        b"private-result",
+    )
+    request.assert_called_once_with(
+        "GET",
+        "http://unused.invalid",
+        timeout=5,
+        trust_env=False,
+        follow_redirects=False,
+    )
+    assert order == ["status", "content"]
+
+
+def test_http_status_access_failure_has_no_invented_status(tmp_path, monkeypatch):
+    provider, _, actor = acl_diagnostic_fixture(tmp_path)
+    del provider.raw_http
+
+    class Response:
+        @property
+        def status_code(self):
+            raise TypeError("secret-status-property")
+
+        @property
+        def content(self):
+            pytest.fail("content must not be accessed after failed status access")
+
+    monkeypatch.setattr(httpx, "request", Mock(return_value=Response()))
+    message = acl_diagnostic_run(provider, actor)
+    assert '"call_phase": "HTTP_RESPONSE_ACCESS"' in message
+    assert '"exception_kind": "BUILTIN_TYPE"' in message
+    assert '"observed_status": null' in message
+    assert "secret-status-property" not in message
+
+
+def test_operation_kind_survives_required_second_close_failure(tmp_path):
+    provider, admin, actor = acl_diagnostic_fixture(tmp_path)
+    stream = Mock(
+        read=Mock(side_effect=httpx.ReadError("secret-read")),
+        close=Mock(side_effect=httpx.ConnectError("secret-close")),
+    )
+    admin.get_object.side_effect = None
+    admin.get_object.return_value = {"Body": stream}
+    message = acl_diagnostic_run(provider, actor)
+    assert '"exception_kind": "HTTPX_READ_ERROR"' in message
+    assert '"call_phase": "OPERATION"' in message
+    assert '"close_failed": true' in message
+    assert "secret-" not in message
+    stream.close.assert_called_once_with()
+
+
+@pytest.mark.parametrize(
+    "category",
+    [
+        "relay-unsettled",
+        "relay-transport",
+        "client",
+        "container",
+        "image",
+        "network",
+        "volume",
+        "private-files",
+        "unknown-kind",
+    ],
+)
+def test_provider_close_reports_each_existing_refusal_branch(
+    tmp_path, capsys, category
+):
+    provider = AssetProvider(tmp_path)
+    provider.receipt = {"previous": "private-proof"}
+    if category.startswith("relay"):
+        provider.relay = Mock(
+            failed=True,
+            diagnostic_snapshot=Mock(return_value=unavailable_relay_snapshot()),
+        )
+        if category == "relay-unsettled":
+            provider.relay.close.side_effect = RuntimeError("secret-relay")
+            provider.created = [("container", "retained")]
+            provider.inspect = Mock()
+    elif category == "client":
+        provider.clients = {
+            "one": Mock(close=Mock(side_effect=RuntimeError("secret-client")))
+        }
+    elif category == "private-files":
+        provider.work = tmp_path / "unowned"
+    else:
+        provider.created = [(category, "private-name")]
+        provider.inspect = Mock(side_effect=RuntimeError("secret-cli"))
+    with pytest.raises(RuntimeError):
+        provider.close()
+    lines = capsys.readouterr().out.splitlines()
+    assert len(lines) == 1
+    prefix = "WSO_ASSET_PROVIDER_CLOSE_DIAGNOSTIC="
+    assert lines[0].startswith(prefix)
+    diagnostic = json.loads(lines[0][len(prefix) :])
+    mapped = {
+        "relay-unsettled": "RELAY_UNSETTLED",
+        "relay-transport": "RELAY_TRANSPORT",
+        "private-files": "PRIVATE_FILES",
+        "unknown-kind": "UNKNOWN",
+    }.get(category, category.upper())
+    assert diagnostic == {
+        "schema": 1,
+        "categories": [mapped],
+        "relay": unavailable_relay_snapshot(),
+    }
+    assert provider.receipt is None
+    assert "private-" not in lines[0] and "secret-" not in lines[0]
+    if category == "relay-unsettled":
+        provider.inspect.assert_not_called()
+
+
+def test_provider_close_success_emits_nothing_and_preserves_receipt(tmp_path, capsys):
+    provider = AssetProvider(tmp_path)
+    provider.receipt = {"same": "proof"}
+    provider.clients = {"one": Mock()}
+    provider.close()
+    assert capsys.readouterr().out == ""
+    assert provider.receipt == {"same": "proof"}
+    provider.clients["one"].close.assert_called_once_with()
+
+
+def test_provider_close_diagnostic_output_failure_preserves_refusal(
+    tmp_path, monkeypatch
+):
+    provider = AssetProvider(tmp_path)
+    provider.clients = {"one": Mock(close=Mock(side_effect=OSError("private-client")))}
+    monkeypatch.setattr(
+        "builtins.print", Mock(side_effect=BrokenPipeError("private-output"))
+    )
+    with pytest.raises(
+        RuntimeError, match="owned asset resource cleanup failed: client"
+    ):
+        provider.close()
+
+
+@pytest.mark.parametrize("stream_type", [StringIO, TextIOWrapper])
+@pytest.mark.parametrize("unsettled", [True, False])
+def test_closed_text_output_preserves_original_close_refusal(
+    tmp_path, monkeypatch, stream_type, unsettled
+):
+    provider = AssetProvider(tmp_path)
+    provider.receipt = {"previous": "proof"}
+    client = Mock(close=Mock(side_effect=OSError("private-client")))
+    provider.clients = {"one": client}
+    provider.created = [("network", "owned-network")]
+    provider.inspect = Mock(return_value={})
+    provider.docker = Mock(side_effect=OSError("private-network"))
+    if unsettled:
+        provider.relay = Mock(
+            close=Mock(side_effect=RuntimeError("private-relay")),
+            diagnostic_snapshot=Mock(return_value=unavailable_relay_snapshot()),
+        )
+    output = stream_type() if stream_type is StringIO else stream_type(BytesIO())
+    output.close()
+    monkeypatch.setattr("sys.stdout", output)
+    expected = (
+        "owned relay cleanup unsettled; target retained"
+        if unsettled
+        else "owned asset resource cleanup failed: client, network"
+    )
+    with pytest.raises(RuntimeError, match=expected):
+        provider.close()
+    assert provider.receipt is None
+    if unsettled:
+        client.close.assert_not_called()
+        provider.inspect.assert_not_called()
+        provider.docker.assert_not_called()
+        assert provider.created == [("network", "owned-network")]
+    else:
+        client.close.assert_called_once_with()
+        provider.inspect.assert_called_once_with("network", "owned-network")
+        provider.docker.assert_called_once_with("network", "rm", "owned-network")
+
+
+def test_http_unsafe_class_request_context_and_labels_are_not_serialized(
+    tmp_path, monkeypatch
+):
+    from tests.support.asset_provider import acl_fields
+
+    provider, _, actor = acl_diagnostic_fixture(tmp_path)
+    del provider.raw_http
+    unsafe_type = type("PrivateKeyURLClass", (Exception,), {})
+    error = unsafe_type("secret-body")
+    error.request = httpx.Request(
+        "GET", "http://private.invalid/secret-key", headers={"Cookie": "secret-cookie"}
+    )
+    error.__cause__ = OSError("secret-cause")
+    monkeypatch.setattr(httpx, "request", Mock(side_effect=error))
+    message = acl_diagnostic_run(provider, actor)
+    assert '"exception_kind": "UNKNOWN"' in message
+    assert "secret-" not in message and "PrivateKeyURLClass" not in message
+    fields = {
+        "target": "new",
+        "component": "anonymous_get",
+        "exception_kind": ["secret-class"],
+        "call_phase": "secret-phase",
+    }
+    normalized = acl_fields(fields)
+    assert normalized["exception_kind"] == normalized["call_phase"] == "UNKNOWN"
+
+
+def test_close_snapshot_categories_are_deduplicated_and_closed(tmp_path, capsys):
+    provider = AssetProvider(tmp_path)
+    unsafe = {
+        **unavailable_relay_snapshot(),
+        "available": True,
+        "state": "secret-state",
+        "failed": 1,
+        "connections": True,
+        "sockets": 2.0,
+        "workers": 4097,
+        "first_stage": "secret-stage",
+        "first_kind": "secret-kind",
+    }
+    provider.relay = Mock(diagnostic_snapshot=Mock(return_value=unsafe))
+    provider.emit_close_diagnostic(
+        ["client", "client", "secret-category", "private-files"]
+    )
+    message = capsys.readouterr().out
+    output = json.loads(message.split("=", 1)[1])
+    assert output["categories"] == ["CLIENT", "PRIVATE_FILES", "UNKNOWN"]
+    assert output["relay"] == {**unavailable_relay_snapshot(), "available": True}
+    assert "secret-" not in message
+
+
+def test_http_failure_retains_fixed_kind_and_phase(tmp_path, monkeypatch):
+    import httpx
+
+    provider, _, actor = acl_diagnostic_fixture(tmp_path)
+    del provider.raw_http
+    monkeypatch.setattr(
+        httpx, "request", Mock(side_effect=httpx.ReadTimeout("secret-url-body"))
+    )
+    message = acl_diagnostic_run(provider, actor)
+    assert '"exception_kind": "HTTPX_READ_TIMEOUT"' in message
+    assert '"call_phase": "HTTP_REQUEST"' in message
+    assert "secret-url-body" not in message
+
+
+def test_close_failure_emits_bounded_category(tmp_path, capsys):
+    provider = AssetProvider(tmp_path)
+    provider.clients = {
+        "bootstrap": Mock(close=Mock(side_effect=OSError("secret-path")))
+    }
+    with pytest.raises(RuntimeError, match="resource cleanup failed"):
+        provider.close()
+    output = capsys.readouterr().out
+    assert output.startswith("WSO_ASSET_PROVIDER_CLOSE_DIAGNOSTIC=")
+    assert '"categories": ["CLIENT"]' in output
+    assert "secret-path" not in output
 
 
 def acl_diagnostic_fixture(tmp_path):
@@ -405,6 +730,8 @@ def test_acl_diagnostic_output_normalizes_unapproved_fields():
         "observed_status": None,
         "observed_code": "UNKNOWN",
         "condition": "UNKNOWN",
+        "exception_kind": "UNKNOWN",
+        "call_phase": "UNKNOWN",
     }
     for field in ("target", "component"):
         with pytest.raises(RuntimeError, match="invalid fixed ACL diagnostic metadata"):

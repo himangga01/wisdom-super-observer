@@ -21,15 +21,19 @@ import httpx
 from tests.support.asset_minio import (
     CLIENT_SHA,
     CLIENT_VERSION,
+    EXCEPTION_KINDS,
     SERVER_COMMIT,
     SERVER_SHA,
     SERVER_VERSION,
     LocalDocker,
     LoopbackRelay,
     download_artifact,
+    exception_kind,
+    fixed_label,
     private_file,
     provision_users,
     require_linux_ci,
+    unavailable_relay_snapshot,
     verify_binary_version,
 )
 
@@ -106,6 +110,17 @@ ACL_CONDITIONS = frozenset(
         "UNKNOWN",
     ]
 )
+CALL_PHASES = frozenset(
+    {"OPERATION", "HTTP_REQUEST", "HTTP_RESPONSE_ACCESS", "UNKNOWN"}
+)
+
+
+class HttpProbeFailure(RuntimeError):
+    def __init__(self, kind, phase, status):
+        super().__init__("provider private HTTP probe failed")
+        self.kind = fixed_label(kind, EXCEPTION_KINDS)
+        self.phase = fixed_label(phase, CALL_PHASES)
+        self.status = acl_status(status)
 
 
 def acl_status(value):
@@ -131,6 +146,8 @@ def acl_fields(fields):
         "condition": condition
         if type(condition) is str and condition in ACL_CONDITIONS
         else "UNKNOWN",
+        "exception_kind": fixed_label(fields.get("exception_kind"), EXCEPTION_KINDS),
+        "call_phase": fixed_label(fields.get("call_phase"), CALL_PHASES),
     }
     if fields.get("close_failed") is True:
         normalized["close_failed"] = True
@@ -162,6 +179,8 @@ class AclDiagnostic:
             "observed_status": None,
             "observed_code": "UNKNOWN",
             "condition": "UNKNOWN",
+            "exception_kind": "UNKNOWN",
+            "call_phase": "OPERATION",
         }
 
     def observe(self, status, code):
@@ -184,11 +203,16 @@ class AclDiagnostic:
         self.begin(component)
         try:
             result = operation()
+        except HttpProbeFailure as error:
+            self.observe(error.status, "TRANSPORT_ERROR")
+            self.fields.update(exception_kind=error.kind, call_phase=error.phase)
+            self.fail("private ACL HTTP effect failed", "TRANSPORT_ERROR")
         except ClientError as error:
             self.observe(*AssetProvider.error_identity(error))
             self.fail("private ACL SDK effect failed", "STATUS_MISMATCH")
-        except Exception:  # noqa: BLE001 -- sanitized transport only
+        except Exception as error:  # noqa: BLE001 -- sanitized transport only
             self.observe(None, "TRANSPORT_ERROR")
+            self.fields["exception_kind"] = exception_kind(error)
             self.fail("private ACL effect transport failed", "TRANSPORT_ERROR")
         if isinstance(result, dict):
             metadata = result.get("ResponseMetadata")
@@ -789,6 +813,7 @@ class AssetProvider:
 
     @staticmethod
     def raw_http(method, url, **kwargs):
+        phase, status = "HTTP_REQUEST", None
         try:
             response = httpx.request(
                 method,
@@ -798,9 +823,11 @@ class AssetProvider:
                 follow_redirects=False,
                 **kwargs,
             )
-            return response.status_code, response.content
-        except httpx.HTTPError:
-            raise RuntimeError("provider private HTTP probe failed") from None
+            phase = "HTTP_RESPONSE_ACCESS"
+            status = response.status_code
+            return status, response.content
+        except Exception as error:  # noqa: BLE001 -- exact approved type metadata only
+            raise HttpProbeFailure(exception_kind(error), phase, status) from None
 
     @staticmethod
     def raw_get(url):
@@ -1590,6 +1617,67 @@ class AssetProvider:
         }
         private_json(self.work / "provider-receipt.json", self.receipt)
 
+    def emit_close_diagnostic(self, categories):
+        mapping = {
+            "relay-unsettled": "RELAY_UNSETTLED",
+            "relay-transport": "RELAY_TRANSPORT",
+            "client": "CLIENT",
+            "container": "CONTAINER",
+            "image": "IMAGE",
+            "network": "NETWORK",
+            "volume": "VOLUME",
+            "private-files": "PRIVATE_FILES",
+        }
+        normalized = sorted(
+            {
+                mapping.get(category, "UNKNOWN") if type(category) is str else "UNKNOWN"
+                for category in categories
+            }
+        )
+        relay = unavailable_relay_snapshot()
+        if self.relay is not None:
+            try:
+                relay = self.relay.diagnostic_snapshot()
+            except Exception:  # noqa: BLE001 -- diagnostic unavailable must not replace refusal
+                relay = unavailable_relay_snapshot()
+        # Only the real relay's closed schema is accepted; no dynamic objects/raw values.
+        if (
+            type(relay) is not dict
+            or set(relay) != set(unavailable_relay_snapshot())
+            or relay.get("available") is not True
+        ):
+            relay = unavailable_relay_snapshot()
+        else:
+            from tests.support.asset_minio import RELAY_KINDS, RELAY_STAGES
+
+            def count(value):
+                return value if type(value) is int and 0 <= value <= 4096 else None
+
+            relay = {
+                "available": relay.get("available") is True,
+                "state": fixed_label(
+                    relay.get("state"), {"RUNNING", "STOPPING", "CLOSED"}
+                ),
+                "failed": relay.get("failed")
+                if type(relay.get("failed")) is bool
+                else None,
+                "connections": count(relay.get("connections")),
+                "sockets": count(relay.get("sockets")),
+                "workers": count(relay.get("workers")),
+                "first_stage": fixed_label(relay.get("first_stage"), RELAY_STAGES),
+                "first_kind": fixed_label(relay.get("first_kind"), RELAY_KINDS),
+            }
+        try:
+            print(
+                "WSO_ASSET_PROVIDER_CLOSE_DIAGNOSTIC="
+                + json.dumps(
+                    {"schema": 1, "categories": normalized, "relay": relay},
+                    sort_keys=True,
+                )
+            )
+        except (OSError, ValueError):
+            pass  # A closed output stream cannot replace the existing cleanup refusal.
+
     def close(self):
         failures = []
         if self.relay is not None:
@@ -1599,6 +1687,7 @@ class AssetProvider:
                 self.receipt = None
                 # Retain exact Docker/private resources while forwarding ownership
                 # is unsettled. Never recycle the target under a late worker.
+                self.emit_close_diagnostic(["relay-unsettled"])
                 raise RuntimeError(
                     "owned relay cleanup unsettled; target retained"
                 ) from None
@@ -1640,6 +1729,8 @@ class AssetProvider:
             except Exception:  # noqa: BLE001 -- refuse foreign private file cleanup
                 failures.append("private-files")
         if failures:
+            self.receipt = None
+            self.emit_close_diagnostic(failures)
             raise RuntimeError(
                 "owned asset resource cleanup failed: " + ", ".join(failures)
             )
