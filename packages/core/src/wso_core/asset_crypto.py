@@ -6,6 +6,7 @@ import ctypes
 import hashlib
 import os
 import stat
+import sys
 import threading
 import weakref
 from collections.abc import Iterable, Mapping
@@ -66,6 +67,9 @@ def encode_wrap_aad(aad: AssetAAD, key_id: str) -> bytes:
 
 def _windows_acl(descriptor: int) -> None:
     """Check the opened handle's owner and DACL, never a separate pathname."""
+    if sys.platform != "win32":
+        raise AssetCryptoFailure("KEY_UNAVAILABLE")
+
     import msvcrt
     from ctypes import wintypes
 
