@@ -7,8 +7,7 @@ dispatch. The job has a 30 minute deadline and cancels an older run for the same
 branch or pull request. Its repository token has read-only contents permission;
 checkout does not persist credentials. Every action is pinned to a full commit.
 
-The foundation's first successful remote run is recorded below. The newly
-selected T05 worker recovery gate requires its own actual successful run;
+The foundation and actual T05 worker recovery runs are recorded below.
 Windows PostgreSQL tests cannot prove Linux process or broker behavior.
 
 ## Runtime and checks
@@ -166,13 +165,47 @@ passed, then the missing asset route returned 404 versus expected 201. The
 strict RED checker requires pytest exit 1, exactly the named assertion failure,
 zero setup/teardown errors or skips, the sealed source SHA and a bounded
 sanitized receipt. Import errors, provider incompatibility, failed auth and
-an arbitrary failing test cannot satisfy it. No actual run is recorded yet.
+an arbitrary failing test cannot satisfy it. The first attempted run is recorded
+below; it did not satisfy the RED gate.
 
 This is an initial missing-feature proof, **not successful asset implementation**.
 The full T05A gate still requires all fourteen actual lifecycle/recovery cases
 and its separate strict GREEN checker. Ordinary/offline and local PostgreSQL
 verification explicitly exclude the Linux-only asset acceptance file; the
 separate workflow selects it deliberately and cannot skip a missing runtime.
+
+### Latest foundation run
+
+[Run 36726648204](https://github.com/himangga01/wisdom-super-observer/actions/runs/36726648204)
+passed for commit `e77bea43c4097bf5adc66a14d478b4c89fd37082`. The ordinary Python
+suite passed 656 cases with zero skips in 98.90 seconds; the separate actual
+Celery/Valkey recovery suite passed all ten cases with zero skips in 251.34
+seconds. Ruff, mypy on 26 source files, 15 frontend unit cases, frontend
+typecheck/lint/build, 15 deterministic generated documents, the 77-row checker,
+26 HTTPS Chrome cases, Valkey smoke and owned-resource cleanup passed.
+PostgreSQL and Valkey used the same recorded digests above.
+
+The additional ordinary cases verify fixture safety and strict result gates;
+this run did not exercise private asset storage or upload routes.
+
+### First private asset probe: provider setup failed
+
+[Run 36726648510](https://github.com/himangga01/wisdom-super-observer/actions/runs/36726648510)
+used the same infrastructure commit, with the product source sealed at
+`6565929776c2ff5b9ff55670bc4567b6d2cf4821`. Locked Linux dependencies and owned
+PostgreSQL migration/provisioning succeeded. The selected photo test reported
+one setup error in 8.67 seconds: SeaweedFS 4.47 returned `NotImplemented` for
+`PutPublicAccessBlock`. The strict RED checker rejected the incomplete receipt;
+owned PostgreSQL cleanup succeeded. No authenticated HTTP or completed provider
+preflight was reached, and no meaningful missing-feature RED was accepted.
+
+The local fixture candidate is now being evaluated under the explicit
+`seaweedfs-private-iam-ownership-v1` security profile: enforced bucket ownership
+with readback, refusal of public ACLs/grants and anonymous access, and actual
+IAM, multipart, expiry and cleanup checks. The receipt checker requires that
+exact profile. Unsupported APIs or successful public ACL requests must fail
+setup. This profile has not yet passed an actual Linux run and does not approve
+the provider for production.
 
 ## Evidence handling
 

@@ -14,7 +14,8 @@ This ledger tracks executable service work. The separate [parity ledger](../inte
 | W00 atomic parity ledger | Static 77-case seed and desktop API preflight implemented; false-positive paths closed | 31 focused tests passed; checker 77/77 rows, zero errors; headless Chrome/Edge API probe 2/2 | Trusted W24 run registry and comparator; runtime reachability, Android/iOS/media/permission checks, support matrix sign-off; no `MATCHED` rows and `release_ready=false` |
 | W01 TVT bridge feasibility | Static handoff, frozen 199-operation manifest and declaration inventories implemented | 10 schema tests passed; 77 cases / 199 candidate operations; 281 request classes and 299 native declarations inventoried | Vendor rights, runtime fixtures and pilot; all six remote G-P1 families `BLOCKED` |
 | T05 durable jobs | Database-owned requests, outbox/inbox, restricted dispatcher/worker, fencing, cancellation, external uncertainty, status/items API and job-bound secret primitives implemented; task and milestone integration/fix reviews approved | [Actual Linux run 36716200713](https://github.com/himangga01/wisdom-super-observer/actions/runs/36716200713): 537 Python cases and all ten required real process/broker recovery cases, zero skips; no remaining Critical/Important review findings | Generic credential handlers fail CAPABILITY_UNSUPPORTED until the owning executor exists; no production IMPORT/REGISTRATION handler. Deployment and vendor effects remain pending |
-| T05A and W02–W25 service features | Pending | None | Private storage prerequisite and family-specific gates |
+| T05A private assets | In progress; public contracts, storage/crypto/image primitives and owned Linux fixture under review | [First actual probe](../engineering/linux-ci.md#first-private-asset-probe-provider-setup-failed) failed during provider setup; strict gate refused it | Actual private provider profile, authenticated missing-feature RED, SQL/lifecycle integration and fourteen-case GREEN acceptance |
+| W02–W25 service features | Pending | None | Private storage prerequisite and family-specific gates |
 
 ## Latest integrated verification — 2026-09-30
 
@@ -79,6 +80,21 @@ The initial fixture and strict result gates receive independent review. The
 separate [baseline RED probe](../engineering/linux-ci.md#private-asset-baseline-red-probe)
 must prove actual provider and authentication preflight before the missing route
 assertion. No S3/lifecycle acceptance or APK parity is claimed at this stage.
+
+The [latest foundation run](../engineering/linux-ci.md#latest-foundation-run)
+at `e77bea4` passed 656 ordinary Python cases and ten actual Celery/Valkey
+recovery cases, with zero skips, plus the existing frontend/browser gates.
+The separate private asset probe failed before HTTP because the selected
+SeaweedFS public-access-block API is unsupported. The explicit private
+IAM/ownership profile now requires actual public-ACL/grant and anonymous denial
+checks; it remains unverified until its Linux probe passes.
+
+Storage work uses a fixed work cutoff before helper creation and refuses
+dispatch after a late startup return. Synchronous OS/runtime process creation
+or control calls can delay the caller beyond that cutoff. A hard worker-group
+containment claim requires an independent deployment watchdog and verified
+Linux cgroup or Windows Job Object ownership; that production gate remains
+unimplemented. Local helper termination does not prove a remote write stopped.
 
 ## Local development
 

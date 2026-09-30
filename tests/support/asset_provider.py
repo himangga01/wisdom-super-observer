@@ -8,6 +8,7 @@ import re
 import secrets
 import subprocess
 import time
+from functools import partial
 from pathlib import Path
 from uuid import uuid4
 
@@ -15,6 +16,7 @@ import httpx
 
 LABEL = "wso.assets.owner"
 IMAGE = "chrislusf/seaweedfs:4.47"
+SECURITY_PROFILE = "seaweedfs-private-iam-ownership-v1"
 
 
 def private_json(path, value):
@@ -250,25 +252,222 @@ class AssetProvider:
         self.inspect("network", self.network)
 
     @staticmethod
-    def denied(operation, label):
+    def denied(operation, label, *, ownership=False):
         from botocore.exceptions import ClientError
 
         try:
             operation()
         except ClientError as error:
-            if error.response["ResponseMetadata"]["HTTPStatusCode"] == 403:
+            denial = (
+                error.response["ResponseMetadata"]["HTTPStatusCode"],
+                error.response["Error"]["Code"],
+            )
+            if denial in {(403, "AccessDenied"), (403, "403")} or (
+                ownership and denial == (400, "AccessControlListNotSupported")
+            ):
                 return
         raise RuntimeError("provider security capability failed: " + label)
 
     @staticmethod
-    def raw_get(url):
+    def raw_http(method, url, **kwargs):
         try:
-            response = httpx.get(
-                url, timeout=5, trust_env=False, follow_redirects=False
+            response = httpx.request(
+                method,
+                url,
+                timeout=5,
+                trust_env=False,
+                follow_redirects=False,
+                **kwargs,
             )
             return response.status_code, response.content
         except httpx.HTTPError:
             raise RuntimeError("provider private HTTP probe failed") from None
+
+    @staticmethod
+    def raw_get(url):
+        return AssetProvider.raw_http("GET", url)
+
+    def configure_ownership(self):
+        from botocore.exceptions import ClientError
+
+        admin = self.clients["bootstrap"]
+        enforced = {"Rules": [{"ObjectOwnership": "BucketOwnerEnforced"}]}
+        try:
+            admin.put_bucket_ownership_controls(
+                Bucket=self.bucket, OwnershipControls=enforced
+            )
+            observed = admin.get_bucket_ownership_controls(Bucket=self.bucket)
+        except ClientError:
+            raise RuntimeError("required ownership API failed") from None
+        if observed.get("OwnershipControls") != enforced:
+            raise RuntimeError(
+                "required ownership readback differs from BucketOwnerEnforced"
+            )
+
+    @staticmethod
+    def require_private_acl(response):
+        owner = response.get("Owner", {}).get("ID")
+        grants = response.get("Grants", [])
+        if (
+            not isinstance(owner, str)
+            or not owner
+            or len(grants) != 1
+            or grants[0].get("Permission") != "FULL_CONTROL"
+            or grants[0].get("Grantee", {}).get("Type") != "CanonicalUser"
+            or grants[0]["Grantee"].get("ID") != owner
+            or grants[0]["Grantee"].get("URI") is not None
+        ):
+            raise RuntimeError("ACL is not private owner-only full control")
+
+    def inspect_no_bucket_policy(self):
+        from botocore.exceptions import ClientError
+
+        try:
+            self.clients["bootstrap"].get_bucket_policy(Bucket=self.bucket)
+        except ClientError as error:
+            if (
+                error.response["ResponseMetadata"]["HTTPStatusCode"] == 404
+                and error.response["Error"]["Code"] == "NoSuchBucketPolicy"
+            ):
+                return
+        raise RuntimeError("absence of public bucket policy could not be established")
+
+    def privacy_profile(self, key, body):
+        """Real valid-public-grant attempts, with no unsupported-operation fallback."""
+        admin = self.clients["bootstrap"]
+        bucket = self.bucket
+        self.inspect_no_bucket_policy()
+        self.require_private_acl(admin.get_bucket_acl(Bucket=bucket))
+        object_acl = admin.get_object_acl(Bucket=bucket, Key=key)
+        self.require_private_acl(object_acl)
+        owner_id = object_acl["Owner"]["ID"]
+        public_policy = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Principal": "*",
+                        "Action": "s3:GetObject",
+                        "Resource": f"arn:aws:s3:::{bucket}/*",
+                    }
+                ],
+            }
+        )
+        for name in ("gateway", "cleanup"):
+            client = self.clients[name]
+            for operation in (
+                partial(client.put_bucket_acl, Bucket=bucket, ACL="private"),
+                partial(client.put_object_acl, Bucket=bucket, Key=key, ACL="private"),
+                partial(
+                    client.put_bucket_ownership_controls,
+                    Bucket=bucket,
+                    OwnershipControls={"Rules": [{"ObjectOwnership": "ObjectWriter"}]},
+                ),
+                partial(client.delete_bucket_ownership_controls, Bucket=bucket),
+                partial(client.put_bucket_policy, Bucket=bucket, Policy=public_policy),
+                partial(client.delete_bucket_policy, Bucket=bucket),
+            ):
+                self.denied(operation, name + " administrative mutation denial")
+        variants = [
+            {"ACL": acl}
+            for acl in ("public-read", "public-read-write", "authenticated-read")
+        ]
+        for group in ("AllUsers", "AuthenticatedUsers"):
+            for grant in ("GrantRead", "GrantFullControl"):
+                variants.append(
+                    {grant: f'uri="http://acs.amazonaws.com/groups/global/{group}"'}
+                )
+        for name in ("bootstrap", "gateway", "cleanup"):
+            client = self.clients[name]
+            for variant in variants:
+                existing_variant = variant
+                if "ACL" not in variant:
+                    grant_name, uri_header = next(iter(variant.items()))
+                    existing_variant = {
+                        "AccessControlPolicy": {
+                            "Owner": {"ID": owner_id},
+                            "Grants": [
+                                {
+                                    "Grantee": {
+                                        "Type": "CanonicalUser",
+                                        "ID": owner_id,
+                                    },
+                                    "Permission": "FULL_CONTROL",
+                                },
+                                {
+                                    "Grantee": {
+                                        "Type": "Group",
+                                        "URI": uri_header[5:-1],
+                                    },
+                                    "Permission": "READ"
+                                    if grant_name == "GrantRead"
+                                    else "FULL_CONTROL",
+                                },
+                            ],
+                        }
+                    }
+                # Each new key stays within this owned installation. If a probe
+                # unexpectedly succeeds, setup fails and guarded volume teardown
+                # removes all bytes/uploads; there is no passing-profile receipt.
+                new_key = key + "-privacy-" + uuid4().hex
+                for operation in (
+                    partial(
+                        client.put_object_acl,
+                        Bucket=bucket,
+                        Key=key,
+                        **existing_variant,
+                    ),
+                    partial(
+                        client.put_object,
+                        Bucket=bucket,
+                        Key=new_key,
+                        Body=body,
+                        **variant,
+                    ),
+                    partial(
+                        client.create_multipart_upload,
+                        Bucket=bucket,
+                        Key=new_key,
+                        **variant,
+                    ),
+                ):
+                    self.denied(
+                        operation, name + " public ACL/grant refusal", ownership=True
+                    )
+                if admin.list_objects_v2(Bucket=bucket, Prefix=new_key).get("Contents"):
+                    raise RuntimeError("denied public PUT left an object")
+                if admin.list_multipart_uploads(Bucket=bucket, Prefix=new_key).get(
+                    "Uploads"
+                ):
+                    raise RuntimeError("denied public multipart left an upload")
+        object_url = f"{self.endpoint}/{bucket}/{key}"
+        bucket_url = f"{self.endpoint}/{bucket}"
+        for method, url, arguments in (
+            ("GET", object_url, {}),
+            ("HEAD", object_url, {}),
+            ("GET", bucket_url, {"params": {"list-type": "2", "prefix": self.prefix}}),
+            ("PUT", object_url, {"content": b"anonymous-forbidden"}),
+        ):
+            if self.raw_http(method, url, **arguments)[0] != 403:
+                raise RuntimeError(
+                    "anonymous " + method + " private access was allowed"
+                )
+        self.require_private_acl(admin.get_bucket_acl(Bucket=bucket))
+        self.require_private_acl(admin.get_object_acl(Bucket=bucket, Key=key))
+        self.inspect_no_bucket_policy()
+        enforced = {"Rules": [{"ObjectOwnership": "BucketOwnerEnforced"}]}
+        if (
+            admin.get_bucket_ownership_controls(Bucket=bucket).get("OwnershipControls")
+            != enforced
+        ):
+            raise RuntimeError("runtime probe changed enforced ownership")
+        stream = admin.get_object(Bucket=bucket, Key=key)["Body"]
+        try:
+            if stream.read() != body:
+                raise RuntimeError("privacy probe modified private ciphertext")
+        finally:
+            stream.close()
 
     def preflight(self):
         """Every receipt below represents an actual provider request."""
@@ -279,28 +478,7 @@ class AssetProvider:
         )
         bucket = self.bucket
         admin.create_bucket(Bucket=bucket, ACL="private")
-        admin.put_public_access_block(
-            Bucket=bucket,
-            PublicAccessBlockConfiguration={
-                "BlockPublicAcls": True,
-                "IgnorePublicAcls": True,
-                "BlockPublicPolicy": True,
-                "RestrictPublicBuckets": True,
-            },
-        )
-        block = admin.get_public_access_block(Bucket=bucket)[
-            "PublicAccessBlockConfiguration"
-        ]
-        if not all(
-            block.get(key) is True
-            for key in (
-                "BlockPublicAcls",
-                "IgnorePublicAcls",
-                "BlockPublicPolicy",
-                "RestrictPublicBuckets",
-            )
-        ):
-            raise RuntimeError("private bucket public-access block unavailable")
+        self.configure_ownership()
         if admin.get_bucket_versioning(Bucket=bucket).get("Status") not in (
             None,
             "Suspended",
@@ -333,6 +511,7 @@ class AssetProvider:
                 raise RuntimeError("provider authenticated GET failed")
         finally:
             stream.close()
+        self.privacy_profile(key, body)
         presign = gateway.generate_presigned_url(
             "get_object", Params={"Bucket": bucket, "Key": key}, ExpiresIn=2
         )
@@ -415,6 +594,7 @@ class AssetProvider:
             "provider": "SeaweedFS",
             "version": "4.47",
             "digest": self.image,
+            "security_profile": SECURITY_PROFILE,
             "capabilities": "private IAM/put/get/head/delete/multipart/list/abort/presign-expiry",
         }
         private_json(self.directory / "provider-receipt.json", self.receipt)

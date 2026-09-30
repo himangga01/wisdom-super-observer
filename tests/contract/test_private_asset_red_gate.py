@@ -16,6 +16,7 @@ def evidence():
         "provider": {
             "provider": "SeaweedFS",
             "version": "4.47",
+            "security_profile": "seaweedfs-private-iam-ownership-v1",
             "digest": "chrislusf/seaweedfs@sha256:" + "a" * 64,
             "capabilities": "private IAM/put/get/head/delete/multipart/list/abort/presign-expiry",
             "owned_resource_mapping": True,
@@ -212,6 +213,8 @@ def test_incomplete_or_substituted_receipt_is_refused(tmp_path, key, value):
         ("version", "4.46"),
         ("owned_resource_mapping", 1),
         ("capabilities", "unverified"),
+        ("security_profile", "aws-public-access-block-v1"),
+        ("security_profile", None),
         ("endpoint", "http://private"),
     ],
 )
@@ -219,6 +222,15 @@ def test_wrong_or_unsanitized_provider_receipt_is_refused(tmp_path, key, value):
     junit, receipt = files(tmp_path)
     body = evidence()
     body["provider"][key] = value
+    receipt.write_text(json.dumps(body), encoding="utf-8")
+    with pytest.raises(ValueError):
+        verify_baseline_red(junit, receipt, pytest_exit=1)
+
+
+def test_receipt_without_actual_privacy_profile_is_refused(tmp_path):
+    junit, receipt = files(tmp_path)
+    body = evidence()
+    del body["provider"]["security_profile"]
     receipt.write_text(json.dumps(body), encoding="utf-8")
     with pytest.raises(ValueError):
         verify_baseline_red(junit, receipt, pytest_exit=1)

@@ -54,6 +54,7 @@ def _verify_receipt(path: Path) -> None:
             "provider": {
                 "provider": "SeaweedFS",
                 "version": "4.47",
+                "security_profile": "seaweedfs-private-iam-ownership-v1",
                 "digest": digest,
                 "capabilities": "private IAM/put/get/head/delete/multipart/list/abort/presign-expiry",
                 "owned_resource_mapping": True,
