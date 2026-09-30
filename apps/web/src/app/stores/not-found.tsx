@@ -1,0 +1,2 @@
+/* eslint-disable @next/next/no-html-link-for-pages -- Full document navigation revalidates authorization and avoids personalized Router Cache. */
+export default function NotFound() { return <main className="mx-auto max-w-6xl p-10"><h1 className="text-2xl font-semibold">매장을 찾을 수 없습니다</h1><p className="mt-3 text-slate-600">이 매장을 열 수 없거나 매장이 존재하지 않습니다.</p><a href="/stores" className="mt-6 inline-block underline">내 매장으로 돌아가기</a></main>; }

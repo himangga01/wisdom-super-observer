@@ -1,6 +1,8 @@
 param(
     [switch]$WithContainers,
-    [switch]$WithBrowser
+    [switch]$WithBrowser,
+    [switch]$WithPostgres,
+    [switch]$WithAuthBrowser
 )
 
 $ErrorActionPreference = 'Stop'
@@ -23,7 +25,34 @@ function Invoke-Checked {
 try {
     Invoke-Checked python @('-m', 'uv', 'sync', '--all-packages', '--group', 'dev')
     Invoke-Checked pnpm @('install', '--frozen-lockfile')
-    Invoke-Checked python @('-m', 'uv', 'run', 'pytest', '-m', 'not live', '-q')
+    $pytestArgs = @('-m', 'uv', 'run', 'pytest', '-m', 'not live', '-q')
+    if ($WithPostgres) {
+        $loader = Join-Path $root '.superpowers/runtime/postgresql17/env.ps1'
+        if (-not (Test-Path -LiteralPath $loader -PathType Leaf)) {
+            throw 'Create the local PostgreSQL runtime before selecting -WithPostgres.'
+        }
+        . $loader
+        foreach ($role in @('ADMIN', 'APP', 'IDENTITY', 'MIGRATOR', 'SESSION')) {
+            $url = [Environment]::GetEnvironmentVariable("WSO_TEST_${role}_DATABASE_URL")
+            if ([string]::IsNullOrWhiteSpace($url)) {
+                throw "PostgreSQL integration requires the $role role URL."
+            }
+        }
+        $resultDir = Join-Path $root '.superpowers/verification'
+        New-Item -ItemType Directory -Force -Path $resultDir | Out-Null
+        $resultPath = Join-Path $resultDir 'pytest-postgres.xml'
+        $pytestArgs += "--junitxml=$resultPath"
+    }
+    Invoke-Checked python $pytestArgs
+    if ($WithPostgres) {
+        [xml]$testResults = Get-Content -LiteralPath $resultPath -Raw
+        $skippedIntegration = @($testResults.SelectNodes(
+            '//testcase[starts-with(@classname, "tests.integration.") and skipped]'
+        ))
+        if ($skippedIntegration.Count -gt 0) {
+            throw 'A selected PostgreSQL integration test was skipped; its gate is unverified.'
+        }
+    }
     Invoke-Checked python @('-m', 'uv', 'run', 'ruff', 'check', 'services', 'packages', 'tests', 'scripts', 'infra/migrations')
     Invoke-Checked python @('-m', 'uv', 'run', 'mypy', 'services/api/src', 'packages/contracts/src', 'packages/core/src')
     Invoke-Checked pnpm @('-r', 'typecheck')
@@ -84,6 +113,12 @@ try {
         Write-Host 'Browser preflight was not selected; platform gates are unverified.'
     }
 
+    if ($WithAuthBrowser) {
+        Invoke-Checked pnpm @('exec', 'playwright', 'test', '--config', 'playwright.auth.config.ts')
+    } else {
+        Write-Host 'HTTPS authentication browser checks were not selected.'
+    }
+
     if ($WithContainers) {
         Invoke-Checked docker @('compose', '-f', 'infra/compose.yaml', '--profile', 'test', 'config', '--quiet')
         Invoke-Checked docker @('compose', '-f', 'infra/compose.yaml', '--profile', 'test', 'up', '-d', '--wait')
@@ -92,7 +127,7 @@ try {
         Write-Host 'Container checks were not selected; integration backends are unverified.'
     }
 
-    Write-Host 'Implemented offline checks passed.'
+    Write-Host 'Selected implementation checks passed.'
 } finally {
     Pop-Location
 }

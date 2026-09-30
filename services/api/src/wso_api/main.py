@@ -7,6 +7,10 @@ from fastapi.responses import JSONResponse, Response
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.base import RequestResponseEndpoint
 
+from wso_api.auth import configure_auth
+from wso_api.auth import router as auth_router
+from wso_api.stores.router import router as stores_router
+
 
 def _error_response(
     request: Request, status_code: int, code: str, message: str
@@ -25,6 +29,9 @@ def create_app(
 ) -> FastAPI:
     app = FastAPI()
     checks = dict(readiness_checks or {})
+    configure_auth(app)
+    app.include_router(auth_router)
+    app.include_router(stores_router)
 
     @app.middleware("http")
     async def request_context(
@@ -38,6 +45,14 @@ def create_app(
                 request, 500, "internal_error", "Internal server error"
             )
         response.headers["X-Request-ID"] = request.state.request_id
+        path = request.url.path
+        if path in {"/api/v1/me", "/api/v1/stores"} or path.startswith(
+            ("/api/v1/auth/", "/api/v1/stores/")
+        ):
+            response.headers["Cache-Control"] = "no-store"
+            vary = response.headers.get("Vary", "")
+            if "cookie" not in {value.strip().lower() for value in vary.split(",")}:
+                response.headers["Vary"] = f"{vary}, Cookie" if vary else "Cookie"
         return response
 
     @app.exception_handler(StarletteHTTPException)

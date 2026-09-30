@@ -24,6 +24,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
+from sqlalchemy.pool import NullPool
 from sqlalchemy.sql import func
 
 from wso_core.tenancy import TenantAuthorization
@@ -158,7 +159,7 @@ def _app_factory() -> sessionmaker[Session]:
     url = os.environ["WSO_APP_DATABASE_URL"]
     if not url.startswith("postgresql+psycopg://"):
         raise ValueError("application database must use postgresql+psycopg")
-    return sessionmaker(create_engine(url, pool_pre_ping=True))
+    return sessionmaker(create_engine(url, pool_pre_ping=True, hide_parameters=True))
 
 
 @contextmanager
@@ -170,8 +171,9 @@ def tenant_session(
 ) -> Iterator[Session]:
     """Open a tenant transaction for a bootstrap-authorized tenant choice.
 
-    This helper requires a trusted app process. The custom PostgreSQL tenant
-    setting is not an unforgeable claim for arbitrary SQL under ``wso_app``.
+    Grant consumption commits on a separate application connection before this
+    transaction sees its protected backend/transaction-bound context. Rolling
+    back business work never makes the grant reusable. RLS ignores tenant GUCs.
     """
     if (
         not isinstance(tenant_id, UUID)
@@ -184,22 +186,39 @@ def tenant_session(
         role: str = session.execute(text("SELECT current_user")).scalar_one()
         if role != "wso_app":
             raise PermissionError("tenant connection must use application role")
-        session.execute(
-            text("SELECT set_config('app.tenant_id', :tenant_id, true)"),
-            {"tenant_id": str(tenant_id)},
+        target = session.execute(
+            text("SELECT pg_backend_pid() AS pid, txid_current() AS transaction_id")
+        ).one()
+        bind = session.get_bind()
+        # NullPool guarantees redemption also works when the tenant pool has
+        # only one connection. No privileged or bootstrap credential is used.
+        redemption = create_engine(
+            bind.engine.url, poolclass=NullPool, hide_parameters=True
         )
-        authorized: bool = session.execute(
-            text(
-                "SELECT public.wso_validate_tenant_authorization("
-                ":tenant_id, :user_id, :role)"
-            ),
-            {
-                "tenant_id": tenant_id,
-                "user_id": authorization.user_id,
-                "role": authorization.role,
-            },
+        try:
+            with redemption.begin() as connection:
+                authorized: bool = connection.execute(
+                    text(
+                        "SELECT public.wso_consume_tenant_grant("
+                        ":token, :pid, :transaction_id, :tenant_id, :user_id, :role)"
+                    ),
+                    {
+                        "token": authorization._grant_token,
+                        "pid": target.pid,
+                        "transaction_id": target.transaction_id,
+                        "tenant_id": tenant_id,
+                        "user_id": authorization.user_id,
+                        "role": authorization.role,
+                    },
+                ).scalar_one()
+        finally:
+            redemption.dispose()
+        # Revalidate and lock membership on the actual business transaction,
+        # closing the race after the separate redemption transaction commits.
+        current_tenant: UUID | None = session.execute(
+            text("SELECT public.wso_current_tenant_id()")
         ).scalar_one()
-        if not authorized:
+        if not authorized or current_tenant != tenant_id:
             raise PermissionError("tenant membership was revoked or changed")
         session.info["authorized_user_id"] = authorization.user_id
         yield session

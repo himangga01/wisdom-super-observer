@@ -9,10 +9,14 @@ The repository's `uv.lock` and `pnpm-lock.yaml` are the authoritative resolved P
 | Node.js | 24.21.0 | `node --version` | Available |
 | pnpm | 11.25.0 | `pnpm --version` | Available |
 | FastAPI / Pydantic / Uvicorn | 0.141.1 / 2.13.5 / 0.54.0 | `python -m uv tree --depth 1` and `uv.lock` | Integrated offline checks passed; real dependency readiness pending |
-| SQLAlchemy / Psycopg / Alembic | 2.1.1 / 3.3.6 / 1.20.0 | `uv.lock` after T02 workspace addition | Offline migration render and type checks passed; PostgreSQL runtime unverified |
+| SQLAlchemy / Psycopg / Alembic | 2.1.1 / 3.3.6 / 1.20.0 | `uv.lock`; restricted-role PostgreSQL integration | Online migration roundtrip, tenant isolation and auth/store tests passed |
+| PyJWT / cryptography | 2.15.1 / 50.0.1 | `uv.lock`; signed-token rejection and actual PostgreSQL session tests | Independent RS256 validation implemented and verified |
+| openid-client | 6.8.8 | `pnpm-lock.yaml`; [maintainer OIDC example](https://github.com/panva/openid-client/blob/main/examples/oidc.ts) | Authorization code/PKCE and HTTPS signed-issuer browser tests passed |
+| httpx2 / httpcore2 (development) | 2.13.1 / 2.13.1 | `uv.lock`; installed Starlette 1.7.0 TestClient transport | Explicit current TestClient dependency; legacy httpx remains for direct test clients |
 | Next.js / React / Tailwind / TypeScript | 16.3.6 / 19.3.0 / 4.3.3 / 5.9.3 | `pnpm list --depth 0 -r` and `pnpm-lock.yaml` | Integrated typecheck, lint, test and production build passed |
 | Playwright test runner | 1.63.0 | Root and `apps/web` workspace lock | Desktop Chrome/Edge API preflight 2/2 passed; handset, permission and actual media gates pending |
 | PostgreSQL fixture | `postgres:17.11-alpine3.24` | [Official tag list](https://hub.docker.com/_/postgres) | Not pulled or smoked; Docker CLI absent |
+| Local PostgreSQL runtime | EDB PostgreSQL 17.11 packaging 4, Windows x64 | [Runtime setup and pinned SHA-256](local-postgres.md); authenticated loopback startup, safe Stop/Start and restricted roles | Actual local integration passed; this does not verify the container image |
 | Valkey fixture | `valkey/valkey:9.1.2-alpine3.24` | [Official download/tag list](https://valkey.io/download/) | Not pulled or smoked; Docker CLI absent |
 | S3 candidate | `chrislusf/seaweedfs:4.47` | [SeaweedFS release](https://github.com/seaweedfs/seaweedfs/releases/tag/4.47), [container guide](https://github.com/seaweedfs/seaweedfs/blob/master/docker/README.md) | Candidate only; S3 compatibility and image digest unverified |
 | Mock external HTTP | `mockserver/mockserver:5.15.0` | [Published image](https://hub.docker.com/layers/mockserver/mockserver/5.15.0/images/sha256-b8a8bc5042b6fd7fbe0acfbf81b23a5f576579fae48fcdecb676c9492905341d) | Not pulled or smoked; Docker CLI absent |

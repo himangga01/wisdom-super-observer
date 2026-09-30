@@ -8,7 +8,6 @@
     "start": "next start",
     "lint": "eslint .",
     "test": "vitest run",
-    "lint": "eslint .",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -17,6 +16,7 @@
     "hls.js": "1.7.3",
     "next": "16.3.6",
     "openapi-fetch": "0.17.0",
+    "openid-client": "6.8.8",
     "postcss": "8.5.28",
     "radix-ui": "1.6.7",
     "react": "19.3.0",

@@ -1,28 +1,10 @@
-import { HealthStatus } from "../components/health-status";
-import { getLiveHealth } from "../lib/health";
-
-export default async function HomePage() {
-  const health = await getLiveHealth();
-
-  return (
-    <main className="mx-auto flex min-h-screen max-w-4xl flex-col px-6 py-10 sm:px-10">
-      <header className="border-b border-slate-200 pb-6">
-        <p className="text-sm font-semibold tracking-wide text-slate-600">
-          Wisdom Super Observer
-        </p>
-        <h1 className="mt-4 text-2xl font-semibold tracking-tight sm:text-3xl">
-          서비스 작업 공간
-        </h1>
-        <p className="mt-3 max-w-prose text-sm leading-6 text-slate-600">
-          계정과 기기 기능을 위한 웹 서비스 기반을 준비하고 있습니다.
-        </p>
-      </header>
-      <section aria-label="서비스 상태" className="mt-8">
-        <h2 className="text-base font-semibold">API 상태</h2>
-        <div className="mt-3 rounded-lg border border-slate-200 bg-white p-4">
-          <HealthStatus health={health} />
-        </div>
-      </section>
-    </main>
-  );
+/* eslint-disable @next/next/no-html-link-for-pages -- Full document navigation revalidates authorization and avoids personalized Router Cache. */
+import { ServiceShell } from "../components/service-shell";
+export const dynamic = "force-dynamic";
+export default async function HomePage({ searchParams }: { searchParams: Promise<{ expired?: string; signed_out?: string }> }) {
+  const status = await searchParams;
+  return <ServiceShell><section className="wso-card mx-auto mt-6 grid max-w-5xl overflow-hidden lg:mt-16 lg:grid-cols-[1.4fr_1fr]">
+    <div className="p-6 sm:p-10 lg:p-12"><p className="text-xs font-semibold tracking-widest text-[var(--wso-muted)]">WISDOM SUPER OBSERVER</p><h1 className="mt-6 text-3xl font-semibold leading-snug tracking-tight sm:text-4xl">내 매장을 한눈에.<br />더 편리한 매장 관리.</h1><p className="mt-5 max-w-sm leading-7 text-[var(--wso-muted)]">계정으로 로그인하고 관리할 매장을 선택하세요. 매장 작업 공간에서 필요한 정보를 확인할 수 있습니다.</p>{status.expired && <p role="status" className="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm">로그인이 만료되었습니다. 다시 로그인하세요.</p>}{status.signed_out && <p role="status" className="mt-6 text-[var(--wso-muted)]">로그아웃되었습니다.</p>}<div className="mt-8 flex flex-wrap gap-3"><a href="/api/auth/login" className="wso-button-primary">로그인</a><a href="/stores" className="wso-button-secondary">내 매장으로 이동</a></div></div>
+    <div className="flex flex-col justify-center border-t border-[var(--wso-border)] bg-[#F5F9FD] p-6 sm:p-10 lg:border-l lg:border-t-0"><div aria-hidden="true" className="mb-8 flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--wso-accent-soft)] text-2xl text-[#226594]">▦</div><h2 className="text-lg font-semibold">나의 매장 작업 공간</h2><p className="mt-3 leading-7 text-[var(--wso-muted)]">계정에 연결된 매장을 선택하고<br className="hidden sm:block" /> 매장별로 업무를 이어가세요.</p><div className="mt-8 border-t border-[#D9E5F0] pt-6"><p className="text-xs font-medium text-[#226594]">매장 접근 권한</p><p className="mt-2 leading-6 text-[var(--wso-muted)]">매장이 보이지 않으면 관리자에게<br className="hidden sm:block" /> 계정의 매장 권한을 요청하세요.</p></div></div>
+  </section></ServiceShell>;
 }
