@@ -14,7 +14,7 @@ This ledger tracks executable service work. The separate [parity ledger](../inte
 | W00 atomic parity ledger | Static 77-case seed and desktop API preflight implemented; false-positive paths closed | 31 focused tests passed; checker 77/77 rows, zero errors; headless Chrome/Edge API probe 2/2 | Trusted W24 run registry and comparator; runtime reachability, Android/iOS/media/permission checks, support matrix sign-off; no `MATCHED` rows and `release_ready=false` |
 | W01 TVT bridge feasibility | Static handoff, frozen 199-operation manifest and declaration inventories implemented | 10 schema tests passed; 77 cases / 199 candidate operations; 281 request classes and 299 native declarations inventoried | Vendor rights, runtime fixtures and pilot; all six remote G-P1 families `BLOCKED` |
 | T05 durable jobs | Database-owned requests, outbox/inbox, restricted dispatcher/worker, fencing, cancellation, external uncertainty, status/items API and job-bound secret primitives implemented; task and milestone integration/fix reviews approved | [Actual Linux run 36716200713](https://github.com/himangga01/wisdom-super-observer/actions/runs/36716200713): 537 Python cases and all ten required real process/broker recovery cases, zero skips; no remaining Critical/Important review findings | Generic credential handlers fail CAPABILITY_UNSUPPORTED until the owning executor exists; no production IMPORT/REGISTRATION handler. Deployment and vendor effects remain pending |
-| T05A private assets | In progress; MinIO v2 fixture source, strict consumers, optional public-proof source and diagnostic-only amendment received scoped approval | [Latest integrated foundation run](../engineering/linux-ci.md#latest-integrated-linux-foundation-run) passed; [latest provider attempt](../engineering/linux-ci.md#seventh-sealed-private-asset-baseline-attempt-inert-put-effect-unclassified) stopped during setup with effects component unknown | Actual provider privacy/IAM and HTTP preflight, complete fourteen-case GREEN acceptance, push and one actual cold retry, actual relay connectivity, and whole APK parity |
+| T05A private assets | In progress; MinIO v2 fixture source, strict consumers, optional public-proof source and component-diagnostic source amendment received scoped approval | [Foundation run 36782405311](../engineering/linux-ci.md#linux-foundation-run-36782405311) passed; [eighth provider attempt](../engineering/linux-ci.md#eighth-sealed-private-asset-baseline-attempt-anonymous-get-transport-error-and-cleanup-failure) stopped during setup with anonymous-GET transport error and fixture-local cleanup failure | Actual provider privacy/IAM and HTTP preflight, a later cold retry with diagnostic source, complete fourteen-case GREEN acceptance, actual relay connectivity, and whole APK parity |
 | W02–W25 service features | Pending | None | Private storage prerequisite and family-specific gates |
 
 ## Previous integrated verification — 2026-09-30
@@ -102,23 +102,31 @@ separate [baseline RED probe](../engineering/linux-ci.md#private-asset-baseline-
 must prove actual provider and authentication preflight before the missing route
 assertion. No S3/lifecycle acceptance or APK parity is claimed at this stage.
 
-The [latest integrated Linux foundation run](../engineering/linux-ci.md#latest-integrated-linux-foundation-run)
+The distinct [406f47e Linux receipt](../engineering/linux-ci.md#linux-foundation-run-36774933005)
 at `406f47e` passed 1512 ordinary Python cases with zero skips in 128.54 seconds
 and ten actual Celery/Valkey recovery cases with zero skips in 246.10 seconds,
 plus frontend/browser gates. Ruff/mypy 40, frontend typecheck/lint/build and 15
 unit cases, twenty canonical exports twice, ledger checker 77/77, HTTPS Chrome
 26/42.2 seconds, Valkey smoke and owned PostgreSQL cleanup passed. This run
 covers reviewed v2 control-profile and optional public-proof changes, but
-predates and excludes the component-diagnostic amendment. The previous
-[foundation run](../engineering/linux-ci.md#previous-integrated-linux-foundation-run)
+predates and excludes the component-diagnostic amendment. The distinct
+[f79c83e receipt](../engineering/linux-ci.md#linux-foundation-run-36765314386)
 at `f79c83e` passed 1375 ordinary Python cases and ten actual recovery cases,
-zero skips, and predates/excludes the v2/public-proof source changes. The earlier
-[integrated run](../engineering/linux-ci.md#earlier-integrated-linux-foundation-run)
+zero skips, and predates/excludes the v2/public-proof source changes. The distinct
+[0deeb79 receipt](../engineering/linux-ci.md#linux-foundation-run-36760448179)
 at `0deeb79` passed 1200 ordinary cases and ten actual recovery cases, zero
 skips, and included isolated `0003a_assets` migration/nine-role integration in
 the ordinary pytest invocation; no per-case count is recorded. The prior
 [foundation run](../engineering/linux-ci.md#previous-recorded-foundation-run)
 at `e3865df` passed 855 ordinary cases and ten actual recovery cases.
+
+The [dff9ec7 Linux foundation receipt](../engineering/linux-ci.md#linux-foundation-run-36782405311)
+passed 1567 ordinary Python cases and ten actual Celery/Valkey recovery cases,
+both with zero skips. Ruff/mypy 40, frontend typecheck/lint/build and 15 unit
+cases, twenty canonical exports twice, TVT evidence checker 77 audit cases / 77
+ledger rows / zero errors, HTTPS Chrome 26, Valkey smoke and owned PostgreSQL
+cleanup passed. It covers the reviewed source commit `3bcf178a9eb93d296658a11a2cedf03e833e02f3`, but predates and excludes the diagnostic source commit `cddeee3e438ccfa7a51f817b24d2781e51be2495` and this documentation amendment. These foundation
+counts do not establish provider acceptance.
 
 The v2 producer and strict-consumer changes each received independent scoped
 approval with zero findings; the producer passed 251 focused cases and the root
@@ -151,8 +159,8 @@ configured mypy 40 passed. Review confirmed only seven declared methods changed;
 relay, safety, checker and workflow hashes stayed unchanged. The actual failed
 component/cause remains unknown. Exact two-path staging, private 18-value guard
 and no-drift checks passed; diagnostic source commit
-`3bcf178a9eb93d296658a11a2cedf03e833e02f3` is local. Push and one actual cold
-retry remain root-pending. No behavior fix or provider
+`3bcf178a9eb93d296658a11a2cedf03e833e02f3` was pushed and remote-verified;
+the later eighth attempt is recorded below and remains unresolved. No behavior fix or provider
 acceptance is inferred. Strict RED
 receipts were rejected. Pinned [Moby v28.0.4 source](https://github.com/moby/moby/blob/v28.0.4/daemon/network.go#L860)
 explains why port publication is skipped for an Internal network, but the
@@ -168,6 +176,33 @@ does not establish actual relay connectivity or provider acceptance.
 SeaweedFS remains excluded. The MinIO candidate still requires the unchanged
 privacy/IAM and full fourteen-case lifecycle gates; no provider acceptance is
 claimed.
+
+The eighth [sealed baseline attempt](../engineering/linux-ci.md#eighth-sealed-private-asset-baseline-attempt-anonymous-get-transport-error-and-cleanup-failure)
+ended with one setup error in 21.04 seconds. A gateway `create_multipart_upload`
+variant-1 HTTP 200 was an accepted inert candidate; the following original-object
+`anonymous_get` returned `TRANSPORT_ERROR`, null status, and code
+`TRANSPORT_ERROR`. The HTTP exception kind/phase and provider-close category
+remain unknown. Workflow-owned PostgreSQL cleanup succeeded, but fixture-local
+provider close failed. This does not prove an HTTPX/socket failure, anonymous
+HTTP 200, provider privacy/IAM, authenticated RED, or full14 acceptance. Source
+order places it at scheduled entry 27 only.
+
+The diagnostic-only source amendment was committed locally as
+`cddeee3e438ccfa7a51f817b24d2781e51be2495` and received scoped Astra approval
+with no Critical, Important, or Minor findings. Its initial meaningful RED
+selection had three failures before 375 passed; review identified causal-origin
+masking and closed-stdout `ValueError`. After fix round 1, the six-case RED
+selection failed all six cases, with 375 deselected, in 0.67 seconds before the
+minimal fix. The covering 381-case selection passed after the fix in 1.95
+seconds. Root’s fresh 381-case selection passed in 2.07 seconds; Ruff/format four files,
+configured mypy 40, source-boundary/hash checks, six unchanged gates, curated
+staging, no-drift/diff checks and private 18-value guard passed. Diagnostics
+retain fixed exception kind/phase and observed status, first relay origin with
+a nonblocking safe snapshot, and fixed close category. Combined-branch cutoff
+reason remains `PUMP_CUTOFF` or `UNKNOWN`; counters do not establish quiescence.
+Behavior, acceptance, profile/schema, budgets, call order and cleanup authority
+are unchanged. The source review establishes neither the eighth probe’s cause
+nor provider acceptance; publication remains pending.
 
 The reviewed two-file result-gate receipt-safety correction passed 247 scoped
 cases and an independent review with zero Critical or Important findings. It
