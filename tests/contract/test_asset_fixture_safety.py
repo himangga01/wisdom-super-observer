@@ -2,12 +2,128 @@
 
 import json
 import subprocess
+import tarfile
+from io import BytesIO
 from unittest.mock import Mock
 
 import pytest
 
 from tests.support.asset_harness import AssetHarness
 from tests.support.asset_provider import LABEL, AssetProvider
+
+
+def volume_archive(
+    *, uid=65532, gid=65532, mode=0o700, name="data", kind=tarfile.DIRTYPE, extra=False
+):
+    output = BytesIO()
+    with tarfile.open(fileobj=output, mode="w") as archive:
+        info = tarfile.TarInfo(name)
+        info.uid, info.gid, info.mode, info.type = uid, gid, mode, kind
+        archive.addfile(info)
+        if extra:
+            archive.addfile(tarfile.TarInfo("DO_NOT_EMIT_extra_private_name"))
+    return output.getvalue()
+
+
+@pytest.mark.parametrize(
+    "case,stage",
+    [
+        ("uid", "entry_identity"),
+        ("mode", "entry_identity"),
+        ("name", "entry_name"),
+        ("type", "entry_type"),
+        ("extra", "entry_count"),
+        ("malformed", "archive_parse"),
+        ("nonzero", "command"),
+        ("timeout", "command"),
+    ],
+)
+def test_volume_failure_exposes_only_bounded_structured_metadata(
+    tmp_path, monkeypatch, case, stage
+):
+    provider = AssetProvider(tmp_path)
+    monkeypatch.setattr(
+        provider, "docker_invocation", lambda *_: (["fixed-local-docker"], {})
+    )
+    payload = volume_archive(
+        uid=0 if case == "uid" else 65532,
+        mode=0o755 if case == "mode" else 0o700,
+        name="DO_NOT_EMIT_private_name" if case == "name" else "data",
+        kind=tarfile.REGTYPE if case == "type" else tarfile.DIRTYPE,
+        extra=case == "extra",
+    )
+    if case == "malformed":
+        payload = b"DO_NOT_EMIT_private_body"
+    runner = Mock(
+        return_value=subprocess.CompletedProcess(
+            [], 0, stdout=payload, stderr=b"DO_NOT_EMIT_private_stderr"
+        )
+    )
+    if case == "nonzero":
+        runner.side_effect = subprocess.CalledProcessError(
+            2,
+            ["DO_NOT_EMIT_private_path"],
+            output=b"DO_NOT_EMIT_private_body",
+            stderr=b"DO_NOT_EMIT_private_stderr",
+        )
+    elif case == "timeout":
+        runner.side_effect = subprocess.TimeoutExpired(
+            ["DO_NOT_EMIT_private_path"], 15, output=b"DO_NOT_EMIT_private_body"
+        )
+    monkeypatch.setattr("tests.support.asset_provider.subprocess.run", runner)
+    with pytest.raises(RuntimeError, match="nonroot data volume") as failure:
+        provider.verify_data_volume()
+    message = str(failure.value)
+    assert "DO_NOT_EMIT" not in message
+    assert len(message) < 512
+    assert ": {" in message
+    diagnostic = json.loads(message.partition(": ")[2])
+    assert set(diagnostic) == {
+        "stage",
+        "returncode",
+        "archive_bytes",
+        "entry_count",
+        "directory",
+        "type",
+        "uid",
+        "gid",
+        "mode",
+    }
+    assert diagnostic["stage"] == stage
+    assert diagnostic["returncode"] == (
+        2 if case == "nonzero" else None if case == "timeout" else 0
+    )
+    if case in {"malformed", "nonzero", "timeout"}:
+        assert diagnostic["entry_count"] is None
+        assert diagnostic["directory"] == "unobserved"
+        assert diagnostic["uid"] is None
+    else:
+        assert diagnostic["entry_count"] == (2 if case == "extra" else 1)
+        assert diagnostic["directory"] == (
+            "unexpected" if case == "name" else "expected_data"
+        )
+        assert diagnostic["uid"] == (0 if case == "uid" else 65532)
+        assert diagnostic["gid"] == 65532
+        assert diagnostic["mode"] == (0o755 if case == "mode" else 0o700)
+        assert diagnostic["type"] == ("regular" if case == "type" else "directory")
+    assert provider.receipt is None
+
+
+def test_exact_nonroot_volume_archive_still_passes(tmp_path, monkeypatch):
+    provider = AssetProvider(tmp_path)
+    monkeypatch.setattr(
+        provider, "docker_invocation", lambda *_: (["fixed-local-docker"], {})
+    )
+    monkeypatch.setattr(
+        "tests.support.asset_provider.subprocess.run",
+        Mock(
+            return_value=subprocess.CompletedProcess(
+                [], 0, stdout=volume_archive(), stderr=b""
+            )
+        ),
+    )
+    provider.verify_data_volume()
+    assert provider.receipt is None
 
 
 @pytest.mark.parametrize("command", ["build", "create", "inspect", "remove", "copy"])

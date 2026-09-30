@@ -382,10 +382,26 @@ class AssetProvider:
     def verify_data_volume(self):
         # Before server execution the copy-up volume is empty. Docker cp supplies
         # actual tar metadata without a privileged shell/helper or host mount.
+        diagnostic = {
+            "stage": "invocation",
+            "returncode": None,
+            "archive_bytes": None,
+            "entry_count": None,
+            "directory": "unobserved",
+            "type": "unobserved",
+            "uid": None,
+            "gid": None,
+            "mode": None,
+        }
+
+        def numeric(value):
+            return value if type(value) is int and -(2**32) < value < 2**32 else None
+
         try:
             command, environment = self.docker_invocation(
                 "cp", self.container + ":/data", "-"
             )
+            diagnostic["stage"] = "command"
             result = subprocess.run(
                 command,
                 env=environment,
@@ -394,21 +410,63 @@ class AssetProvider:
                 timeout=15,
                 check=True,
             )
+            diagnostic["returncode"] = numeric(result.returncode)
+            diagnostic["stage"] = "archive_bound"
+            diagnostic["archive_bytes"] = numeric(len(result.stdout))
             if len(result.stdout) > 1048576:
                 raise ValueError
+            diagnostic["stage"] = "archive_parse"
             with tarfile.open(fileobj=io.BytesIO(result.stdout)) as archive:
                 entries = archive.getmembers()
-            if (
-                len(entries) != 1
-                or not entries[0].isdir()
-                or entries[0].name.rstrip("/") != "data"
-                or (entries[0].uid, entries[0].gid, entries[0].mode)
-                != (65532, 65532, 0o700)
+            diagnostic["entry_count"] = numeric(len(entries))
+            if entries:
+                entry = entries[0]
+                diagnostic.update(
+                    directory="expected_data"
+                    if entry.name.rstrip("/") == "data"
+                    else "unexpected",
+                    type="directory"
+                    if entry.isdir()
+                    else "regular"
+                    if entry.isfile()
+                    else "symlink"
+                    if entry.issym()
+                    else "hardlink"
+                    if entry.islnk()
+                    else "other",
+                    uid=numeric(entry.uid),
+                    gid=numeric(entry.gid),
+                    mode=numeric(entry.mode),
+                )
+            else:
+                diagnostic.update(directory="missing", type="missing")
+            diagnostic["stage"] = "entry_count"
+            if len(entries) != 1:
+                raise ValueError
+            diagnostic["stage"] = "entry_type"
+            if not entries[0].isdir():
+                raise ValueError
+            diagnostic["stage"] = "entry_name"
+            if entries[0].name.rstrip("/") != "data":
+                raise ValueError
+            diagnostic["stage"] = "entry_identity"
+            if (entries[0].uid, entries[0].gid, entries[0].mode) != (
+                65532,
+                65532,
+                0o700,
             ):
                 raise ValueError
-        except (OSError, ValueError, tarfile.TarError, subprocess.SubprocessError):
+        except (
+            OSError,
+            ValueError,
+            tarfile.TarError,
+            subprocess.SubprocessError,
+        ) as error:
+            if isinstance(error, subprocess.CalledProcessError):
+                diagnostic["returncode"] = numeric(error.returncode)
             raise RuntimeError(
-                "actual nonroot data volume UID/GID/mode verification failed"
+                "actual nonroot data volume UID/GID/mode verification failed: "
+                + json.dumps(diagnostic, sort_keys=True)
             ) from None
 
     @staticmethod
