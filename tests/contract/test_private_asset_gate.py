@@ -1,5 +1,8 @@
 """The asset result gate cannot accept a partial, skipped or substituted suite."""
 
+from contextlib import contextmanager
+from pathlib import Path
+from types import SimpleNamespace
 from xml.etree import ElementTree as ET
 
 import pytest
@@ -12,17 +15,166 @@ from scripts.check_private_asset_results import (
 
 
 def report(tmp_path, names=REQUIRED_CASES):
-    root = ET.Element("testsuites")
-    suite = ET.SubElement(root, "testsuite", tests="999", skipped="0", failures="0")
+    names = list(names)
+    root = ET.Element("testsuites", name="pytest tests")
+    suite = ET.SubElement(
+        root,
+        "testsuite",
+        name="pytest",
+        tests=str(len(names)),
+        skipped="0",
+        failures="0",
+        errors="0",
+        time="0.001",
+        timestamp="2026-10-01T00:00:00",
+        hostname="controlled-offline-fixture",
+    )
     for name in names:
         ET.SubElement(suite, "testcase", name=name, classname=CLASSNAME)
     path = tmp_path / "private-assets.xml"
-    ET.ElementTree(root).write(path)
+    ET.ElementTree(root).write(path, encoding="utf-8")
     return path
 
 
 def test_accepts_only_complete_private_asset_suite(tmp_path):
     assert verify_results(report(tmp_path)) == 14
+
+
+@pytest.mark.parametrize("counter", ["tests", "failures", "errors", "skipped"])
+@pytest.mark.parametrize("location", ["suite", "aggregate"])
+@pytest.mark.parametrize(
+    "value",
+    [
+        None,
+        "",
+        "true",
+        "false",
+        "-1",
+        "1.0",
+        "1e1",
+        "nan",
+        "inf",
+        " 0",
+        "0 ",
+        "+0",
+        "٠",
+        "1",
+    ],
+)
+def test_incoherent_receipt_counter_cannot_hide_passing_cases(
+    tmp_path, counter, location, value
+):
+    path = report(tmp_path)
+    tree = ET.parse(path)
+    root = tree.getroot()
+    parent = root.find("testsuite") if location == "suite" else root
+    if location == "aggregate":
+        parent.attrib.update(tests="14", failures="0", errors="0", skipped="0")
+    if value is None:
+        del parent.attrib[counter]
+    else:
+        parent.set(counter, value)
+    tree.write(path)
+    with pytest.raises(ValueError, match="counter"):
+        verify_results(path)
+
+
+@pytest.mark.parametrize("count", ["0", "13", "15", "999"])
+@pytest.mark.parametrize("direct_root", [False, True])
+def test_suite_case_count_must_match_actual_receipt(tmp_path, count, direct_root):
+    path = report(tmp_path)
+    tree = ET.parse(path)
+    suite = tree.getroot().find("testsuite")
+    suite.set("tests", count)
+    ET.ElementTree(suite if direct_root else tree.getroot()).write(path)
+    with pytest.raises(ValueError, match="counter"):
+        verify_results(path)
+
+
+def test_coherent_optional_aggregate_counters_are_supported(tmp_path):
+    path = report(tmp_path)
+    tree = ET.parse(path)
+    tree.getroot().attrib.update(tests="14", failures="0", errors="0", skipped="0")
+    tree.write(path)
+    assert verify_results(path) == 14
+
+
+def test_all_nonpassing_counters_refuse_fourteen_passing_nodes(tmp_path):
+    path = report(tmp_path)
+    tree = ET.parse(path)
+    tree.getroot().find("testsuite").attrib.update(
+        failures="1", errors="1", skipped="1"
+    )
+    tree.write(path)
+    with pytest.raises(ValueError, match="counter"):
+        verify_results(path)
+
+
+def test_input_at_capture_bound_is_supported(tmp_path):
+    path = report(tmp_path)
+    data = path.read_bytes()
+    path.write_bytes(data + b" " * (4 * 1024 * 1024 - len(data)))
+    assert verify_results(path) == 14
+
+
+@pytest.mark.parametrize("shape", ["extra-empty-suite", "split-cases"])
+def test_multiple_suites_cannot_camouflage_mandatory_receipt(tmp_path, shape):
+    path = report(tmp_path)
+    tree = ET.parse(path)
+    root = tree.getroot()
+    suite = root.find("testsuite")
+    extra = ET.SubElement(
+        root,
+        "testsuite",
+        name="pytest",
+        tests="0",
+        failures="0",
+        errors="0",
+        skipped="0",
+    )
+    if shape == "split-cases":
+        case = suite.find("testcase")
+        suite.remove(case)
+        suite.set("tests", "13")
+        extra.append(case)
+        extra.set("tests", "1")
+    tree.write(path)
+    with pytest.raises(ValueError, match="structure"):
+        verify_results(path)
+
+
+def test_oversize_input_is_bounded_during_capture_despite_stale_size(
+    tmp_path, monkeypatch
+):
+    path = tmp_path / "private-assets.xml"
+    bound = 4 * 1024 * 1024
+    path.write_bytes(b" " * (bound + 1))
+    original_stat = Path.stat
+    original_open = Path.open
+
+    def stale_stat(self, *args, **kwargs):
+        if self == path:
+            return SimpleNamespace(st_size=0)
+        return original_stat(self, *args, **kwargs)
+
+    @contextmanager
+    def bounded_open(self, *args, **kwargs):
+        with original_open(self, *args, **kwargs) as stream:
+            if self != path:
+                yield stream
+                return
+
+            class BoundedReader:
+                def read(self, size=-1):
+                    assert 0 < size <= bound + 1, "result capture must bound its read"
+                    return stream.read(size)
+
+            yield BoundedReader()
+
+    monkeypatch.setattr(Path, "stat", stale_stat)
+    monkeypatch.setattr(Path, "open", bounded_open)
+    with pytest.raises(ValueError, match="bound"):
+        verify_results(path)
 
 
 @pytest.mark.parametrize("missing", sorted(REQUIRED_CASES))

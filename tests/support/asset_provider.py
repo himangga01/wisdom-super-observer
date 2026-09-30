@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import ipaddress
 import json
 import os
 import re
@@ -24,6 +25,7 @@ from tests.support.asset_minio import (
     SERVER_SHA,
     SERVER_VERSION,
     LocalDocker,
+    LoopbackRelay,
     download_artifact,
     private_file,
     provision_users,
@@ -33,6 +35,13 @@ from tests.support.asset_minio import (
 
 LABEL = "wso.assets.owner"
 SECURITY_PROFILE = "minio-inert-acl-dedicated-bucket-v1"
+
+
+def no_host_bindings(value):
+    return value is None or (
+        isinstance(value, dict)
+        and all(binding is None or binding == [] for binding in value.values())
+    )
 
 
 def private_json(path, value):
@@ -107,6 +116,8 @@ class AssetProvider:
         self.receipt = None
         self.outcomes = []
         self.docker_target = None
+        self.relay = None
+        self.relay_pin = None
 
     def docker_invocation(self, *arguments):
         if self.docker_target is None:
@@ -170,9 +181,13 @@ class AssetProvider:
             ("network", self.network, ("--internal",)),
         ):
             self.created.append((kind, name))
-            self.docker(
+            identity = self.docker(
                 kind, "create", *extra, "--label", f"{LABEL}={self.owner}", name
             )
+            if kind == "network":
+                if not re.fullmatch(r"[0-9a-f]{64}", identity):
+                    raise RuntimeError("owned network identity unavailable")
+                self.network_id = identity
         self.env_file = self.work / "server.env"
         private_file(
             self.env_file,
@@ -187,7 +202,7 @@ class AssetProvider:
         ):
             raise RuntimeError("bootstrap environment file is not private")
         self.created.append(("container", self.container))
-        self.docker(
+        self.container_id = self.docker(
             "create",
             "--name",
             self.container,
@@ -197,8 +212,6 @@ class AssetProvider:
             self.network,
             "--log-driver",
             "none",
-            "--publish",
-            "127.0.0.1::9000",
             "--cap-drop=ALL",
             "--security-opt=no-new-privileges:true",
             "--read-only",
@@ -220,20 +233,23 @@ class AssetProvider:
             ":9001",
             "--quiet",
         )
+        if not re.fullmatch(r"[0-9a-f]{64}", self.container_id):
+            raise RuntimeError("owned container identity unavailable")
         self.assert_container_mapping(self.inspect("container", self.container))
         self.verify_data_volume()
         self.docker("start", self.container)
         state = self.inspect("container", self.container)
         self.assert_container_mapping(state)
-        ports = state["NetworkSettings"]["Ports"].get("9000/tcp")
-        if (
-            not isinstance(ports, list)
-            or len(ports) != 1
-            or ports[0]["HostIp"] != "127.0.0.1"
-            or not ports[0]["HostPort"].isdigit()
-        ):
-            raise RuntimeError("provider must publish only owned loopback S3")
-        self.endpoint = "http://127.0.0.1:" + ports[0]["HostPort"]
+        self.relay = LoopbackRelay(self.relay_target, self.work)
+        cutoff = time.monotonic() + self.relay.VALIDATION_SECONDS
+        observed = self.read_relay_identity(
+            cutoff, self.relay.stop, self.relay.commands
+        )
+        if self.relay.stop.is_set() or time.monotonic() >= cutoff:
+            raise RuntimeError("owned relay startup validation cutoff")
+        self.relay_pin = observed
+        self.relay.start(deadline=cutoff)
+        self.endpoint = "http://127.0.0.1:" + str(self.relay.address[1])
         self.configure_clients()
         deadline = time.monotonic() + 60
         while True:
@@ -308,7 +324,6 @@ class AssetProvider:
         mounts = state["Mounts"]
         data = [item for item in mounts if item["Destination"] == "/data"]
         environment = dict(item.split("=", 1) for item in state["Config"]["Env"])
-        binding = host.get("PortBindings", {}).get("9000/tcp", [])
         temporary = host.get("Tmpfs", {}).get("/tmp", "").split(",")
         if (
             state["Name"] != "/" + self.container
@@ -348,12 +363,8 @@ class AssetProvider:
             or host["NanoCpus"] != 2000000000
             or host["PidsLimit"] != 128
             or host["LogConfig"]["Type"] != "none"
-            or host.get("PortBindings") is None
-            or set(host["PortBindings"]) != {"9000/tcp"}
-            or len(binding) != 1
-            or binding[0].get("HostIp") != "127.0.0.1"
-            or not isinstance(binding[0].get("HostPort"), str)
-            or (binding[0]["HostPort"] != "" and not binding[0]["HostPort"].isdigit())
+            or not no_host_bindings(host.get("PortBindings"))
+            or not no_host_bindings(state["NetworkSettings"].get("Ports"))
             or set(host.get("Tmpfs", {})) != {"/tmp"}
             or len(temporary) != 8
             or set(temporary)
@@ -382,6 +393,99 @@ class AssetProvider:
             raise RuntimeError("private volume/internal network mapping mismatch")
         image = self.inspect("image", self.image)
         self.assert_image(image)
+
+    def verify_relay_identity(self, state, network):
+        try:
+            endpoints = state["NetworkSettings"]["Networks"]
+            endpoint = endpoints[self.network]
+            address = ipaddress.IPv4Address(endpoint["IPAddress"])
+            configs = network["IPAM"]["Config"]
+            if len(configs) != 1:
+                raise ValueError
+            subnet = ipaddress.IPv4Network(configs[0]["Subnet"])
+            gateway = ipaddress.IPv4Address(configs[0]["Gateway"])
+            membership = network["Containers"][self.container_id]
+            member_address = ipaddress.IPv4Interface(membership["IPv4Address"])
+            observed = (
+                state["Id"],
+                network["Id"],
+                endpoint["EndpointID"],
+                str(address),
+            )
+            if (
+                state["Id"] != self.container_id
+                or state["Name"] != "/" + self.container
+                or state["Config"]["Labels"].get(LABEL) != self.owner
+                or state["State"]["Running"] is not True
+                or set(endpoints) != {self.network}
+                or network["Id"] != self.network_id
+                or network["Name"] != self.network
+                or network["Labels"].get(LABEL) != self.owner
+                or network["Driver"] != "bridge"
+                or network["Internal"] is not True
+                or network["EnableIPv6"] is not False
+                or endpoint["NetworkID"] != self.network_id
+                or not re.fullmatch(r"[0-9a-f]{64}", endpoint["EndpointID"])
+                or endpoint.get("Gateway")
+                or endpoint.get("IPv6Gateway")
+                or endpoint.get("GlobalIPv6Address")
+                or set(network["Containers"]) != {self.container_id}
+                or membership["Name"] != self.container
+                or membership["EndpointID"] != endpoint["EndpointID"]
+                or membership.get("IPv6Address")
+                or member_address.ip != address
+                or member_address.network != subnet
+                or not subnet.is_private
+                or address not in subnet
+                or gateway not in subnet
+                or address
+                in {subnet.network_address, subnet.broadcast_address, gateway}
+                or address.is_unspecified
+                or address.is_loopback
+                or address.is_link_local
+                or address.is_multicast
+                or address.is_reserved
+                or not address.is_private
+                or not no_host_bindings(state["HostConfig"]["PortBindings"])
+                or not no_host_bindings(state["NetworkSettings"]["Ports"])
+                or (self.relay_pin is not None and observed != self.relay_pin)
+            ):
+                raise ValueError
+            return observed
+        except (KeyError, TypeError, ValueError, AttributeError):
+            raise RuntimeError("owned relay target identity differs") from None
+
+    def read_relay_identity(self, deadline, stop, commands):
+        states = []
+        for kind, identity in (
+            ("container", self.container_id),
+            ("network", self.network_id),
+        ):
+            if stop.is_set() or time.monotonic() >= deadline:
+                raise RuntimeError("owned relay validation cutoff")
+            arguments = (
+                ("inspect", identity)
+                if kind == "container"
+                else (kind, "inspect", identity)
+            )
+            invocation, environment = self.docker_invocation(*arguments)
+            result = commands.run(invocation, environment, deadline)
+            if (
+                not isinstance(result, list)
+                or len(result) != 1
+                or not isinstance(result[0], dict)
+            ):
+                raise RuntimeError("owned relay inspect shape differs")
+            states.append(result[0])
+        observed = self.verify_relay_identity(*states)
+        if stop.is_set() or time.monotonic() >= deadline:
+            raise RuntimeError("owned relay validation cutoff")
+        return observed
+
+    def relay_target(self, deadline, stop, commands):
+        if self.relay_pin is None:
+            raise RuntimeError("owned relay target not pinned")
+        return self.read_relay_identity(deadline, stop, commands)[3]
 
     def verify_data_volume(self):
         # Before server execution the copy-up volume is empty. Docker cp supplies
@@ -1035,6 +1139,9 @@ class AssetProvider:
         admin.delete_object(Bucket=bucket, Key=foreign)
         admin.delete_bucket(Bucket=foreign_bucket)
         self.assert_container_mapping(self.inspect("container", self.container))
+        if self.relay is None:
+            raise RuntimeError("owned relay unavailable at acceptance")
+        self.relay.assert_healthy()
         self.receipt = {
             "provider": "MinIO",
             "version": SERVER_VERSION,
@@ -1052,6 +1159,19 @@ class AssetProvider:
 
     def close(self):
         failures = []
+        if self.relay is not None:
+            try:
+                self.relay.close()
+            except Exception:  # noqa: BLE001 -- never recycle under unknown relay ownership
+                self.receipt = None
+                # Retain exact Docker/private resources while forwarding ownership
+                # is unsettled. Never recycle the target under a late worker.
+                raise RuntimeError(
+                    "owned relay cleanup unsettled; target retained"
+                ) from None
+            if self.relay.failed:
+                self.receipt = None
+                failures.append("relay-transport")
         for client in self.clients.values():
             try:
                 client.close()

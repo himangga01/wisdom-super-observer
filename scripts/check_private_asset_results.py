@@ -26,11 +26,24 @@ REQUIRED_CASES = frozenset(
 CLASSNAME = "tests.integration.test_private_assets"
 
 
+def _verify_counters(node: ET.Element, case_count: int) -> None:
+    expected = {"tests": case_count, "failures": 0, "errors": 0, "skipped": 0}
+    for name, count in expected.items():
+        value = node.get(name)
+        if value is None or re.fullmatch(r"[0-9]+", value) is None:
+            raise ValueError("private asset result has missing or malformed counters")
+        # Compare normalized digits without converting arbitrary-length input to int.
+        if (value.lstrip("0") or "0") != str(count):
+            raise ValueError("private asset result has inconsistent counters")
+
+
 def verify_results(path: Path) -> int:
     try:
-        if path.stat().st_size > 4 * 1024 * 1024:
+        bound = 4 * 1024 * 1024
+        with path.open("rb") as stream:
+            data = stream.read(bound + 1)
+        if len(data) > bound:
             raise ValueError("private asset result file exceeds the bound")
-        data = path.read_bytes()
         try:
             xml = data.decode("utf-8-sig")
         except UnicodeDecodeError:
@@ -65,11 +78,11 @@ def verify_results(path: Path) -> int:
             child.tag not in allowed_children[parent.tag] for child in parent
         ):
             raise ValueError("private asset results have unsupported structure")
-    cases = (
-        root.findall("testsuite/testcase")
-        if root.tag == "testsuites"
-        else root.findall("testcase")
-    )
+    suites = root.findall("testsuite") if root.tag == "testsuites" else [root]
+    if len(suites) != 1:
+        raise ValueError("private asset results have unsupported structure")
+    suite = suites[0]
+    cases = suite.findall("testcase")
     observed = set()
     for case in cases:
         name = case.get("name", "")
@@ -80,6 +93,11 @@ def verify_results(path: Path) -> int:
         observed.add(name)
     if observed != REQUIRED_CASES:
         raise ValueError("required private asset cases are missing")
+    _verify_counters(suite, len(cases))
+    if root.tag == "testsuites" and any(
+        name in root.attrib for name in ("tests", "failures", "errors", "skipped")
+    ):
+        _verify_counters(root, len(cases))
     return len(observed)
 
 

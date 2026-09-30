@@ -13,6 +13,145 @@ from botocore.exceptions import ClientError
 from tests.support.asset_provider import AssetProvider, policy_config
 
 
+def relay_identity_fixture(tmp_path):
+    provider = AssetProvider(tmp_path)
+    provider.container_id = "a" * 64
+    provider.network_id = "b" * 64
+    provider.relay_pin = (
+        provider.container_id,
+        provider.network_id,
+        "c" * 64,
+        "172.28.0.2",
+    )
+    state = {
+        "Id": provider.container_id,
+        "Name": "/" + provider.container,
+        "Config": {"Labels": {"wso.assets.owner": provider.owner}},
+        "State": {"Running": True},
+        "HostConfig": {"PortBindings": None},
+        "NetworkSettings": {
+            "Ports": {"9000/tcp": None},
+            "Networks": {
+                provider.network: {
+                    "NetworkID": provider.network_id,
+                    "EndpointID": "c" * 64,
+                    "IPAddress": "172.28.0.2",
+                    "Gateway": "",
+                    "IPv6Gateway": "",
+                    "GlobalIPv6Address": "",
+                }
+            },
+        },
+    }
+    network = {
+        "Id": provider.network_id,
+        "Name": provider.network,
+        "Labels": {"wso.assets.owner": provider.owner},
+        "Driver": "bridge",
+        "Internal": True,
+        "EnableIPv6": False,
+        "IPAM": {"Config": [{"Subnet": "172.28.0.0/16", "Gateway": "172.28.0.1"}]},
+        "Containers": {
+            provider.container_id: {
+                "Name": provider.container,
+                "EndpointID": "c" * 64,
+                "IPv4Address": "172.28.0.2/16",
+                "IPv6Address": "",
+            }
+        },
+    }
+    return provider, state, network
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "replacement",
+        "network",
+        "endpoint",
+        "address",
+        "foreign",
+        "subnet",
+        "gateway",
+        "loopback",
+        "stopped",
+        "external",
+        "ipv6",
+        "public-binding",
+    ],
+)
+def test_relay_target_refuses_replacement_or_changed_authority(tmp_path, mutation):
+    provider, state, network = relay_identity_fixture(tmp_path)
+    endpoint = state["NetworkSettings"]["Networks"][provider.network]
+    if mutation == "replacement":
+        state["Id"] = "d" * 64
+    elif mutation == "network":
+        endpoint["NetworkID"] = "d" * 64
+    elif mutation == "endpoint":
+        endpoint["EndpointID"] = "d" * 64
+    elif mutation == "address":
+        endpoint["IPAddress"] = "172.28.0.3"
+    elif mutation == "foreign":
+        network["Containers"]["d" * 64] = dict(
+            network["Containers"][provider.container_id]
+        )
+    elif mutation == "subnet":
+        network["IPAM"]["Config"][0]["Subnet"] = "192.168.0.0/24"
+    elif mutation == "gateway":
+        endpoint["Gateway"] = "172.28.0.1"
+    elif mutation == "loopback":
+        endpoint["IPAddress"] = "127.0.0.1"
+    elif mutation == "stopped":
+        state["State"]["Running"] = False
+    elif mutation == "external":
+        network["Internal"] = False
+    elif mutation == "ipv6":
+        network["EnableIPv6"] = True
+    else:
+        state["NetworkSettings"]["Ports"]["9000/tcp"] = [
+            {"HostIp": "0.0.0.0", "HostPort": "1234"}
+        ]
+    with pytest.raises(RuntimeError, match="relay target identity"):
+        provider.verify_relay_identity(state, network)
+    assert provider.relay_pin == ("a" * 64, "b" * 64, "c" * 64, "172.28.0.2")
+    assert provider.receipt is None
+
+
+def test_relay_target_accepts_exact_pinned_private_endpoint(tmp_path):
+    provider, state, network = relay_identity_fixture(tmp_path)
+    assert provider.verify_relay_identity(state, network) == provider.relay_pin
+
+
+def test_any_host_publication_is_refused_even_if_loopback(tmp_path):
+    provider, state, network = relay_identity_fixture(tmp_path)
+    state["HostConfig"]["PortBindings"] = {
+        "9000/tcp": [{"HostIp": "127.0.0.1", "HostPort": "1234"}]
+    }
+    with pytest.raises(RuntimeError, match="relay target identity"):
+        provider.verify_relay_identity(state, network)
+
+
+def test_initial_relay_pin_refuses_reserved_ipv4(tmp_path):
+    provider, state, network = relay_identity_fixture(tmp_path)
+    provider.relay_pin = None
+    state["NetworkSettings"]["Networks"][provider.network]["IPAddress"] = "240.28.0.2"
+    network["IPAM"]["Config"] = [{"Subnet": "240.28.0.0/16", "Gateway": "240.28.0.1"}]
+    network["Containers"][provider.container_id]["IPv4Address"] = "240.28.0.2/16"
+    with pytest.raises(RuntimeError, match="relay target identity"):
+        provider.verify_relay_identity(state, network)
+
+
+@pytest.mark.parametrize("field", ["host", "ports"])
+def test_relay_unknown_publication_shape_is_refused(tmp_path, field):
+    provider, state, network = relay_identity_fixture(tmp_path)
+    if field == "host":
+        del state["HostConfig"]["PortBindings"]
+    else:
+        del state["NetworkSettings"]["Ports"]
+    with pytest.raises(RuntimeError, match="relay target identity"):
+        provider.verify_relay_identity(state, network)
+
+
 def error(status, code):
     return ClientError(
         {"ResponseMetadata": {"HTTPStatusCode": status}, "Error": {"Code": code}},
