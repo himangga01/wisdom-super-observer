@@ -261,11 +261,17 @@ cleanup also passed. General Chrome/Edge preflight and Compose were not selected
 This run is foundation evidence; it does not exercise the private-asset provider
 or lifecycle acceptance.
 
-### Latest integrated Linux foundation run
+### Previous integrated Linux foundation run
 
 [Run 36760448179, job 110041356232](https://github.com/himangga01/wisdom-super-observer/actions/runs/36760448179/job/110041356232) at product HEAD `0deeb79024fccf6bb7e6e3157aceadd39674da77` succeeded. It passed 1200 ordinary Python cases with zero skips in 129.82 seconds and all ten actual Celery/Valkey recovery cases with zero skips in 247.76 seconds; the recovery checker confirmed the exact ten required cases. Ruff and strict mypy on 40 source files passed, as did frontend typecheck/lint/build and 15 frontend unit cases. Twenty canonical contract exports were verified twice, the 77-row checker passed, and HTTPS Chrome passed 26 cases in 47.1 seconds. Valkey smoke and owned PostgreSQL cleanup succeeded.
 
-This run selected the actual PostgreSQL migration/provisioning gate, including the isolated `0003a_assets` migration and nine-role integration in the ordinary test invocation; only the aggregate pytest count is recorded here. PostgreSQL used the recorded digest `d74eeac9a635390a49bc21bd49fccd973de707e2a53a76ac49b552b8712ec46f`; the pinned Valkey digest was unchanged. This run closes the product-Linux foundation boundary at `0deeb79`. It predates later gate/relay changes, including the scoped relay fix approval, and does not cover them. General Chrome/Edge preflight and Compose were not selected. Provider privacy/IAM, the authenticated baseline RED proof, and the full fourteen-case GREEN gate remain open.
+This run selected the actual PostgreSQL migration/provisioning gate, including the isolated `0003a_assets` migration and nine-role integration in the ordinary test invocation; only the aggregate pytest count is recorded here. PostgreSQL used the recorded digest `d74eeac9a635390a49bc21bd49fccd973de707e2a53a76ac49b552b8712ec46f`; the pinned Valkey digest was unchanged. It is the distinct 0deeb79 receipt and does not cover the later f79c83 foundation state. General Chrome/Edge preflight and Compose were not selected. Provider privacy/IAM, the authenticated baseline RED proof, and the full fourteen-case GREEN gate remained open.
+
+### Latest integrated Linux foundation run
+
+[Run 36765314386, job 110057881132](https://github.com/himangga01/wisdom-super-observer/actions/runs/36765314386/job/110057881132) at product HEAD `f79c83eb01ff4486b097dd159d1d1f36dabd4238` succeeded. It passed 1375 ordinary Python cases with zero skips in 139.16 seconds and all ten actual Celery/Valkey recovery cases with zero skips in 251.40 seconds; the strict checker confirmed exactly ten. Ruff and strict mypy on 40 source files passed, as did frontend typecheck/lint/build and 15 frontend unit cases. Twenty canonical exports were verified twice, the 77-row checker passed, and HTTPS Chrome passed 26 cases in 55.5 seconds. Valkey smoke and owned PostgreSQL cleanup succeeded.
+
+This is a separate newer foundation receipt. PostgreSQL used the same recorded digest `d74eeac9a635390a49bc21bd49fccd973de707e2a53a76ac49b552b8712ec46f`; the pinned Valkey digest was unchanged. This run predates and excludes the later v2 control-profile and optional public-proof source changes. It does not establish actual provider privacy/IAM, authenticated baseline RED, or the full fourteen-case T05A GREEN gate. No per-case result is inferred from the aggregate ordinary Python count.
 
 ### Third private asset probe: data volume verification failed
 
@@ -303,6 +309,12 @@ That source behavior is consistent with the fixture publication failure, but it
 does not reveal the uncaptured port fields from the run. A fixture-only opaque
 loopback TCP relay topology has been accepted for implementation; its code and
 actual Linux connectivity remain unverified.
+
+### Sixth sealed private asset baseline probe: control-route setup failed
+
+[Run 36765314359, job 110057880890](https://github.com/himangga01/wisdom-super-observer/actions/runs/36765314359/job/110057880890) used product commit `f79c83eb01ff4486b097dd159d1d1f36dabd4238` and reported one setup error in 9.54 seconds. Locked dependencies, the owned PostgreSQL fixture, and the overlay/cleanup steps succeeded. The probe reached relay S3 control preflight, then the shared-gateway administrative bucket-route mutation returned HTTP 400 with `MalformedXML`. The strict checker refused this setup receipt: it is not a provider authorization result, actual privacy/IAM acceptance, completed HTTP preflight, or a genuine missing-route RED proof. This historical probe predates the later independently reviewed v2 control-profile and optional public-proof source changes; the four parser and two existing-bucket CreateBucket checks have not been completed as an accepted provider profile.
+
+The first ownership PUT is a source inference, not an operation captured by this run. The returned 400 characterizes only that observed route/request outcome and cannot be treated as an IAM denial or as the full v2 profile result. The complete operation-specific v2 checks, unchanged-state/effects bundle, authenticated HTTP/CSRF preflight, and sealed missing-route assertion remain required.
 
 ## Evidence handling
 

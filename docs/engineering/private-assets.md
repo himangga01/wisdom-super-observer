@@ -141,18 +141,64 @@ in 1.11 seconds with Ruff and formatting also passing. This source fix approval
 does not establish actual Linux connectivity. The relay is not a production
 proxy or provider-security approval.
 
+### Fixture-only MinIO control profile v2
+
+The reviewed fixture design is `minio-inert-acl-dedicated-bucket-v2`; its
+two-file source change and two-file strict consumer change each received
+independent scoped approval with zero Critical, Important or Minor findings.
+The consumer retains the original 77-case profile surface.
+The implementation is source-reviewed, while actual Linux/provider acceptance
+remains pending. It preserves schema 1, the exact eleven
+receipt fields, pinned binary/release/source inputs, and the existing
+capability string. It supersedes the v1 unsupported-control-PUT expectation;
+valid v1 and SeaweedFS receipts are refused. Gateway performs runtime object
+reads; gateway and cleanup perform control checks, while cleanup retains no
+read capability. Bootstrap remains trusted configuration and is excluded from
+control PUT/DELETE and ordinary CreateBucket probes.
+
+The v2 control profile requires four valid AWS control PUT attempts to return
+exact HTTP 400 / `MalformedXML`, plus two ordinary CreateBucket attempts against
+the existing owned bucket to return exact HTTP 403 / `AccessDenied`. The latter
+only tests that existing bucket/action; it proves no general new-bucket or
+ownership authority. All six unsupported GET checks and the 63-effect
+public-grant matrix remain unchanged; the normal control sequence has 24
+attempts. Each parser/CreateBucket attempt requires signed original bytes and
+HEAD, private object and bucket ACL, exact absent policy 404 / `NoSuchBucketPolicy`,
+anonymous GET/HEAD denial, and the owned bucket remaining present. Supported
+mutation denials and control DELETEs remain exact 403 / `AccessDenied`; the
+unsupported GETs remain exact 501 / `NotImplemented`. A parser 400 is not an
+IAM denial. Unexpected responses require bounded effects diagnostics, and failed
+effects readback cannot produce an acceptance receipt. No provider acceptance
+follows from this design or from the setup attempt below.
+
+The v2 producer’s 251-case GREEN selection passed in 1.58 seconds; the root’s
+fresh selection passed 251 in 1.73 seconds. Ruff, formatting of four files, and
+configured product-source mypy on 40 files passed. A separate optional
+three-file public-proof addition received independent scoped approval with zero
+findings; its 82-case selection passed in 0.39 seconds, the root’s fresh
+selection passed 82 in 0.44 seconds, Ruff/formatting of two files and script
+mypy passed. When enabled, this optional flag retains an exact validated
+canonical receipt and fixed minimal DERIVED JUnit only after strict actual RED
+success. Default behavior and rejection behavior are unchanged; the workflow
+only adds the flag and uploads no artifacts or changes to acceptance criteria.
+These are source-contract and local test results, not proof of provider
+behavior.
+
+The sixth sealed baseline attempt, [run 36765314359](linux-ci.md#sixth-sealed-private-asset-baseline-probe-control-route-setup-failed), reached relay S3 control preflight but stopped when the shared-gateway administrative bucket-route mutation returned 400 / `MalformedXML`. This did not establish IAM denial or provider compatibility. The first ownership PUT is a source inference; the run did not capture the operation trace. The two ordinary CreateBucket checks and remaining control/effects checks were not accepted as complete; authenticated HTTP/CSRF preflight and genuine missing-route RED were not reached. This attempt predates the independently reviewed v2 source changes above.
+
 ### Integrated product Linux evidence and remaining T05A gates
 
-The [integrated Linux run](linux-ci.md#latest-integrated-linux-foundation-run) at product HEAD `0deeb79024fccf6bb7e6e3157aceadd39674da77` passed 1200 ordinary Python cases and ten actual Celery/Valkey recovery cases, both with zero skips. Its ordinary pytest invocation included the isolated `0003a_assets` migration and nine-role integration; the published evidence is aggregate only. This validates the product foundation through that commit, not provider privacy/IAM or the private asset HTTP lifecycle.
+The prior [integrated Linux run](linux-ci.md#previous-integrated-linux-foundation-run) at product HEAD `0deeb79024fccf6bb7e6e3157aceadd39674da77` passed 1200 ordinary Python cases and ten actual Celery/Valkey recovery cases, both with zero skips. Its ordinary pytest invocation included the isolated `0003a_assets` migration and nine-role integration; the published evidence is aggregate only. The newer [foundation run](linux-ci.md#latest-integrated-linux-foundation-run) at `f79c83e` passed 1375 ordinary Python cases and ten actual recovery cases, both with zero skips, but predates and excludes the v2 control-profile and optional public-proof source changes. Neither aggregate establishes actual provider privacy/IAM, authenticated baseline RED, or full fourteen-case acceptance.
 
 A later two-file receipt-safety correction passed 247 scoped cases
 and received an independent review with zero Critical or Important findings. It
 improves result-gate validation only and does not prove provider behavior. A
 separate four-file fixture relay fix round then addressed the three Important
 findings and received scoped approval with no new Critical or Important findings.
-Neither later change is included in the integrated Linux run. Actual provider
-privacy/IAM, authenticated baseline RED, full fourteen-case GREEN, and relay
-connectivity remain open.
+These scoped changes do not establish actual provider privacy/IAM, authenticated
+baseline RED, full fourteen-case GREEN, or actual relay connectivity. The older
+`0deeb79` receipt predates them; the newer foundation aggregate does not replace
+their provider-specific gates.
 
 ## Local helper containment
 
@@ -191,7 +237,10 @@ strict GREEN gate requires all fourteen real lifecycle cases, including crypto
 tampering, expiry/revocation, parent crops, genuine Celery restart, multipart
 pagination, orphan cleanup and key rotation. Real PostgreSQL permission,
 lock-wait and migration lifecycle checks are also required. The isolated Windows
-migration round trip has one passing execution. The integrated Linux run covers
-product HEAD `0deeb79`; later gate/relay changes are not covered.
-Source/offline results, foundation CI and relay implementation do not substitute
-for provider and lifecycle acceptance.
+migration round trip has one passing execution. The `0deeb79` foundation receipt
+predates the relay deadline fix; the newer `f79c83e` receipt predates and excludes
+the v2 control-profile and optional public-proof source changes. Neither
+foundation aggregate substitutes for provider and lifecycle acceptance. The
+fourteen-case design review still has zero Critical, three Important and one
+Minor unresolved findings; correction work remains in ignored review materials.
+No full fourteen-case GREEN result exists.

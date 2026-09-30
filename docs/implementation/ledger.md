@@ -14,7 +14,7 @@ This ledger tracks executable service work. The separate [parity ledger](../inte
 | W00 atomic parity ledger | Static 77-case seed and desktop API preflight implemented; false-positive paths closed | 31 focused tests passed; checker 77/77 rows, zero errors; headless Chrome/Edge API probe 2/2 | Trusted W24 run registry and comparator; runtime reachability, Android/iOS/media/permission checks, support matrix sign-off; no `MATCHED` rows and `release_ready=false` |
 | W01 TVT bridge feasibility | Static handoff, frozen 199-operation manifest and declaration inventories implemented | 10 schema tests passed; 77 cases / 199 candidate operations; 281 request classes and 299 native declarations inventoried | Vendor rights, runtime fixtures and pilot; all six remote G-P1 families `BLOCKED` |
 | T05 durable jobs | Database-owned requests, outbox/inbox, restricted dispatcher/worker, fencing, cancellation, external uncertainty, status/items API and job-bound secret primitives implemented; task and milestone integration/fix reviews approved | [Actual Linux run 36716200713](https://github.com/himangga01/wisdom-super-observer/actions/runs/36716200713): 537 Python cases and all ten required real process/broker recovery cases, zero skips; no remaining Critical/Important review findings | Generic credential handlers fail CAPABILITY_UNSUPPORTED until the owning executor exists; no production IMPORT/REGISTRATION handler. Deployment and vendor effects remain pending |
-| T05A private assets | In progress; source-reviewed contracts/primitives and fixture-only relay topology; relay deadline fix received scoped approval | [Latest integrated foundation run](../engineering/linux-ci.md#latest-integrated-linux-foundation-run) passed; [latest provider attempt](../engineering/linux-ci.md#fifth-private-asset-probe-loopback-publication-check-failed) still failed during setup | Actual provider privacy/IAM and HTTP preflight, complete fourteen-case GREEN acceptance, later gate/relay changes on Linux, and whole APK parity |
+| T05A private assets | In progress; MinIO v2 fixture source, strict consumers and optional public-proof source received scoped approval | [Latest integrated foundation run](../engineering/linux-ci.md#latest-integrated-linux-foundation-run) passed; [latest provider attempt](../engineering/linux-ci.md#sixth-sealed-private-asset-baseline-probe-control-route-setup-failed) stopped during setup | Actual provider privacy/IAM and HTTP preflight, complete fourteen-case GREEN acceptance, actual relay connectivity, and whole APK parity |
 | W02–W25 service features | Pending | None | Private storage prerequisite and family-specific gates |
 
 ## Previous integrated verification — 2026-09-30
@@ -103,19 +103,34 @@ must prove actual provider and authentication preflight before the missing route
 assertion. No S3/lifecycle acceptance or APK parity is claimed at this stage.
 
 The [latest integrated Linux foundation run](../engineering/linux-ci.md#latest-integrated-linux-foundation-run)
-at `0deeb79` passed 1200 ordinary Python cases and ten actual Celery/Valkey
-recovery cases, with zero skips, plus frontend/browser gates. It also included
-isolated `0003a_assets` migration/nine-role integration in the ordinary pytest
-invocation; no per-case count is recorded. The prior
+at `f79c83e` passed 1375 ordinary Python cases and ten actual Celery/Valkey
+recovery cases, with zero skips, plus frontend/browser gates. This run predates
+and excludes the later v2 control-profile and optional public-proof source
+changes. Those v2 source and strict-consumer deltas each received independent
+scoped approval with zero findings; the producer passed 251 focused cases and
+the root rerun passed 251, while the consumer preserves the original 77-case
+surface. The optional public-proof change also received scoped approval with
+zero findings and passed 82 focused cases plus a fresh root rerun. These focused
+source checks do not establish provider acceptance. The prior
+[integrated run](../engineering/linux-ci.md#previous-integrated-linux-foundation-run)
+at `0deeb79` passed 1200 ordinary cases and ten actual recovery cases, zero
+skips, and included isolated `0003a_assets` migration/nine-role integration in
+the ordinary pytest invocation; no per-case count is recorded. The prior
 [foundation run](../engineering/linux-ci.md#previous-recorded-foundation-run)
 at `e3865df` passed 855 ordinary cases and ten actual recovery cases.
 
-Five separate private-asset probes have failed during setup, not at HTTP:
+Six separate private-asset probes have failed during setup, not at HTTP:
 SeaweedFS lacked public-access-block support; the required ACL/grant refusal was
 not proven; one MinIO volume check did not preserve its observed metadata; a later
-run captured UID/GID `65532:65532` with mode `0755`; and the newest passed the
+run captured UID/GID `65532:65532` with mode `0755`; and the fifth passed the
 `0700` volume gate but failed loopback publication, with actual port fields not
-captured. Strict RED receipts were rejected. Pinned [Moby v28.0.4 source](https://github.com/moby/moby/blob/v28.0.4/daemon/network.go#L860)
+captured. The sixth [sealed baseline probe](../engineering/linux-ci.md#sixth-sealed-private-asset-baseline-probe-control-route-setup-failed)
+reached relay S3 control preflight, then a shared-gateway administrative
+bucket-route mutation returned HTTP 400 / `MalformedXML`; the first ownership
+PUT is source inference, not a captured operation. Dependencies, PostgreSQL and
+cleanup succeeded, but this setup result is neither IAM denial nor provider
+acceptance, completed HTTP preflight, or genuine missing-route RED. Strict RED
+receipts were rejected. Pinned [Moby v28.0.4 source](https://github.com/moby/moby/blob/v28.0.4/daemon/network.go#L860)
 explains why port publication is skipped for an Internal network, but the
 observed port shape is unknown. A fixture-only opaque TCP relay design was
 accepted for implementation. The original scoped review found three Important
@@ -123,17 +138,17 @@ deadline-validity findings. The author’s fix round 1 addressed I1/I2/I3 and
 received scoped approval with no new Critical or Important findings. Its
 covering selection passed 120 tests in 1.15 seconds, Ruff, four-file formatting
 and configured-source mypy for 40 files; the root’s fresh selection passed 120
-tests in 1.11 seconds with Ruff and formatting passing. These later changes are
-outside the integrated Linux run. Actual Linux relay connectivity is not yet
-verified.
+tests in 1.11 seconds with Ruff and formatting passing. The older `0deeb79`
+integrated receipt predates these changes. The newer `f79c83e` foundation run
+does not establish actual relay connectivity or provider acceptance.
 SeaweedFS remains excluded. The MinIO candidate still requires the unchanged
 privacy/IAM and full fourteen-case lifecycle gates; no provider acceptance is
 claimed.
 
 The reviewed two-file result-gate receipt-safety correction passed 247 scoped
 cases and an independent review with zero Critical or Important findings. It
-improves receipt validation only and is outside the integrated Linux run;
-provider acceptance remains open. The OpenAPI metadata issue was resolved with
+improves receipt validation only; provider acceptance remains open. The
+integrated Linux aggregates do not establish provider acceptance. The OpenAPI metadata issue was resolved with
 required upload-session/download-ticket headers and JPEG/PNG binary schemas,
 without eager request-body parsing or buffering. This source review result does
 not establish actual provider behavior or APK parity.
