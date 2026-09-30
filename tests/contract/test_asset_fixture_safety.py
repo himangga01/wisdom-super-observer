@@ -126,6 +126,56 @@ def test_exact_nonroot_volume_archive_still_passes(tmp_path, monkeypatch):
     assert provider.receipt is None
 
 
+def test_scratch_build_copies_private_data_as_child_with_explicit_metadata(
+    tmp_path, monkeypatch
+):
+    from tests.support import asset_provider
+
+    provider = AssetProvider(tmp_path)
+    monkeypatch.setattr(asset_provider, "require_linux_ci", lambda: None)
+    monkeypatch.setattr(asset_provider, "LocalDocker", lambda *_: object())
+    binary_bytes = b"offline fixture bytes, never an executable"
+
+    def artifact(directory, name):
+        target = directory / name
+        target.write_bytes(binary_bytes)
+        return target
+
+    monkeypatch.setattr(asset_provider, "download_artifact", artifact)
+    monkeypatch.setattr(asset_provider, "verify_binary_version", lambda *_: None)
+
+    class BuildBoundaryReached(Exception):
+        pass
+
+    def stop_at_build(*arguments):
+        assert arguments[:2] == ("build", "--network=none")
+        raise BuildBoundaryReached
+
+    monkeypatch.setattr(provider, "docker", stop_at_build)
+    with pytest.raises(BuildBoundaryReached):
+        provider.start()
+    context = provider.work / "image"
+    instructions = (context / "Dockerfile").read_text().splitlines()
+    copies = [line.split() for line in instructions if line.startswith("COPY ")]
+    assert len(copies) == 2
+    data_copy = next(line for line in copies if "--chown=65532:65532" in line)
+    assert data_copy[1:3] == ["--chown=65532:65532", "--chmod=0700"]
+    # COPY directory contents into an existing root. /data must be a child,
+    # not the destination root whose newly created metadata BuildKit preserves.
+    assert data_copy[-1] == "/"
+    data_root = context / data_copy[-2]
+    assert data_root.is_dir() and not data_root.is_symlink()
+    assert [entry.name for entry in data_root.iterdir()] == ["data"]
+    data = data_root / "data"
+    assert data.is_dir() and not data.is_symlink() and not list(data.iterdir())
+    assert (context / "minio").read_bytes() == binary_bytes
+    assert "USER 65532:65532" in instructions
+    assert 'VOLUME ["/data"]' in instructions
+    assert 'ENTRYPOINT ["/minio"]' in instructions
+    assert not any(line.startswith(("RUN ", "ADD ")) for line in instructions)
+    assert provider.receipt is None
+
+
 @pytest.mark.parametrize("command", ["build", "create", "inspect", "remove", "copy"])
 def test_all_docker_commands_pin_local_socket_and_private_config_despite_saved_context(
     tmp_path, monkeypatch, command

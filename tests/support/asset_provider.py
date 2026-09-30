@@ -144,13 +144,17 @@ class AssetProvider:
             verify_binary_version(binary, name, self.work)
         context = self.work / "image"
         context.mkdir(mode=0o700)
-        (context / "data").mkdir(mode=0o700)
+        data_root = context / "data-root"
+        data_root.mkdir(mode=0o700)
+        (data_root / "data").mkdir(mode=0o700)
         shutil.copyfile(self.work / "minio", context / "minio")
         dockerfile = (
             "FROM scratch\n"
             f'LABEL {LABEL}="{self.owner}" wso.assets.source="{SERVER_COMMIT}" wso.assets.binary="{SERVER_SHA}"\n'
             "COPY --chmod=0555 minio /minio\n"
-            "COPY --chown=65532:65532 --chmod=0700 data /data\n"
+            # BuildKit preserves the top-level copy destination's metadata.
+            # Copy /data as a child so explicit ownership/mode are applied.
+            "COPY --chown=65532:65532 --chmod=0700 data-root /\n"
             'USER 65532:65532\nVOLUME ["/data"]\nEXPOSE 9000\nENTRYPOINT ["/minio"]\n'
         )
         private_file(context / "Dockerfile", dockerfile.encode())
