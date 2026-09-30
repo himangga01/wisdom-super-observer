@@ -5,7 +5,14 @@ from xml.etree import ElementTree as ET
 
 import pytest
 
-from scripts.check_private_asset_red import BASELINE_SHA, verify_baseline_red
+from scripts.check_private_asset_red import (
+    BASELINE_SHA,
+    CASE_NAME,
+    CLASSNAME,
+    EXPECTED_FAILURE,
+    main,
+    verify_baseline_red,
+)
 
 
 def evidence():
@@ -16,7 +23,7 @@ def evidence():
         "provider": {
             "provider": "MinIO",
             "version": "RELEASE.2025-04-22T22-12-26Z",
-            "security_profile": "minio-inert-acl-dedicated-bucket-v1",
+            "security_profile": "minio-inert-acl-dedicated-bucket-v2",
             "artifact_kind": "official-binaries-local-scratch-image",
             "binary_sha256": "53e2a2cb16c5366ea6fbbc479c19ddb4c6a0948273e752f740fb1fbf27bb817c",
             "client_version": "RELEASE.2025-04-16T18-13-26Z",
@@ -260,6 +267,122 @@ def test_excluded_seaweed_profile_cannot_satisfy_new_baseline_gate(tmp_path):
     receipt.write_text(json.dumps(body), encoding="utf-8")
     with pytest.raises(ValueError):
         verify_baseline_red(junit, receipt, pytest_exit=1)
+
+
+def test_legacy_minio_v1_profile_cannot_satisfy_v2_baseline_gate(tmp_path):
+    junit, receipt = files(tmp_path)
+    body = evidence()
+    body["provider"]["security_profile"] = "minio-inert-acl-dedicated-bucket-v1"
+    receipt.write_text(json.dumps(body), encoding="utf-8")
+    with pytest.raises(ValueError):
+        verify_baseline_red(junit, receipt, pytest_exit=1)
+
+
+def test_cli_public_proof_flag_emits_exact_validated_proof(
+    tmp_path, monkeypatch, capsys
+):
+    junit, receipt = files(tmp_path)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "check_private_asset_red.py",
+            str(junit),
+            str(receipt),
+            "--pytest-exit",
+            "1",
+            "--emit-public-proof",
+        ],
+    )
+    main()
+    output = capsys.readouterr().out
+    proof_line = next(
+        line
+        for line in output.splitlines()
+        if line.startswith("WSO_PUBLIC_ASSET_RED_PROOF=")
+    )
+    assert json.loads(proof_line.removeprefix("WSO_PUBLIC_ASSET_RED_PROOF=")) == {
+        "schema_version": 1,
+        "receipt": evidence(),
+        "junit": {
+            "tests": 1,
+            "failures": 1,
+            "errors": 0,
+            "skipped": 0,
+            "classname": CLASSNAME,
+            "name": CASE_NAME,
+            "failure": EXPECTED_FAILURE,
+        },
+    }
+
+
+def test_cli_default_success_does_not_emit_public_proof(tmp_path, monkeypatch, capsys):
+    junit, receipt = files(tmp_path)
+    monkeypatch.setattr(
+        "sys.argv",
+        ["check_private_asset_red.py", str(junit), str(receipt), "--pytest-exit", "1"],
+    )
+    main()
+    assert "WSO_PUBLIC_ASSET_RED_PROOF=" not in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    "status,message",
+    [
+        ("error", None),
+        ("failure", "AssertionError: unrelated failure"),
+    ],
+)
+def test_cli_rejected_setup_or_unrelated_failure_emits_no_proof(
+    tmp_path, monkeypatch, capsys, status, message
+):
+    junit, receipt = files(tmp_path, status=status, message=message)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "check_private_asset_red.py",
+            str(junit),
+            str(receipt),
+            "--pytest-exit",
+            "1",
+            "--emit-public-proof",
+        ],
+    )
+    with pytest.raises(SystemExit) as rejected:
+        main()
+    captured = capsys.readouterr()
+    assert rejected.value.code == 1
+    assert "WSO_PUBLIC_ASSET_RED_PROOF=" not in captured.out
+    assert "WSO_PUBLIC_ASSET_RED_PROOF=" not in captured.err
+
+
+def test_cli_public_proof_omits_arbitrary_junit_details(tmp_path, monkeypatch, capsys):
+    junit, receipt = files(tmp_path)
+    private_marker = "PRIVATE_SYNTHETIC_JUNIT_DETAIL"
+    tree = ET.parse(junit)
+    failure = next(tree.getroot().iter("failure"))
+    failure.text = EXPECTED_FAILURE + "\n" + private_marker
+    ET.SubElement(
+        next(tree.getroot().iter("testcase")), "system-out"
+    ).text = private_marker
+    ET.SubElement(
+        next(tree.getroot().iter("testcase")), "system-err"
+    ).text = private_marker
+    tree.write(junit, encoding="utf-8")
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "check_private_asset_red.py",
+            str(junit),
+            str(receipt),
+            "--pytest-exit",
+            "1",
+            "--emit-public-proof",
+        ],
+    )
+    main()
+    output = capsys.readouterr().out
+    assert private_marker not in output
+    assert EXPECTED_FAILURE in output
 
 
 @pytest.mark.parametrize("mutation", ["duplicate", "foreign", "extra_error"])

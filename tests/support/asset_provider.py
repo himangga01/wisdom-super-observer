@@ -34,7 +34,20 @@ from tests.support.asset_minio import (
 )
 
 LABEL = "wso.assets.owner"
-SECURITY_PROFILE = "minio-inert-acl-dedicated-bucket-v1"
+SECURITY_PROFILE = "minio-inert-acl-dedicated-bucket-v2"
+CONTROL_RESULTS = {
+    "put_bucket_policy": (403, "AccessDenied"),
+    "delete_bucket_policy": (403, "AccessDenied"),
+    "put_bucket_acl": (403, "AccessDenied"),
+    "put_object_acl": (403, "AccessDenied"),
+    "put_bucket_ownership_controls": (400, "MalformedXML"),
+    "delete_bucket_ownership_controls": (403, "AccessDenied"),
+    "put_public_access_block": (400, "MalformedXML"),
+    "delete_public_access_block": (403, "AccessDenied"),
+    "create_bucket": (403, "AccessDenied"),
+    "get_bucket_ownership_controls": (501, "NotImplemented"),
+    "get_public_access_block": (501, "NotImplemented"),
+}
 
 
 def no_host_bindings(value):
@@ -115,6 +128,7 @@ class AssetProvider:
         }
         self.receipt = None
         self.outcomes = []
+        self.control_outcomes = []
         self.docker_target = None
         self.relay = None
         self.relay_pin = None
@@ -826,10 +840,127 @@ class AssetProvider:
             ) from None
         record["effects_verified"] = True
 
+    def control_effects(self, key, body):
+        """One bounded pass, retaining every component after a failed readback.
+
+        Signed object HEAD/bytes plus the bucket ACL establish presence of the
+        owned bucket. No repair runs here. Existing one-attempt SDK/HTTP timeouts
+        apply; this does not claim OS-call preemption or remote quiescence.
+        """
+        admin = self.clients["bootstrap"]
+
+        def signed_head():
+            if admin.head_object(Bucket=self.bucket, Key=key)["ContentLength"] != len(
+                body
+            ):
+                raise RuntimeError("signed length differs")
+
+        def signed_bytes():
+            stream = admin.get_object(Bucket=self.bucket, Key=key)["Body"]
+            try:
+                if stream.read(len(body) + 1) != body:
+                    raise RuntimeError("signed bytes differ")
+            finally:
+                stream.close()
+
+        def anonymous(method):
+            if self.raw_http(method, f"{self.endpoint}/{self.bucket}/{key}")[0] != 403:
+                raise RuntimeError("anonymous access differs")
+
+        failed = []
+        for component, operation in (
+            ("signed_head", signed_head),
+            ("signed_bytes", signed_bytes),
+            (
+                "object_acl",
+                lambda: self.require_private_acl(
+                    admin.get_object_acl(Bucket=self.bucket, Key=key)
+                ),
+            ),
+            (
+                "bucket_acl",
+                lambda: self.require_private_acl(
+                    admin.get_bucket_acl(Bucket=self.bucket)
+                ),
+            ),
+            ("policy_absence", self.inspect_no_bucket_policy),
+            ("anonymous_get", partial(anonymous, "GET")),
+            ("anonymous_head", partial(anonymous, "HEAD")),
+        ):
+            try:
+                operation()
+            except Exception:  # noqa: BLE001 -- finish diagnostics without raw SDK errors
+                # Only fixed component enums escape; never SDK bodies or URLs.
+                failed.append(component)
+        return failed
+
+    def control_attempt(self, name, operation_name, operation, key, body):
+        from botocore.exceptions import ClientError
+
+        if (
+            operation_name not in CONTROL_RESULTS
+            or name not in ("bootstrap", "gateway", "cleanup")
+            or (name == "bootstrap" and not operation_name.startswith("get_"))
+        ):
+            raise RuntimeError("invalid fixed control probe identity")
+        status, code = None, "TRANSPORT_ERROR"
+        try:
+            result = operation()
+            status = (
+                result.get("ResponseMetadata", {}).get("HTTPStatusCode")
+                if isinstance(result, dict)
+                else None
+            )
+            code = "SUCCESS"
+        except ClientError as error:
+            try:
+                status, code = self.error_identity(error)
+            except Exception:  # noqa: BLE001 -- malformed SDK metadata must fail closed
+                status, code = None, "TRANSPORT_ERROR"
+        except Exception:  # noqa: BLE001 -- never expose raw transport/SDK exception text
+            status, code = None, "TRANSPORT_ERROR"
+        # Exact typed classification is separate from the bounded diagnostic enum.
+        status = status if type(status) is int and 100 <= status <= 599 else None
+        matched = (status, code) == CONTROL_RESULTS[operation_name]
+        code = (
+            code
+            if code
+            in {
+                "AccessDenied",
+                "MalformedXML",
+                "NotImplemented",
+                "InvalidRequest",
+                "403",
+                "SUCCESS",
+                "TRANSPORT_ERROR",
+            }
+            else "UNKNOWN"
+        )
+        record = {
+            "actor": name,
+            "operation": operation_name,
+            "status": status,
+            "code": code,
+            "response_verified": matched,
+            "effects_verified": False,
+        }
+        self.control_outcomes.append(record)
+        failed = self.control_effects(key, body)
+        record["effects_verified"] = not failed
+        if not matched or failed:
+            raise RuntimeError(
+                f"provider control probe failed actor={name} operation={operation_name} "
+                f"actual_status={status} actual_code={code} "
+                f"effects_verified={not failed} failed_components={','.join(failed) or 'none'}"
+            ) from None
+
     def control_profile(self, key, body):
         admin, bucket = self.clients["bootstrap"], self.bucket
-        self.inspect_no_bucket_policy()
-        self.require_private_acl(admin.get_bucket_acl(Bucket=bucket))
+        try:
+            self.inspect_no_bucket_policy()
+            self.require_private_acl(admin.get_bucket_acl(Bucket=bucket))
+        except Exception:  # noqa: BLE001 -- baseline failure must not expose private SDK text
+            raise RuntimeError("provider control baseline privacy unverified") from None
         policy = json.dumps(
             {
                 "Version": "2012-10-17",
@@ -845,51 +976,61 @@ class AssetProvider:
         )
         for name in ("gateway", "cleanup"):
             actor = self.clients[name]
-            for operation in (
-                partial(actor.put_bucket_policy, Bucket=bucket, Policy=policy),
-                partial(actor.delete_bucket_policy, Bucket=bucket),
-                partial(actor.put_bucket_acl, Bucket=bucket, ACL="private"),
-                partial(actor.put_object_acl, Bucket=bucket, Key=key, ACL="private"),
-                partial(
-                    actor.put_bucket_ownership_controls,
-                    Bucket=bucket,
-                    OwnershipControls={
-                        "Rules": [{"ObjectOwnership": "BucketOwnerEnforced"}]
+            for operation_name, arguments in (
+                ("put_bucket_policy", {"Policy": policy}),
+                ("delete_bucket_policy", {}),
+                ("put_bucket_acl", {"ACL": "private"}),
+                ("put_object_acl", {"Key": key, "ACL": "private"}),
+                (
+                    "put_bucket_ownership_controls",
+                    {
+                        "OwnershipControls": {
+                            "Rules": [{"ObjectOwnership": "BucketOwnerEnforced"}]
+                        }
                     },
                 ),
-                partial(actor.delete_bucket_ownership_controls, Bucket=bucket),
-                partial(
-                    actor.put_public_access_block,
-                    Bucket=bucket,
-                    PublicAccessBlockConfiguration={
-                        name: True
-                        for name in (
-                            "BlockPublicAcls",
-                            "IgnorePublicAcls",
-                            "BlockPublicPolicy",
-                            "RestrictPublicBuckets",
-                        )
+                ("delete_bucket_ownership_controls", {}),
+                (
+                    "put_public_access_block",
+                    {
+                        "PublicAccessBlockConfiguration": {
+                            name: True
+                            for name in (
+                                "BlockPublicAcls",
+                                "IgnorePublicAcls",
+                                "BlockPublicPolicy",
+                                "RestrictPublicBuckets",
+                            )
+                        }
                     },
                 ),
-                partial(actor.delete_public_access_block, Bucket=bucket),
+                ("delete_public_access_block", {}),
+                ("create_bucket", {}),
             ):
-                # Control mutation queries can reach generic bucket creation/
-                # deletion routes. Their denial is not working BOE/PAB support.
-                self.denied(operation, name + " administrative/bucket-route mutation")
-                self.private_effect(key, body)
-                self.require_private_acl(admin.get_bucket_acl(Bucket=bucket))
-                self.inspect_no_bucket_policy()
+                # The two valid control PUT XML roots fail parsing before IAM.
+                # Ordinary no-body CreateBucket supplies separate authority proof.
+                self.control_attempt(
+                    name,
+                    operation_name,
+                    partial(getattr(actor, operation_name), Bucket=bucket, **arguments),
+                    key,
+                    body,
+                )
         # Exact unsupported GET behavior, not IAM enforcement. Omit bootstrap
         # PUT/DELETE queries that source routing could treat as bucket mutations.
-        for actor in self.clients.values():
-            for operation in (
-                partial(actor.get_bucket_ownership_controls, Bucket=bucket),
-                partial(actor.get_public_access_block, Bucket=bucket),
+        for name in ("bootstrap", "gateway", "cleanup"):
+            actor = self.clients[name]
+            for operation_name in (
+                "get_bucket_ownership_controls",
+                "get_public_access_block",
             ):
-                self.unsupported(operation)
-                self.private_effect(key, body)
-                self.require_private_acl(admin.get_bucket_acl(Bucket=bucket))
-                self.inspect_no_bucket_policy()
+                self.control_attempt(
+                    name,
+                    operation_name,
+                    partial(getattr(actor, operation_name), Bucket=bucket),
+                    key,
+                    body,
+                )
 
     def privacy_profile(self, key, body):
         bucket = self.bucket

@@ -426,17 +426,36 @@ def test_iam_archive_contains_only_pinned_regular_users_and_fixed_mappings():
         assert json.loads(archive.read("iam-assets/policies.json")) == policies
 
 
-def test_source_characterized_controls_require_effects_without_bootstrap_mutations(
-    tmp_path, monkeypatch
-):
+CONTROL_MUTATIONS = (
+    "put_bucket_policy",
+    "delete_bucket_policy",
+    "put_bucket_acl",
+    "put_object_acl",
+    "put_bucket_ownership_controls",
+    "delete_bucket_ownership_controls",
+    "put_public_access_block",
+    "delete_public_access_block",
+    "create_bucket",
+)
+CONTROL_GETS = ("get_bucket_ownership_controls", "get_public_access_block")
+PARSER_PUTS = {"put_bucket_ownership_controls", "put_public_access_block"}
+CONTROL_EFFECTS = (
+    "signed_head",
+    "signed_bytes",
+    "object_acl",
+    "bucket_acl",
+    "policy_absence",
+    "anonymous_get",
+    "anonymous_head",
+)
+
+
+def control_fixture(tmp_path, monkeypatch, *, fault=None, effect_fault=None):
     provider = AssetProvider(tmp_path)
+    provider.endpoint = "http://unused.invalid"
     provider.clients = {name: Mock() for name in ("bootstrap", "gateway", "cleanup")}
-    effects = []
-    monkeypatch.setattr(
-        provider, "private_effect", lambda *_: effects.append("verified")
-    )
-    monkeypatch.setattr(provider, "inspect_no_bucket_policy", lambda: None)
-    provider.clients["bootstrap"].get_bucket_acl.return_value = {
+    events = []
+    acl = {
         "Owner": {"ID": ""},
         "Grants": [
             {
@@ -445,29 +464,416 @@ def test_source_characterized_controls_require_effects_without_bootstrap_mutatio
             }
         ],
     }
-    mutations = (
-        "put_bucket_policy",
-        "delete_bucket_policy",
-        "put_bucket_acl",
-        "put_object_acl",
-        "put_bucket_ownership_controls",
-        "delete_bucket_ownership_controls",
-        "put_public_access_block",
-        "delete_public_access_block",
+
+    def effect(name, result):
+        def perform(**_):
+            events.append(("effect", name))
+            if effect_fault == name and any(e[0] == "attempt" for e in events):
+                raise RuntimeError("SECRET https://private.invalid/credentials")
+            if name == "policy_absence":
+                raise error(404, "NoSuchBucketPolicy")
+            return result() if callable(result) else result
+
+        return perform
+
+    admin = provider.clients["bootstrap"]
+    admin.head_object.side_effect = effect("signed_head", {"ContentLength": 10})
+    admin.get_object.side_effect = effect(
+        "signed_bytes", lambda: {"Body": BytesIO(b"ciphertext")}
     )
-    for name, actor in provider.clients.items():
-        actor.get_bucket_ownership_controls.side_effect = error(501, "NotImplemented")
-        actor.get_public_access_block.side_effect = error(501, "NotImplemented")
-        for mutation in mutations:
-            getattr(actor, mutation).side_effect = (
-                AssertionError("bootstrap mutations prohibited")
-                if name == "bootstrap"
-                else error(403, "AccessDenied")
+    admin.get_object_acl.side_effect = effect("object_acl", acl)
+    admin.get_bucket_acl.side_effect = effect("bucket_acl", acl)
+    admin.get_bucket_policy.side_effect = effect("policy_absence", None)
+
+    def anonymous(method, *_):
+        return effect("anonymous_" + method.lower(), (403, b""))()
+
+    monkeypatch.setattr(provider, "raw_http", anonymous)
+
+    def attempt(name, operation):
+        def perform(**arguments):
+            events.append(("attempt", name, operation, arguments))
+            if fault and (name, operation) == fault[:2]:
+                value = fault[2]
+                if isinstance(value, Exception):
+                    raise value
+                return value
+            if name == "bootstrap" and operation in CONTROL_MUTATIONS:
+                raise AssertionError("bootstrap mutations prohibited")
+            expected = (
+                (400, "MalformedXML")
+                if operation in PARSER_PUTS
+                else (501, "NotImplemented")
+                if operation in CONTROL_GETS
+                else (403, "AccessDenied")
             )
-    provider.control_profile("owned-private", b"ciphertext")
-    assert len(effects) == 22
-    for mutation in mutations:
-        assert not getattr(provider.clients["bootstrap"], mutation).called
+            raise error(*expected)
+
+        return perform
+
+    for name, actor in provider.clients.items():
+        for operation in (*CONTROL_MUTATIONS, *CONTROL_GETS):
+            getattr(actor, operation).side_effect = attempt(name, operation)
+    return provider, events
+
+
+def assert_control_effects(events):
+    starts = [i for i, event in enumerate(events) if event[0] == "attempt"]
+    for index, start in enumerate(starts):
+        end = starts[index + 1] if index + 1 < len(starts) else len(events)
+        assert events[start + 1 : end] == [
+            ("effect", component) for component in CONTROL_EFFECTS
+        ]
+
+
+def test_v2_exact_controls_payloads_queries_order_and_complete_effects(
+    tmp_path, monkeypatch
+):
+    from botocore.serialize import create_serializer
+    from botocore.session import get_session
+
+    provider, events = control_fixture(tmp_path, monkeypatch)
+    key = provider.prefix + "private"
+    provider.control_profile(key, b"ciphertext")
+    attempts = [event for event in events if event[0] == "attempt"]
+    assert [(e[1], e[2]) for e in attempts] == [
+        (actor, operation)
+        for actor in ("gateway", "cleanup")
+        for operation in CONTROL_MUTATIONS
+    ] + [
+        (actor, operation)
+        for actor in ("bootstrap", "gateway", "cleanup")
+        for operation in CONTROL_GETS
+    ]
+    assert len(attempts) == 24
+    assert_control_effects(events)
+    assert len(provider.control_outcomes) == 24
+    assert all(
+        outcome["response_verified"] and outcome["effects_verified"]
+        for outcome in provider.control_outcomes
+    )
+    assert Counter(
+        (row["status"], row["code"]) for row in provider.control_outcomes
+    ) == {
+        (400, "MalformedXML"): 4,
+        (403, "AccessDenied"): 14,
+        (501, "NotImplemented"): 6,
+    }
+    model = get_session().get_service_model("s3")
+    serializer = create_serializer("rest-xml")
+    for _, actor, operation, arguments in attempts:
+        assert arguments["Bucket"] == provider.bucket
+        if operation == "create_bucket":
+            assert actor != "bootstrap"
+            assert arguments == {"Bucket": provider.bucket}
+            request = serializer.serialize_to_request(
+                arguments, model.operation_model("CreateBucket")
+            )
+            assert request["method"] == "PUT"
+            assert request["url_path"] == "/" + provider.bucket
+            assert request["query_string"] == {}
+            assert request["body"] == b""
+        elif operation in PARSER_PUTS:
+            ownership = operation == "put_bucket_ownership_controls"
+            api = "PutBucketOwnershipControls" if ownership else "PutPublicAccessBlock"
+            field = (
+                "OwnershipControls" if ownership else "PublicAccessBlockConfiguration"
+            )
+            expected = (
+                {"Rules": [{"ObjectOwnership": "BucketOwnerEnforced"}]}
+                if ownership
+                else dict.fromkeys(
+                    (
+                        "BlockPublicAcls",
+                        "IgnorePublicAcls",
+                        "BlockPublicPolicy",
+                        "RestrictPublicBuckets",
+                    ),
+                    True,
+                )
+            )
+            assert arguments == {"Bucket": provider.bucket, field: expected}
+            request = serializer.serialize_to_request(
+                arguments, model.operation_model(api)
+            )
+            assert request["method"] == "PUT"
+            assert request["url_path"] == (
+                "/"
+                + provider.bucket
+                + ("?ownershipControls" if ownership else "?publicAccessBlock")
+            )
+            xml = ElementTree.fromstring(request["body"])
+            assert xml.tag == "{http://s3.amazonaws.com/doc/2006-03-01/}" + field
+            if ownership:
+                assert (
+                    xml.find("{*}Rule/{*}ObjectOwnership").text == "BucketOwnerEnforced"
+                )
+            else:
+                assert {
+                    node.tag.rsplit("}", 1)[1]: node.text for node in xml
+                } == dict.fromkeys(expected, "true")
+        elif operation == "put_object_acl":
+            assert arguments == {
+                "Bucket": provider.bucket,
+                "Key": key,
+                "ACL": "private",
+            }
+        elif operation == "put_bucket_acl":
+            assert arguments == {"Bucket": provider.bucket, "ACL": "private"}
+        elif operation == "put_bucket_policy":
+            policy = json.loads(arguments["Policy"])
+            assert policy["Statement"][0]["Principal"] == "*"
+            assert (
+                policy["Statement"][0]["Resource"]
+                == f"arn:aws:s3:::{provider.bucket}/*"
+            )
+        else:
+            assert arguments == {"Bucket": provider.bucket}
+        if operation in (
+            *CONTROL_GETS,
+            "delete_bucket_ownership_controls",
+            "delete_public_access_block",
+        ):
+            api = "".join(part.capitalize() for part in operation.split("_"))
+            request = serializer.serialize_to_request(
+                arguments, model.operation_model(api)
+            )
+            ownership = "ownership" in operation
+            assert request["method"] == (
+                "GET" if operation in CONTROL_GETS else "DELETE"
+            )
+            assert request["url_path"] == "/" + provider.bucket + (
+                "?ownershipControls" if ownership else "?publicAccessBlock"
+            )
+            assert request["query_string"] == {}
+            assert request["body"] == b""
+    for operation in CONTROL_MUTATIONS:
+        assert not getattr(provider.clients["bootstrap"], operation).called
+
+
+def malformed_metadata_error():
+    value = error(403, "AccessDenied")
+    value.response["ResponseMetadata"] = "SECRET"
+    return value
+
+
+@pytest.mark.parametrize("operation", sorted(PARSER_PUTS))
+@pytest.mark.parametrize(
+    "response",
+    [
+        {"ResponseMetadata": {"HTTPStatusCode": 200}},
+        error(403, "AccessDenied"),
+        error(501, "NotImplemented"),
+        error(400, "InvalidRequest"),
+        error(403, "MalformedXML"),
+        error(400, "SECRETprivatekey"),
+        RuntimeError("SECRET https://private.invalid/credentials"),
+    ],
+)
+def test_parser_refusal_retains_operation_and_attempts_all_effects(
+    tmp_path, monkeypatch, operation, response
+):
+    provider, events = control_fixture(
+        tmp_path, monkeypatch, fault=("gateway", operation, response)
+    )
+    with pytest.raises(RuntimeError) as raised:
+        provider.control_profile(provider.prefix + "private", b"ciphertext")
+    message = str(raised.value)
+    assert "actor=gateway operation=" + operation in message
+    assert "effects_verified=True" in message
+    assert "SECRET" not in message
+    assert "private.invalid" not in message
+    assert raised.value.__suppress_context__
+    assert [e for e in events if e[0] == "attempt"][-1][2] == operation
+    assert_control_effects(events)
+    assert provider.receipt is None
+
+
+@pytest.mark.parametrize("component", CONTROL_EFFECTS)
+def test_control_readback_failure_is_unverified_and_preserves_original_label(
+    tmp_path, monkeypatch, component
+):
+    provider, events = control_fixture(tmp_path, monkeypatch, effect_fault=component)
+    with pytest.raises(RuntimeError) as raised:
+        provider.control_profile(provider.prefix + "private", b"ciphertext")
+    message = str(raised.value)
+    assert "actor=gateway operation=put_bucket_policy" in message
+    assert "effects_verified=False" in message
+    assert component in message
+    assert "SECRET" not in message
+    assert_control_effects(events)
+    assert len([e for e in events if e[0] == "attempt"]) == 1
+    assert provider.receipt is None
+
+
+def test_v2_producer_profile_is_exact():
+    from tests.support.asset_provider import SECURITY_PROFILE
+
+    assert SECURITY_PROFILE == "minio-inert-acl-dedicated-bucket-v2"
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        error(403.0, "AccessDenied"),
+        {"ResponseMetadata": "SECRET https://private.invalid/credentials"},
+        malformed_metadata_error(),
+    ],
+)
+def test_unknown_control_metadata_is_refused_with_complete_sanitized_effects(
+    tmp_path, monkeypatch, response
+):
+    provider, events = control_fixture(
+        tmp_path, monkeypatch, fault=("gateway", "put_bucket_policy", response)
+    )
+    with pytest.raises(RuntimeError) as raised:
+        provider.control_profile(provider.prefix + "private", b"ciphertext")
+    message = str(raised.value)
+    assert "actor=gateway operation=put_bucket_policy" in message
+    assert "effects_verified=True" in message
+    assert "SECRET" not in message
+    assert "private.invalid" not in message
+    assert_control_effects(events)
+    assert len([e for e in events if e[0] == "attempt"]) == 1
+    assert provider.receipt is None
+
+
+@pytest.mark.parametrize(
+    "actor,operation",
+    [
+        (actor, operation)
+        for actor in ("gateway", "cleanup")
+        for operation in CONTROL_MUTATIONS
+    ]
+    + [
+        (actor, operation)
+        for actor in ("bootstrap", "gateway", "cleanup")
+        for operation in CONTROL_GETS
+    ],
+)
+@pytest.mark.parametrize("refusal", ["success", "status", "code", "transport"])
+def test_each_control_attempt_enforces_exact_pair_and_preserves_full_effects(
+    tmp_path, monkeypatch, actor, operation, refusal
+):
+    status, code = (
+        (400, "MalformedXML")
+        if operation in PARSER_PUTS
+        else (501, "NotImplemented")
+        if operation in CONTROL_GETS
+        else (403, "AccessDenied")
+    )
+    responses = {
+        "success": {"ResponseMetadata": {"HTTPStatusCode": 204}},
+        "status": error(401, code),
+        "code": error(status, "403"),
+        "transport": RuntimeError("SECRET https://private.invalid/credentials"),
+    }
+    provider, events = control_fixture(
+        tmp_path, monkeypatch, fault=(actor, operation, responses[refusal])
+    )
+    with pytest.raises(RuntimeError) as raised:
+        provider.control_profile(provider.prefix + "private", b"ciphertext")
+    message = str(raised.value)
+    assert f"actor={actor} operation={operation}" in message
+    assert "effects_verified=True" in message
+    assert "SECRET" not in message
+    assert_control_effects(events)
+    assert [e for e in events if e[0] == "attempt"][-1][1:3] == (actor, operation)
+    assert not provider.control_outcomes[-1]["response_verified"]
+    assert provider.control_outcomes[-1]["effects_verified"]
+    assert provider.receipt is None
+
+
+def test_response_refusal_and_readback_failure_both_remain_visible(
+    tmp_path, monkeypatch
+):
+    provider, events = control_fixture(
+        tmp_path,
+        monkeypatch,
+        fault=(
+            "gateway",
+            "put_bucket_ownership_controls",
+            error(501, "NotImplemented"),
+        ),
+        effect_fault=None,
+    )
+    admin = provider.clients["bootstrap"]
+    original = admin.get_bucket_acl.side_effect
+
+    def changed_acl(**arguments):
+        value = original(**arguments)
+        if any(
+            e[:3] == ("attempt", "gateway", "put_bucket_ownership_controls")
+            for e in events
+        ):
+            return {"Owner": {}, "Grants": []}
+        return value
+
+    admin.get_bucket_acl.side_effect = changed_acl
+    with pytest.raises(RuntimeError) as raised:
+        provider.control_profile(provider.prefix + "private", b"ciphertext")
+    message = str(raised.value)
+    assert "actor=gateway operation=put_bucket_ownership_controls" in message
+    assert "actual_status=501 actual_code=NotImplemented" in message
+    assert "effects_verified=False failed_components=bucket_acl" in message
+    assert_control_effects(events)
+    assert provider.receipt is None
+
+
+@pytest.mark.parametrize("component", ["policy_absence", "bucket_acl"])
+def test_control_baseline_readback_transport_is_sanitized(
+    tmp_path, monkeypatch, component
+):
+    provider, events = control_fixture(tmp_path, monkeypatch)
+    operation = (
+        "get_bucket_policy" if component == "policy_absence" else "get_bucket_acl"
+    )
+    getattr(provider.clients["bootstrap"], operation).side_effect = RuntimeError(
+        "SECRET https://private.invalid/credentials"
+    )
+    with pytest.raises(RuntimeError) as raised:
+        provider.control_profile(provider.prefix + "private", b"ciphertext")
+    assert str(raised.value) == "provider control baseline privacy unverified"
+    assert raised.value.__suppress_context__
+    assert not any(e[0] == "attempt" for e in events)
+    assert provider.receipt is None
+
+
+@pytest.mark.parametrize("component", CONTROL_EFFECTS)
+def test_each_control_effect_rejects_changed_state(tmp_path, monkeypatch, component):
+    provider, events = control_fixture(tmp_path, monkeypatch)
+    admin = provider.clients["bootstrap"]
+    operations = {
+        "signed_head": ("head_object", {"ContentLength": 11}),
+        "signed_bytes": ("get_object", {"Body": BytesIO(b"changed")}),
+        "object_acl": ("get_object_acl", {"Owner": {}, "Grants": []}),
+        "bucket_acl": ("get_bucket_acl", {"Owner": {}, "Grants": []}),
+        "policy_absence": ("get_bucket_policy", {"Policy": "public"}),
+    }
+    if component in operations:
+        operation, changed = operations[component]
+        original = getattr(admin, operation).side_effect
+
+        def altered(**arguments):
+            if any(e[0] == "attempt" for e in events):
+                events.append(("effect", component))
+                return changed
+            return original(**arguments)
+
+        getattr(admin, operation).side_effect = altered
+    else:
+        original = provider.raw_http
+
+        def altered_http(method, *arguments):
+            value = original(method, *arguments)
+            return (200, b"") if "anonymous_" + method.lower() == component else value
+
+        monkeypatch.setattr(provider, "raw_http", altered_http)
+    with pytest.raises(RuntimeError) as raised:
+        provider.control_profile(provider.prefix + "private", b"ciphertext")
+    assert f"effects_verified=False failed_components={component}" in str(raised.value)
+    assert_control_effects(events)
+    assert provider.receipt is None
 
 
 @pytest.mark.parametrize(

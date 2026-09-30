@@ -87,7 +87,8 @@ jobs:
           .venv/bin/python scripts/check_private_asset_red.py \
             .superpowers/verification/private-assets-red.xml \
             .superpowers/verification/private-assets-red-evidence.json \
-            --pytest-exit "$task_pytest_exit"
+            --pytest-exit "$task_pytest_exit" \
+            --emit-public-proof
       - name: Remove owned PostgreSQL fixture
         if: always()
         shell: bash

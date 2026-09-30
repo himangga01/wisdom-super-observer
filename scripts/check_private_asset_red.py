@@ -33,7 +33,7 @@ def _unique_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     return result
 
 
-def _verify_receipt(path: Path) -> None:
+def _verify_receipt(path: Path) -> dict[str, Any]:
     try:
         observed = json.loads(
             _bounded_read(path, 16 * 1024), object_pairs_hook=_unique_keys
@@ -54,7 +54,7 @@ def _verify_receipt(path: Path) -> None:
             "provider": {
                 "provider": "MinIO",
                 "version": "RELEASE.2025-04-22T22-12-26Z",
-                "security_profile": "minio-inert-acl-dedicated-bucket-v1",
+                "security_profile": "minio-inert-acl-dedicated-bucket-v2",
                 "artifact_kind": "official-binaries-local-scratch-image",
                 "binary_sha256": "53e2a2cb16c5366ea6fbbc479c19ddb4c6a0948273e752f740fb1fbf27bb817c",
                 "client_version": "RELEASE.2025-04-16T18-13-26Z",
@@ -78,6 +78,7 @@ def _verify_receipt(path: Path) -> None:
             expected, sort_keys=True, allow_nan=False
         ):
             raise ValueError("baseline RED preflight evidence is incomplete or invalid")
+        return observed
     except (TypeError, UnicodeError, json.JSONDecodeError, RecursionError):
         raise ValueError("baseline RED receipt is malformed") from None
 
@@ -146,11 +147,16 @@ def _verify_junit(path: Path) -> None:
         raise ValueError("baseline RED is not the authenticated missing-route failure")
 
 
-def verify_baseline_red(junit: Path, receipt: Path, *, pytest_exit: int) -> str:
+def _verified_inputs(junit: Path, receipt: Path, *, pytest_exit: int) -> dict[str, Any]:
     if type(pytest_exit) is not int or pytest_exit != 1:
         raise ValueError("baseline RED requires pytest assertion failure exit 1")
-    _verify_receipt(receipt)
+    observed = _verify_receipt(receipt)
     _verify_junit(junit)
+    return observed
+
+
+def verify_baseline_red(junit: Path, receipt: Path, *, pytest_exit: int) -> str:
+    _verified_inputs(junit, receipt, pytest_exit=pytest_exit)
     return BASELINE_SHA
 
 
@@ -159,17 +165,36 @@ def main() -> None:
     parser.add_argument("junit", type=Path)
     parser.add_argument("receipt", type=Path)
     parser.add_argument("--pytest-exit", type=int, required=True)
+    parser.add_argument("--emit-public-proof", action="store_true", default=False)
     arguments = parser.parse_args()
     try:
-        baseline = verify_baseline_red(
+        observed = _verified_inputs(
             arguments.junit, arguments.receipt, pytest_exit=arguments.pytest_exit
         )
     except ValueError as error:
         parser.exit(1, f"Baseline asset RED proof rejected: {error}.\n")
     print(
-        f"Authenticated missing-feature RED observed on baseline {baseline}. "
+        f"Authenticated missing-feature RED observed on baseline {BASELINE_SHA}. "
         "S3/HTTP preflight passed; asset implementation acceptance remains pending."
     )
+    if arguments.emit_public_proof:
+        proof = {
+            "schema_version": 1,
+            "receipt": observed,
+            "junit": {
+                "tests": 1,
+                "failures": 1,
+                "errors": 0,
+                "skipped": 0,
+                "classname": CLASSNAME,
+                "name": CASE_NAME,
+                "failure": EXPECTED_FAILURE,
+            },
+        }
+        print(
+            "WSO_PUBLIC_ASSET_RED_PROOF="
+            + json.dumps(proof, sort_keys=True, separators=(",", ":"), allow_nan=False)
+        )
 
 
 if __name__ == "__main__":
