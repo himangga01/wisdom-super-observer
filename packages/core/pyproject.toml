@@ -6,6 +6,7 @@ dependencies = [
   "sqlalchemy>=2.0,<3",
   "psycopg[binary]>=3,<4",
   "alembic>=1.16,<2",
+  "cryptography>=50,<51",
 ]
 
 [build-system]

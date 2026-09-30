@@ -48,7 +48,7 @@ class StoreList(BaseModel):
 def require_tenant(
     action: str, tenant_id: UUID, *, service: AuthService, principal: WebSession
 ) -> Iterator[TenantScope]:
-    if action != "stores:read":
+    if action not in {"stores:read", "connections:read", "connections:write"}:
         raise HTTPException(status_code=403)
     try:
         with service.identity(principal) as lookup:
@@ -58,6 +58,8 @@ def require_tenant(
         # Commit issuance before the application role consumes the one-use grant.
         if choice.role not in {"OWNER", "MANAGER", "STAFF"}:
             raise PermissionError("unsupported role")
+        if action.startswith("connections:") and choice.role != "OWNER":
+            raise HTTPException(status_code=403)
         with tenant_session(
             tenant_id, authorization=choice, session_factory=service.tenant_factory
         ) as db:

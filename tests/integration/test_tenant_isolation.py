@@ -699,7 +699,9 @@ def test_runtime_roles_do_not_own_grant_tables_or_functions(live_db) -> None:
             WHERE n.nspname = 'wso_private' AND c.relkind = 'r'
         """)
         ).all()
-        assert len(tables) == 2
+        assert {"tenant_grants", "tenant_contexts"} <= {
+            table.relname for table in tables
+        }
         assert all(
             t.owner == "wso_migrator" and t.relrowsecurity and t.relforcerowsecurity
             for t in tables

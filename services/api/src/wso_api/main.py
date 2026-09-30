@@ -9,6 +9,8 @@ from starlette.middleware.base import RequestResponseEndpoint
 
 from wso_api.auth import configure_auth
 from wso_api.auth import router as auth_router
+from wso_api.connections.router import configure_connections
+from wso_api.connections.router import router as connections_router
 from wso_api.stores.router import router as stores_router
 
 
@@ -30,8 +32,10 @@ def create_app(
     app = FastAPI()
     checks = dict(readiness_checks or {})
     configure_auth(app)
+    configure_connections(app)
     app.include_router(auth_router)
     app.include_router(stores_router)
+    app.include_router(connections_router)
 
     @app.middleware("http")
     async def request_context(
@@ -46,8 +50,8 @@ def create_app(
             )
         response.headers["X-Request-ID"] = request.state.request_id
         path = request.url.path
-        if path in {"/api/v1/me", "/api/v1/stores"} or path.startswith(
-            ("/api/v1/auth/", "/api/v1/stores/")
+        if path in {"/api/v1/me", "/api/v1/stores", "/api/v1/connections"} or path.startswith(
+            ("/api/v1/auth/", "/api/v1/stores/", "/api/v1/connections/")
         ):
             response.headers["Cache-Control"] = "no-store"
             vary = response.headers.get("Vary", "")

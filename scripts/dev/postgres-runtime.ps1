@@ -54,6 +54,7 @@ ROLES = {
     'IDENTITY': 'wso_identity_bootstrap',
     'MIGRATOR': 'wso_migrator',
     'SESSION': 'wso_web_session',
+    'WORKER': 'wso_connection_worker',
 }
 
 
@@ -72,7 +73,16 @@ def run(executable: Path, args: list[str], log: str, *, check: bool = True) -> i
 def load() -> dict:
     if not STATE.is_file():
         raise RuntimeError('Runtime is not initialized; run Setup first')
-    return json.loads(STATE.read_text(encoding='utf-8'))
+    state = json.loads(STATE.read_text(encoding='utf-8'))
+    # Existing clusters predate the connection worker. Add only its missing
+    # credential; keep the saved endpoint, cluster metadata and all old secrets.
+    worker = ROLES['WORKER']
+    if worker not in state['passwords']:
+        state['passwords'][worker] = secrets.token_urlsafe(36)
+        write_loader(state)
+    elif 'WSO_TEST_WORKER_DATABASE_URL' not in state.get('urls', {}):
+        write_loader(state)
+    return state
 
 
 def map_runtime(state: dict) -> None:
@@ -202,12 +212,12 @@ def start(state: dict) -> None:
 
 
 def write_loader(state: dict) -> None:
-    state['urls'] = {
+    state.setdefault('urls', {}).update({
         f'WSO_TEST_{key}_DATABASE_URL': (
             f'postgresql+psycopg://{role}:{quote(state["passwords"][role], safe="")}'
             f'@127.0.0.1:{state["port"]}/{state["database"]}'
         ) for key, role in ROLES.items()
-    }
+    })
     STATE.write_text(json.dumps(state, indent=2), encoding='utf-8')
     RUNTIME.joinpath('env.ps1').write_text(
         "$runtimeCredentials = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'credentials.json') -Raw | ConvertFrom-Json\n"
@@ -245,7 +255,7 @@ def provision(state: dict, bootstrap: bool = False) -> None:
                 'SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = %s)', (role,),
             ).fetchone()[0]
             if not exists:
-                if role == 'wso_web_session':
+                if role in ('wso_web_session', 'wso_connection_worker'):
                     continue
                 raise RuntimeError(f'Migration-created role missing: {role}')
             # Utility statements cannot use server placeholders. psycopg's
@@ -273,15 +283,24 @@ def status(state: dict) -> None:
     for role in state.get('provisioned_roles', []):
         with connect(state, role) as connection:
             row = connection.execute(
-                'SELECT current_user, rolsuper, rolcreatedb, rolcreaterole, rolreplication, rolbypassrls, rolinherit '
+                'SELECT current_user, rolsuper, rolcreatedb, rolcreaterole, rolreplication, rolbypassrls, rolinherit, rolcanlogin '
                 'FROM pg_roles WHERE rolname = current_user'
             ).fetchone()
-            if any(row[1:]):
+            if any(row[1:7]) or (role == 'wso_connection_worker' and not row[7]):
                 raise RuntimeError(f'Unsafe runtime role: {role}')
             if role in ('wso_app', 'wso_identity_bootstrap'):
                 memberships = connection.execute(
                     'SELECT count(*) FROM pg_auth_members WHERE member = (SELECT oid FROM pg_roles WHERE rolname = %s)',
                     (role,),
+                ).fetchone()[0]
+                if memberships:
+                    raise RuntimeError(f'Unexpected runtime role membership: {role}')
+            if role == 'wso_connection_worker':
+                memberships = connection.execute(
+                    'SELECT count(*) FROM pg_auth_members '
+                    'WHERE member = (SELECT oid FROM pg_roles WHERE rolname = %s) '
+                    'OR roleid = (SELECT oid FROM pg_roles WHERE rolname = %s)',
+                    (role, role),
                 ).fetchone()[0]
                 if memberships:
                     raise RuntimeError(f'Unexpected runtime role membership: {role}')

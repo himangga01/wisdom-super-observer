@@ -35,10 +35,21 @@ The dot-sourced loader sets these variables in the current PowerShell process:
 | `WSO_TEST_IDENTITY_DATABASE_URL` | `wso_identity_bootstrap` |
 | `WSO_TEST_MIGRATOR_DATABASE_URL` | `wso_migrator` |
 | `WSO_TEST_SESSION_DATABASE_URL` | `wso_web_session` |
+| `WSO_TEST_WORKER_DATABASE_URL` | `wso_connection_worker` |
 
-The session URL is reserved for the auth migration. After a migration creates
-`wso_web_session`, run `Provision` before using that URL. Provision changes only
-passwords for existing migration-created roles.
+The session URL is reserved for the auth migration; the worker URL is reserved
+for `0002_connections`. `Setup` can run before either optional role exists.
+After the corresponding migration creates `wso_web_session` or
+`wso_connection_worker`, run `Provision` before using that URL. Provision sets
+the saved passwords for existing migration-created roles. Missing application,
+identity or migrator roles remain an error.
+
+Loading credentials from an older runtime adds a random worker password and its
+URL to the same private credentials file and refreshes the process environment
+loader. Existing passwords, the database, port and cluster metadata are preserved.
+The worker role and its schema are created by the migration. `Status` checks the
+worker login, its restricted role flags (including `NOINHERIT`), and absence of
+role memberships in both directions.
 
 ```powershell
 ./scripts/dev/postgres-runtime.ps1 Status

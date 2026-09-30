@@ -656,6 +656,7 @@ version = "0.1.0"
 source = { editable = "packages/core" }
 dependencies = [
     { name = "alembic" },
+    { name = "cryptography" },
     { name = "psycopg", extra = ["binary"] },
     { name = "sqlalchemy" },
 ]
@@ -663,6 +664,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "alembic", specifier = ">=1.16,<2" },
+    { name = "cryptography", specifier = ">=50,<51" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3,<4" },
     { name = "sqlalchemy", specifier = ">=2.0,<3" },
 ]

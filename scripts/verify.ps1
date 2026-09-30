@@ -23,16 +23,32 @@ function Invoke-Checked {
 }
 
 try {
-    Invoke-Checked python @('-m', 'uv', 'sync', '--all-packages', '--group', 'dev')
+    $syncArgs = @('-m', 'uv', 'sync', '--all-packages', '--group', 'dev')
+    $uvRun = @('-m', 'uv', 'run')
+    if ($env:CI -eq 'true') {
+        $syncArgs += '--locked'
+        $uvRun += '--locked'
+    }
+    Invoke-Checked python $syncArgs
     Invoke-Checked pnpm @('install', '--frozen-lockfile')
-    $pytestArgs = @('-m', 'uv', 'run', 'pytest', '-m', 'not live', '-q')
+    $pytestArgs = $uvRun + @('pytest', '-m', 'not live', '-q')
     if ($WithPostgres) {
-        $loader = Join-Path $root '.superpowers/runtime/postgresql17/env.ps1'
-        if (-not (Test-Path -LiteralPath $loader -PathType Leaf)) {
-            throw 'Create the local PostgreSQL runtime before selecting -WithPostgres.'
+        $roles = @('ADMIN', 'APP', 'IDENTITY', 'MIGRATOR', 'SESSION', 'WORKER')
+        $provided = @($roles | Where-Object {
+            -not [string]::IsNullOrWhiteSpace(
+                [Environment]::GetEnvironmentVariable("WSO_TEST_${_}_DATABASE_URL")
+            )
+        })
+        if ($provided.Count -eq 0) {
+            $loader = Join-Path $root '.superpowers/runtime/postgresql17/env.ps1'
+            if (-not (Test-Path -LiteralPath $loader -PathType Leaf)) {
+                throw 'Provide all PostgreSQL role URLs or create the local test runtime.'
+            }
+            . $loader
+        } elseif ($provided.Count -ne $roles.Count) {
+            throw 'Explicit PostgreSQL configuration requires all six role URLs.'
         }
-        . $loader
-        foreach ($role in @('ADMIN', 'APP', 'IDENTITY', 'MIGRATOR', 'SESSION')) {
+        foreach ($role in $roles) {
             $url = [Environment]::GetEnvironmentVariable("WSO_TEST_${role}_DATABASE_URL")
             if ([string]::IsNullOrWhiteSpace($url)) {
                 throw "PostgreSQL integration requires the $role role URL."
@@ -53,8 +69,8 @@ try {
             throw 'A selected PostgreSQL integration test was skipped; its gate is unverified.'
         }
     }
-    Invoke-Checked python @('-m', 'uv', 'run', 'ruff', 'check', 'services', 'packages', 'tests', 'scripts', 'infra/migrations')
-    Invoke-Checked python @('-m', 'uv', 'run', 'mypy', 'services/api/src', 'packages/contracts/src', 'packages/core/src')
+    Invoke-Checked python ($uvRun + @('ruff', 'check', 'services', 'packages', 'tests', 'scripts', 'infra/migrations'))
+    Invoke-Checked python ($uvRun + @('mypy', 'services/api/src', 'packages/contracts/src', 'packages/core/src'))
     Invoke-Checked pnpm @('-r', 'typecheck')
     Invoke-Checked pnpm @('-r', 'lint')
     Invoke-Checked pnpm @('-r', 'test')
@@ -83,7 +99,7 @@ try {
     if ($before.Count -eq 0) {
         throw 'Checked-in contract exports are empty.'
     }
-    Invoke-Checked python @('-m', 'uv', 'run', 'python', 'scripts/export_contracts.py')
+    Invoke-Checked python ($uvRun + @('python', 'scripts/export_contracts.py'))
     $first = @(Get-ChildItem -LiteralPath $generated -File -Recurse | ForEach-Object {
         [pscustomobject]@{
             Path = [IO.Path]::GetRelativePath($generated, $_.FullName)
@@ -94,7 +110,7 @@ try {
         (ConvertTo-Json -InputObject $first -Depth 3 -Compress)) {
         throw 'Checked-in contract exports are stale; regenerate and review them.'
     }
-    Invoke-Checked python @('-m', 'uv', 'run', 'python', 'scripts/export_contracts.py')
+    Invoke-Checked python ($uvRun + @('python', 'scripts/export_contracts.py'))
     $second = @(Get-ChildItem -LiteralPath $generated -File -Recurse | ForEach-Object {
         [pscustomobject]@{
             Path = [IO.Path]::GetRelativePath($generated, $_.FullName)
@@ -105,7 +121,7 @@ try {
         (ConvertTo-Json -InputObject $second -Depth 3 -Compress)) {
         throw 'Contract export changed on its second run.'
     }
-    Invoke-Checked python @('-m', 'uv', 'run', 'python', 'scripts/check_tvt_evidence.py', 'docs/integrations/tvt-parity-ledger.md')
+    Invoke-Checked python ($uvRun + @('python', 'scripts/check_tvt_evidence.py', 'docs/integrations/tvt-parity-ledger.md'))
 
     if ($WithBrowser) {
         Invoke-Checked pnpm @('exec', 'playwright', 'test', 'tests/tvt_parity/e2e')

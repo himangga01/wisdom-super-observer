@@ -162,7 +162,7 @@ class PostgresSessionStore:
         if not url.startswith("postgresql+psycopg://"):
             raise ValueError("explicit PostgreSQL session URL required")
         self._factory = session_factory or sessionmaker(
-            create_engine(url, pool_pre_ping=True)
+            create_engine(url, pool_pre_ping=True, hide_parameters=True)
         )
 
     @staticmethod
@@ -325,6 +325,18 @@ def auth_service(request: Request) -> AuthService:
     if not isinstance(service, AuthService):
         raise AuthFailure(503, "auth_unavailable")
     return service
+
+
+def require_csrf(request: Request, service: AuthService, session: WebSession) -> None:
+    """Bind every cookie-authenticated mutation to the server session and origin."""
+    csrf = request.headers.get("X-CSRF-Token", "")
+    if (
+        request.headers.get("Origin") != service.settings.public_origin
+        or not csrf
+        or len(csrf) > 128
+        or not hmac.compare_digest(token_digest(csrf), session.csrf_digest)
+    ):
+        raise AuthFailure(403, "csrf_rejected")
 
 
 Service = Annotated[AuthService, Depends(auth_service)]

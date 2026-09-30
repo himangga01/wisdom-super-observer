@@ -40,6 +40,7 @@ sequenceDiagram
 | `wso_identity_bootstrap` | Verified issuer/subject lookup and membership grant issuance | Tenant business tables, session rows, grant/context rows |
 | `wso_app` | Grant consumption and authorized tenant business transactions | Grant issuance, direct protected context changes, web session rows |
 | `wso_web_session` | Dedicated session functions before tenant selection | Tenant business tables and membership bootstrap |
+| `wso_connection_worker` | Short-lived credential capability redemption/use | Direct table reads, capability issuance, role escalation |
 | `wso_migrator` | Explicit schema administration | Ordinary runtime request credentials |
 
 The old caller-settable `app.tenant_id` value cannot establish authorization.
@@ -52,7 +53,7 @@ and transaction; pool reuse requires fresh authorization. Membership changes
 are rechecked and locked in the business transaction.
 
 Apply migrations in order: `0001_tenants` → `0001b_tenant_grants` →
-`0001c_auth_sessions`. The portable development runtime creates the initial
+`0001c_auth_sessions` → `0002_connections`. The portable development runtime creates the initial
 roles, then `Provision` assigns passwords to additional migration-created
 roles. Production must configure separate role URLs; the API never falls back
 to an administrator URL.
@@ -85,6 +86,11 @@ provisioning. The PostgreSQL option loads only the ignored local runtime
 environment and rejects skipped integration tests. A local passing gate does
 not establish any APK-versus-web `MATCHED` case; those require the separate
 parity evidence ledger.
+
+The verifier also accepts all six explicitly configured test-role URLs, as used
+by Linux CI. A partial explicit configuration is rejected. The local loader is
+used only when none of those URLs was supplied. See [connection secrets](connection-secrets.md)
+for owner-only mutations and the worker capability boundary.
 
 The HTTPS browser suite starts the real Next application against an isolated
 signed test OIDC issuer and independently validating API fixture. The real
