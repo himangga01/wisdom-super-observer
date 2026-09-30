@@ -31,6 +31,7 @@ ROLES = {
     "WORKER": "wso_connection_worker",
     "DISPATCH": "wso_dispatcher",
     "JOB": "wso_job_worker",
+    "ASSET_MAINTENANCE": "wso_asset_maintenance",
 }
 
 
@@ -227,6 +228,11 @@ def main() -> None:
     if len(set(passwords.values()) | {url.password}) != len(ROLES) + 1:
         raise ValueError("CI role credentials must be distinct")
     with connect(url) as connection:
+        applied = connection.execute(
+            "SELECT version_num FROM alembic_version"
+        ).fetchall()
+        if len(applied) != 1:
+            raise ValueError("Expected a single applied migration revision")
         assert_restricted_roles(restricted_role_snapshot(connection))
         for role, password in passwords.items():
             connection.execute(
@@ -245,7 +251,7 @@ def main() -> None:
             if connection.execute("SELECT current_user").fetchone()[0] != role:
                 raise ValueError("restricted CI role login failed")
     export_environment(url, passwords, output)
-    print("Disposable PostgreSQL 17.11: head applied; seven restricted role logins OK.")
+    print("Disposable PostgreSQL 17.11: head applied; eight restricted role logins OK.")
 
 
 if __name__ == "__main__":

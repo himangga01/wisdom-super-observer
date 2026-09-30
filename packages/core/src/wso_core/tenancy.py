@@ -12,6 +12,8 @@ from uuid import UUID
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
 
+from wso_core.db_budget import AuthorizationDbControls
+
 _ISSUER_KEY = object()
 
 
@@ -95,6 +97,7 @@ def identity_session(
     verified_subject: str,
     *,
     session_factory: sessionmaker[Session] | None = None,
+    db_controls: AuthorizationDbControls | None = None,
 ) -> Iterator[IdentityLookup]:
     """Look up memberships after the caller has verified an OIDC token.
 
@@ -103,8 +106,17 @@ def identity_session(
     """
     if not verified_issuer or not verified_subject:
         raise ValueError("verified issuer and subject are required")
-    factory = session_factory or _identity_factory()
-    with factory.begin() as session:
+    if db_controls is not None:
+        if session_factory is not None:
+            raise ValueError(
+                "bounded identity provider and legacy factory are ambiguous"
+            )
+        db_controls.deadline.remaining_ms()
+        transaction = db_controls.factories.identity(deadline=db_controls.deadline)
+    else:
+        factory = session_factory or _identity_factory()
+        transaction = factory.begin()
+    with transaction as session:
         role: str = session.execute(text("SELECT current_user")).scalar_one()
         if role != "wso_identity_bootstrap":
             raise PermissionError("identity connection must use bootstrap role")

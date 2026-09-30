@@ -38,6 +38,7 @@ The dot-sourced loader sets these variables in the current PowerShell process:
 | `WSO_TEST_WORKER_DATABASE_URL` | `wso_connection_worker` |
 | `WSO_TEST_DISPATCH_DATABASE_URL` | `wso_dispatcher` |
 | `WSO_TEST_JOB_DATABASE_URL` | `wso_job_worker` |
+| `WSO_TEST_ASSET_MAINTENANCE_DATABASE_URL` | `wso_asset_maintenance` |
 
 The dispatch and job URLs are reserved for `0003_jobs`. Before that
 migration, `Setup` and `Provision` can run while their roles are absent. After
@@ -55,11 +56,28 @@ or `0002_connections`) permits absent dispatcher/job roles. A single
 `0003_jobs` or any other later head requires both roles; unknown single heads
 are treated conservatively as requiring them.
 
+The asset-maintenance URL is reserved for migration `0003a_assets`. Before that
+revision, `Setup`, `Provision` and `Status` allow the maintenance role to be
+absent. After `0003a_assets` or a later revision, `Provision` and `Status` require
+the migration-created LOGIN role and fail closed if it is missing. The migration
+also creates `wso_asset_owner` as `NOLOGIN`; it has no runtime URL or saved
+password and is never provisioned by this helper. Apply schema revisions
+explicitly; apart from `Setup`'s initial `0001_tenants` bootstrap, this helper
+does not run migrations, downgrade a database or reset its data.
+
 Loading a runtime with the original six credentials adds only missing dispatcher
 and job worker passwords and URLs to the same private files. Existing passwords,
 URLs (including connection options), endpoint, database and cluster metadata are
 preserved. Repeated loads retain both added passwords. Older runtimes also retain
 the existing upgrade path for a missing connection worker credential.
+
+Loading an older eight-role runtime adds the asset-maintenance password and URL
+to the same private credentials file. Existing eight URLs and passwords, endpoint,
+database and cluster metadata are preserved; repeated loads retain the added
+credential. `Provision` assigns that saved password only after the migration has
+created the LOGIN role. `Status` includes it in the existing restricted-role
+checks: LOGIN is enabled, privileged flags and `INHERIT` are false, and it has no
+role memberships.
 
 `Status` authenticates every currently existing application role, including roles
 created since the saved provisioned-role list was written. It checks `LOGIN`,

@@ -1,0 +1,21 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "algorithm": {
+      "const": "SHA256",
+      "title": "Algorithm",
+      "type": "string"
+    },
+    "value": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Value",
+      "type": "string"
+    }
+  },
+  "required": [
+    "algorithm",
+    "value"
+  ],
+  "title": "Checksum",
+  "type": "object"
+}

@@ -11,6 +11,7 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from wso_core.db import StoreRepository, tenant_session
+from wso_core.db_budget import AuthorizationDbControls, DbUnavailable
 
 from wso_api.auth import AuthFailure, AuthService, Service, WebSession
 
@@ -46,7 +47,12 @@ class StoreList(BaseModel):
 
 @contextmanager
 def require_tenant(
-    action: str, tenant_id: UUID, *, service: AuthService, principal: WebSession
+    action: str,
+    tenant_id: UUID,
+    *,
+    service: AuthService,
+    principal: WebSession,
+    db_controls: AuthorizationDbControls | None = None,
 ) -> Iterator[TenantScope]:
     if action not in {
         "stores:read",
@@ -54,22 +60,34 @@ def require_tenant(
         "connections:write",
         "jobs:read",
         "jobs:cancel",
+        "assets:read",
+        "assets:write",
     }:
         raise HTTPException(status_code=403)
     try:
-        with service.identity(principal) as lookup:
+        identity = (
+            service.identity(principal)
+            if db_controls is None
+            else service.identity(principal, db_controls=db_controls)
+        )
+        with identity as lookup:
             if lookup.user_id() != principal.user_id:
                 raise AuthFailure()
             choice = lookup.authorize_tenant(tenant_id)
         # Commit issuance before the application role consumes the one-use grant.
         if choice.role not in {"OWNER", "MANAGER", "STAFF"}:
             raise PermissionError("unsupported role")
-        if action.startswith("connections:") and choice.role != "OWNER":
+        if action.startswith(("connections:", "assets:")) and choice.role != "OWNER":
             raise HTTPException(status_code=403)
         with tenant_session(
-            tenant_id, authorization=choice, session_factory=service.tenant_factory
+            tenant_id,
+            authorization=choice,
+            session_factory=service.tenant_factory if db_controls is None else None,
+            db_controls=db_controls,
         ) as db:
             yield TenantScope(tenant_id, choice.user_id, choice.role, db)
+    except DbUnavailable as exc:
+        raise AuthFailure(503, "auth_unavailable") from exc
     except PermissionError as exc:
         raise HTTPException(status_code=404) from exc
 

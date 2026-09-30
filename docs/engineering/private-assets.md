@@ -6,6 +6,57 @@ Contracts and bounded S3/crypto/image primitives are committed at `aedbe2d`.
 The actual S3/HTTP baseline and all fourteen lifecycle acceptance cases remain
 open. This work does not establish APK feature parity.
 
+Scoped implementation review/fix rounds currently have zero unresolved Critical
+or Important findings. The OpenAPI metadata finding is resolved: upload declares
+required `X-Upload-Session` and JPEG/PNG binary content; download declares the
+required `X-Asset-Ticket` and JPEG/PNG binary success content. The fix adds no
+eager upload-body parsing or buffering. These are reviewed source contracts, not
+evidence of provider acceptance.
+
+## Runtime configuration and database controls
+
+The normal FastAPI application mounts the asset routes. Missing or invalid
+asset settings leave those routes unavailable with private, uncached errors.
+The API needs the separate application, identity and web-session database URLs;
+maintenance needs only `WSO_ASSET_MAINTENANCE_DATABASE_URL`. The migration adds
+the restricted `wso_asset_maintenance` LOGIN and `wso_asset_owner` NOLOGIN roles.
+Local verification selects nine role URLs including the existing admin role.
+Provisioning preserves the already saved credentials and PostgreSQL identity.
+
+Use the `WSO_ASSET_*` entries in `.env.example`: installed namespace, HTTPS S3
+endpoint, region, separate API/maintenance credentials, active key ID and a JSON
+mapping from key IDs to absolute protected 32-byte key files. Keep retained keys
+available for existing envelopes. Maintenance loads no API key or key-file map.
+`python -m wso_api.assets.bootstrap maintenance --once` runs one cleanup batch;
+omit `--once` for the loop. A local capability facade permits only list, delete
+and multipart abort before helper dispatch; actual IAM enforcement is separately
+tested against the provider. The fixture-only loopback HTTP flag requires the
+explicit disposable Linux CI prerequisites and owned-resource verification.
+
+Asset authorization uses separate bounded database pools and an independent
+NullPool grant-redemption connection. One monotonic request budget covers cookie
+lookup, identity, grant issuance/redemption and current tenant authorization;
+control transactions use the shorter route/lease limit. Startup and maintenance
+configuration transactions each get a fresh five-second deadline. Statement and
+transaction caps are at most five seconds, lock waits at most one second, and
+every subsequent operation checks the remaining budget. A new physical
+connection with insufficient remaining budget is refused.
+
+Role URLs must select one address. For DNS hostnames, provide the trusted numeric
+`WSO_ASSET_DB_HOSTADDR`; the hostname remains available for TLS verification.
+The bounded provider rejects every ambient process variable whose name starts
+with `PG`, including otherwise harmless PostgreSQL deployment variables. Supply
+explicit approved connection settings instead of ambient libpq service files or
+defaults. Constructors do not read or mutate process environment. These driver
+and server bounds do not replace the independent OS watchdog described below.
+
+Private asset tables separate the migrator's DDL ownership from the function
+owner's minimal DML grants and force row-level security. Cleanup emits a durable
+private audit outbox in its transaction; a separate maintenance projection locks
+the tenant first before writing the public audit. This avoids reversing the
+business tenant-to-asset lock order. Public audit delivery is eventual; external
+attention alerts remain an unimplemented deployment gate.
+
 ## Authority and namespace
 
 Use a separate private bucket and distinct gateway/maintenance credentials for
@@ -62,6 +113,27 @@ queries that may match bucket creation/deletion routes are omitted. Public
 object ACL attempts still run with administrator and both runtime identities.
 All source-based expectations need actual provider confirmation.
 
+### Current owned Linux probe and relay status
+
+Two later MinIO attempts still failed during fixture setup. Run
+[36751745062](linux-ci.md#fourth-private-asset-probe-data-volume-mode-rejected)
+observed the nonroot data-volume directory as UID/GID `65532:65532`, mode
+`0755`, and stopped at the required private-mode check. Run
+[36754155359](linux-ci.md#fifth-private-asset-probe-loopback-publication-check-failed)
+passed the volume gate at `0700`, then failed the loopback-publication check.
+The latter run's actual port fields were not captured, so their shape remains
+unknown. Neither run reached HTTP or established provider privacy/IAM behavior;
+both strict RED receipts were rejected.
+
+Pinned [Moby v28.0.4 source](https://github.com/moby/moby/blob/v28.0.4/daemon/network.go#L860)
+skips port-mapping options for an Internal network. This is consistent with the
+publication failure, but does not establish what port fields that run returned.
+The accepted fixture-only design removes Docker host publication and specifies
+a bounded opaque TCP relay from literal `127.0.0.1` to the owned MinIO numeric
+address on the Internal bridge. The relay implementation and actual Linux
+connectivity are still in progress and unverified. It is not a production proxy
+or provider-security approval.
+
 ## Local helper containment
 
 Each S3 operation and image decode uses an explicitly owned child, private
@@ -81,6 +153,16 @@ reaction applies on a responsive host and may abort concurrent requests.
 Neither a local kill nor one later absence observation proves a remote write
 stopped; durable cleanup retains uncertain outcomes until authoritative proof.
 
+Before an SDK multipart completion, the coordinator commits a monotonic SQL
+completion-dispatched fence under the matching unexpired write lease. An unknown
+SQL acknowledgment prevents that SDK call. For an incomplete attempt whose fence
+is false, cleanup can finish after lease/grace, fully paginated abort/absence
+checks and an atomic tombstone that forbids later completion authorization. This
+proves completion was never dispatched; it does not cancel delayed remote create
+or part operations. Periodic namespace reconciliation must still remove their
+later multipart orphans. Dispatched or uncertain completions remain conservative
+until authoritative observation or stronger quiescence evidence.
+
 ## Required remaining evidence
 
 The sealed `6565929` baseline must first complete actual provider and authenticated
@@ -88,5 +170,7 @@ HTTP/CSRF preflight and then fail exactly at the missing POST route. The separat
 strict GREEN gate requires all fourteen real lifecycle cases, including crypto
 tampering, expiry/revocation, parent crops, genuine Celery restart, multipart
 pagination, orphan cleanup and key rotation. Real PostgreSQL permission,
-lock-wait and migration lifecycle checks are also required. Source/offline
-results and ordinary foundation CI do not substitute for these gates.
+lock-wait and migration lifecycle checks are also required. The isolated Windows
+migration round trip has one passing execution, but the current product delta has
+not yet been exercised on Linux. Source/offline results, foundation CI and
+design-only relay acceptance do not substitute for these gates.

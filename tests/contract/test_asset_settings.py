@@ -29,6 +29,12 @@ def configuration(tmp_path, *, maintenance=False):
         )
         result["WSO_ASSET_MAINTENANCE_WORKER_ID"] = "cleanup-worker-1"
     else:
+        result["WSO_IDENTITY_DATABASE_URL"] = (
+            "postgresql+psycopg://wso_identity_bootstrap:PRIVATE_DB_IDENTITY@localhost/wso"
+        )
+        result["WSO_SESSION_DATABASE_URL"] = (
+            "postgresql+psycopg://wso_web_session:PRIVATE_DB_SESSION@localhost/wso"
+        )
         result["WSO_APP_DATABASE_URL"] = (
             "postgresql+psycopg://wso_app:PRIVATE_DB_SENTINEL@localhost/wso"
         )
@@ -37,6 +43,38 @@ def configuration(tmp_path, *, maintenance=False):
             {"K1": str(tmp_path / "old-key"), "K2": str(tmp_path / "active-key")}
         )
     return result
+
+
+@pytest.mark.parametrize(
+    "name", ["WSO_IDENTITY_DATABASE_URL", "WSO_SESSION_DATABASE_URL"]
+)
+def test_complete_asset_authorization_requires_explicit_role_urls(tmp_path, name):
+    env = configuration(tmp_path)
+    del env[name]
+    with pytest.raises(ValueError):
+        load_asset_settings(env)
+
+
+@pytest.mark.parametrize(
+    "name", ["WSO_IDENTITY_DATABASE_URL", "WSO_SESSION_DATABASE_URL"]
+)
+def test_authorization_role_url_cannot_be_application_role(tmp_path, name):
+    env = configuration(tmp_path)
+    env[name] = env["WSO_APP_DATABASE_URL"]
+    with pytest.raises(ValueError):
+        load_asset_settings(env)
+
+
+@pytest.mark.parametrize(
+    "address", ["localhost", "127.0.0.1,127.0.0.2", "127.0.0.1/32"]
+)
+def test_explicit_asset_database_hostaddr_is_a_single_numeric_address(
+    tmp_path, address
+):
+    env = configuration(tmp_path)
+    env["WSO_ASSET_DB_HOSTADDR"] = address
+    with pytest.raises(ValueError):
+        load_asset_settings(env)
 
 
 def test_api_settings_parse_without_opening_missing_key_files(tmp_path):
@@ -60,6 +98,18 @@ def test_maintenance_settings_need_no_api_credential_or_key_fields(tmp_path):
     assert settings.s3.credentials.access_key_id == "PRIVATE_ACCESS_SENTINEL"
     assert "PRIVATE_" not in repr(settings)
     assert not hasattr(settings, "key_files")
+
+
+@pytest.mark.parametrize("maintenance", [False, True])
+def test_blank_optional_template_settings_mean_absent(tmp_path, maintenance):
+    env = configuration(tmp_path, maintenance=maintenance)
+    prefix = "WSO_ASSET_MAINTENANCE_S3" if maintenance else "WSO_ASSET_S3"
+    env["WSO_ASSET_DB_HOSTADDR"] = ""
+    env[prefix + "_SESSION_TOKEN"] = ""
+    loader = load_asset_maintenance_settings if maintenance else load_asset_settings
+    settings = loader(env)
+    assert settings.db_hostaddr is None
+    assert settings.s3.credentials.session_token is None
 
 
 def test_settings_and_key_mapping_cannot_be_mutated(tmp_path):
@@ -170,6 +220,8 @@ def test_explicit_settings_constructor_sanitizes_malformed_port(tmp_path, mainte
         else:
             AssetSettings(
                 app_database_url=database_url,
+                identity_database_url=api.identity_database_url,
+                session_database_url=api.session_database_url,
                 s3=s3,
                 active_key_id="K2",
                 key_files={"K2": Path(tmp_path / "active-key")},
@@ -185,6 +237,8 @@ def test_explicit_settings_constructor_rejects_del_in_key_path(tmp_path):
     with pytest.raises(ValueError):
         AssetSettings(
             app_database_url=configuration(tmp_path)["WSO_APP_DATABASE_URL"],
+            identity_database_url=api.identity_database_url,
+            session_database_url=api.session_database_url,
             s3=api.s3,
             active_key_id="K2",
             key_files={"K2": Path(f"{tmp_path}{chr(127)}key")},

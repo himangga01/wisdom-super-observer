@@ -14,10 +14,10 @@ This ledger tracks executable service work. The separate [parity ledger](../inte
 | W00 atomic parity ledger | Static 77-case seed and desktop API preflight implemented; false-positive paths closed | 31 focused tests passed; checker 77/77 rows, zero errors; headless Chrome/Edge API probe 2/2 | Trusted W24 run registry and comparator; runtime reachability, Android/iOS/media/permission checks, support matrix sign-off; no `MATCHED` rows and `release_ready=false` |
 | W01 TVT bridge feasibility | Static handoff, frozen 199-operation manifest and declaration inventories implemented | 10 schema tests passed; 77 cases / 199 candidate operations; 281 request classes and 299 native declarations inventoried | Vendor rights, runtime fixtures and pilot; all six remote G-P1 families `BLOCKED` |
 | T05 durable jobs | Database-owned requests, outbox/inbox, restricted dispatcher/worker, fencing, cancellation, external uncertainty, status/items API and job-bound secret primitives implemented; task and milestone integration/fix reviews approved | [Actual Linux run 36716200713](https://github.com/himangga01/wisdom-super-observer/actions/runs/36716200713): 537 Python cases and all ten required real process/broker recovery cases, zero skips; no remaining Critical/Important review findings | Generic credential handlers fail CAPABILITY_UNSUPPORTED until the owning executor exists; no production IMPORT/REGISTRATION handler. Deployment and vendor effects remain pending |
-| T05A private assets | In progress; public contracts, storage/crypto/image primitives and owned Linux fixture under review | [First actual probe](../engineering/linux-ci.md#first-private-asset-probe-provider-setup-failed) failed during provider setup; strict gate refused it | Actual private provider profile, authenticated missing-feature RED, SQL/lifecycle integration and fourteen-case GREEN acceptance |
+| T05A private assets | In progress; source-reviewed contracts/primitives and fixture-only relay topology, with provider relay implementation underway | [Latest foundation run](../engineering/linux-ci.md#latest-recorded-linux-foundation-run) passed; [latest provider attempt](../engineering/linux-ci.md#fifth-private-asset-probe-loopback-publication-check-failed) still failed during setup | Actual provider privacy/IAM and HTTP preflight, complete fourteen-case GREEN acceptance, current product-delta Linux run, and whole APK parity |
 | W02–W25 service features | Pending | None | Private storage prerequisite and family-specific gates |
 
-## Latest integrated verification — 2026-09-30
+## Previous integrated verification — 2026-09-30
 
 `pwsh -NoProfile -File scripts/verify.ps1 -WithPostgres -WithBrowser -WithAuthBrowser`
 exited 0: Python 449 passed, no skips or warnings; Ruff and strict mypy (26 source files) passed;
@@ -72,6 +72,27 @@ checker and 26 HTTPS Chrome cases passed. Owned fixtures were removed. This
 closes T05's required actual recovery test gate; S3, live vendor execution,
 device/media comparisons and the APK parity release gate remain open.
 
+## Latest local foundation verification — 2026-10-01
+
+A fresh, uncommitted workspace consolidation ran
+`pwsh -NoProfile -File scripts/verify.ps1 -WithPostgres` and exited 0:
+1194 Python cases passed with zero failures, errors or skips in 180.60 seconds.
+Ruff and strict mypy on 40 source files passed; frontend typecheck, lint, 15 unit
+tests and production build passed. Twenty contract documents were exported twice
+and compared byte-for-byte stable; the evidence checker validated all 77 rows.
+Browser/authentication browser, Valkey/container and Compose gates were not
+selected in this local command.
+
+A later local asset-metadata, isolated-migration and volume-mode packaging delta
+passed 80 focused cases in 2.09 seconds, full Ruff, strict mypy on 40 source
+files and two stable 20-document exports. The 80 focused cases overlap the 1194
+case result and are not additive. One actual Windows migration round trip,
+included in those focused cases, used a guarded unique disposable database for
+`0003_jobs` → `0003a_assets` → `0003_jobs` → `0003a_assets`, checked asset
+security and preserved T05 behavior, then removed only that database; the
+managed database head remained unchanged. The current product delta has not yet
+been run on Linux.
+
 ## Private asset implementation
 
 T05A is in progress: private upload contracts, bounded S3/crypto/image adapters
@@ -81,19 +102,38 @@ separate [baseline RED probe](../engineering/linux-ci.md#private-asset-baseline-
 must prove actual provider and authentication preflight before the missing route
 assertion. No S3/lifecycle acceptance or APK parity is claimed at this stage.
 
-The [latest foundation run](../engineering/linux-ci.md#latest-foundation-run)
-at `dbe68fa` passed 696 ordinary Python cases and ten actual Celery/Valkey
-recovery cases, with zero skips, plus the existing frontend/browser gates.
-The two separate private asset probes failed before HTTP at provider setup:
-unsupported public-access-block API, then an unproven public ACL/grant refusal.
-SeaweedFS is excluded. The selected MinIO fixture candidate requires dedicated
-buckets and actual post-attempt byte/privacy checks; actual acceptance is pending.
+The [latest recorded Linux foundation run](../engineering/linux-ci.md#latest-recorded-linux-foundation-run)
+at `d8530ae` passed 887 ordinary Python cases and ten actual Celery/Valkey
+recovery cases, with zero skips, plus frontend/browser gates. The previous
+[foundation run](../engineering/linux-ci.md#previous-recorded-foundation-run)
+at `e3865df` passed 855 ordinary cases and ten actual recovery cases.
+
+Five separate private-asset probes have failed during setup, not at HTTP:
+SeaweedFS lacked public-access-block support; the required ACL/grant refusal was
+not proven; one MinIO volume check did not preserve its observed metadata; a later
+run captured UID/GID `65532:65532` with mode `0755`; and the newest passed the
+`0700` volume gate but failed loopback publication, with actual port fields not
+captured. Strict RED receipts were rejected. Pinned [Moby v28.0.4 source](https://github.com/moby/moby/blob/v28.0.4/daemon/network.go#L860)
+explains why port publication is skipped for an Internal network, but the
+observed port shape is unknown. A fixture-only opaque TCP relay design was
+accepted for implementation; the relay and actual Linux connectivity are not
+yet verified.
+SeaweedFS remains excluded. The MinIO candidate still requires the unchanged
+privacy/IAM and full fourteen-case lifecycle gates; no provider acceptance is
+claimed.
+
+The current scoped source review/fix rounds have zero unresolved Critical or
+Important implementation findings. The OpenAPI metadata issue was resolved with
+required upload-session/download-ticket headers and JPEG/PNG binary schemas,
+without eager request-body parsing or buffering. This source review result does
+not establish actual provider behavior or APK parity.
 
 The committed `aedbe2d` primitives passed 855 local PostgreSQL-selected Python
 cases. Its subsequent Linux run passed 855 ordinary cases and ten actual
-recovery cases, then failed mypy at a Windows-only function reference. Full
-Linux success is not claimed. The minimal typing correction has a clean scoped
-review and focused Linux/Windows checks; full rerun remains pending.
+recovery cases, then failed mypy at a Windows-only function reference. The
+minimal typing correction has a clean scoped review and focused
+Linux/Windows checks; its actual full Linux rerun at `e3865df` passed as recorded
+above. That result does not accept the separate asset lifecycle.
 
 Storage work uses a fixed work cutoff before helper creation and refuses
 dispatch after a late startup return. Synchronous OS/runtime process creation
@@ -106,7 +146,7 @@ unimplemented. Local helper termination does not prove a remote write stopped.
 
 1. Use Node.js 24, pnpm 11 and Python 3.12. Install `uv` if absent.
 2. Run `python -m uv sync --all-packages --group dev` and `pnpm install --frozen-lockfile`.
-3. For actual PostgreSQL integration, follow [local PostgreSQL setup](../engineering/local-postgres.md), migrate through `0003_jobs`, then run `Provision`. No Docker installation is needed for this gate.
+3. For actual PostgreSQL integration, follow [local PostgreSQL setup](../engineering/local-postgres.md), migrate through `0003a_assets`, then run `Provision`. No Docker installation is needed for this gate.
 4. Run `pwsh -NoProfile -File scripts/verify.ps1 -WithPostgres -WithBrowser -WithAuthBrowser` for the verified local gate. `-WithAuthBrowser` starts an isolated HTTPS signed-issuer/API fixture and the real Next interface; it does not configure a production identity provider or seed production users.
 5. When Docker is available, run `docker compose -f infra/compose.yaml --profile test up -d`, then the explicitly selected integration checks. The current Windows host has no Docker CLI, so these services have not been exercised.
 6. Copy `.env.example` to ignored `.env` only after replacing placeholders appropriate to the environment. Never use real TVT, Tyco or device secrets in local fixtures.
@@ -123,7 +163,7 @@ W01 family gates are documented.
 Connection lifecycle configuration and worker trust boundaries are documented
 in [connection secrets](../engineering/connection-secrets.md). The CI gate uses
 its own [disposable Linux runtime](../engineering/linux-ci.md), never the Windows
-development database. Explicit PostgreSQL selection requires all eight role URLs;
+development database. Explicit PostgreSQL selection requires all nine role URLs;
 partial environment configuration fails instead of falling back to local state.
 
 The [durable jobs runbook](../engineering/durable-jobs.md) records the separate

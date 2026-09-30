@@ -31,7 +31,7 @@ and production build, verifies deterministic checked-in contracts, and runs the
 HTTPS auth browser suite. WithJobBroker additionally selects the ten mandatory
 real recovery cases and checks their actual JUnit nodes for zero skips, failures
 or errors. Test counts grow with implementation; use the observed run's counts.
-This job provides its own eight PostgreSQL URLs and bypasses the
+The T05A migration extends the job from eight to nine PostgreSQL URLs and bypasses the
 Windows runtime loader. `WSO_TEST_PYTHON` points the HTTPS fixture at
 `.venv/bin/python`. The local TVT Chrome/Edge preflight remains a separate gate;
 this job does not assume Edge is installed.
@@ -59,11 +59,12 @@ databases. Existing data, schema, roles, query-based host redirects, a real loca
 fixture URL, a shared container, or a mismatched endpoint cause refusal.
 
 The helper applies Alembic `head`; migrations create the roles. It requires all
-seven restricted LOGIN roles to exist and validates that they have no superuser, createdb,
+eight restricted LOGIN roles to exist at `0003a_assets` and validates that they have no superuser, createdb,
 createrole, replication, bypass-RLS, inherit, or role-membership privileges.
 It assigns distinct random passwords, grants the migrator database schema
 creation rights required by migration fixtures, tests each restricted login,
-and exports `WSO_TEST_{ADMIN,APP,IDENTITY,MIGRATOR,SESSION,WORKER,DISPATCH,JOB}_DATABASE_URL`.
+and exports `WSO_TEST_{ADMIN,APP,IDENTITY,MIGRATOR,SESSION,WORKER,DISPATCH,JOB,ASSET_MAINTENANCE}_DATABASE_URL`.
+The sealed T05 baseline retains its original eight-URL schema and provisioner.
 It never creates missing roles itself and never alters the Windows cluster.
 
 Passwords and complete URLs are masked before environment export. SQL driver
@@ -174,7 +175,7 @@ and its separate strict GREEN checker. Ordinary/offline and local PostgreSQL
 verification explicitly exclude the Linux-only asset acceptance file; the
 separate workflow selects it deliberately and cannot skip a missing runtime.
 
-### Latest foundation run
+### Provider profile foundation run
 
 [Run 36733796406](https://github.com/himangga01/wisdom-super-observer/actions/runs/36733796406)
 passed for commit `dbe68fa6d0c6e32c9d25f7811eeb608da4c7a94a`. The ordinary Python
@@ -233,6 +234,69 @@ Valkey smoke gates were not reached. Owned PostgreSQL cleanup succeeded.
 This run is **failed**, despite the passing test subsets. A minimal platform
 guard was independently reviewed and passed focused Linux/Windows typing and
 crypto checks; its subsequent full Linux run remains to be observed.
+
+### Previous recorded foundation run
+
+[Run 36742382150](https://github.com/himangga01/wisdom-super-observer/actions/runs/36742382150)
+at `e3865dff7d947d90a31ff3baa941f7a1c68731c9` passed after the minimal
+Windows-import typing correction. It verified 855 ordinary Python cases with
+zero skips in 116.33 seconds and ten actual Celery/Valkey recovery cases with
+zero skips in 250.27 seconds. Ruff, strict mypy on 35 source files, frontend
+typecheck/lint/build, 15 frontend unit cases, 15 deterministic exports, the
+77-row checker, 26 HTTPS Chrome cases and the Valkey smoke passed. Owned
+PostgreSQL cleanup succeeded. General Chrome/Edge preflight and the separate
+Compose container gate were not selected. This is foundation evidence;
+private-asset provider and lifecycle acceptance remain separate.
+
+### Latest recorded Linux foundation run
+
+[Run 36751744939, job 110011840693](https://github.com/himangga01/wisdom-super-observer/actions/runs/36751744939/job/110011840693)
+at commit `d8530aeeca3e2c8863597ecbb3dcec1f8a47b9a2` succeeded. It passed 887
+ordinary Python cases with zero skips in 116.89 seconds and ten actual recovery
+cases with zero skips in 250.16 seconds. Ruff and strict mypy on 35 source files,
+frontend typecheck/lint/build and 15 frontend unit cases, 15 deterministic
+contract exports verified twice, the 77-row evidence checker, and 26 HTTPS Chrome
+cases in 58.1 seconds all passed. The Valkey persistence smoke and owned fixture
+cleanup also passed. General Chrome/Edge preflight and Compose were not selected.
+This run is foundation evidence; it does not exercise the private-asset provider
+or lifecycle acceptance.
+
+### Third private asset probe: data volume verification failed
+
+[Run 36749047523](https://github.com/himangga01/wisdom-super-observer/actions/runs/36749047523)
+at `b02703d075f86f1e57be4fec05539dc2ff7f88cb` installed locked dependencies
+and provisioned the owned PostgreSQL fixture successfully. The selected test
+reported one setup error in 6.62 seconds while checking the actual MinIO data
+volume UID/GID/mode before server execution. The generic exception did not
+preserve the observed metadata, so the cause is under investigation. No MinIO
+privacy/IAM acceptance, HTTP preflight or meaningful missing-feature RED was
+established. The strict checker refused the incomplete receipt. Owned
+PostgreSQL cleanup succeeded; the candidate remains unaccepted.
+
+### Fourth private asset probe: data-volume mode rejected
+
+[Run 36751745062](https://github.com/himangga01/wisdom-super-observer/actions/runs/36751745062)
+reported one setup error in 7.71 seconds. The observed MinIO data-volume entry
+was owned by UID/GID `65532:65532` with mode `0755`; the fixture's required
+private-mode check stopped setup before MinIO ran. The strict RED receipt was
+rejected. This records the actual metadata for this attempt; no HTTP, provider
+privacy/IAM, or missing-feature result was established.
+
+### Fifth private asset probe: loopback publication check failed
+
+[Run 36754155359, job 110020003744](https://github.com/himangga01/wisdom-super-observer/actions/runs/36754155359/job/110020003744)
+reported one setup error in 5.97 seconds. The data-volume check passed with the
+required `0700` mode, then fixture setup failed its owned-loopback-publication
+check. The returned port fields were not captured, so the actual mapped-port
+shape is unknown. The strict RED receipt was rejected; this was not an HTTP or
+provider-privacy result. The owned PostgreSQL cleanup step ran.
+
+Pinned Moby v28.0.4 source returns before installing port options for an Internal
+network ([`daemon/network.go`](https://github.com/moby/moby/blob/v28.0.4/daemon/network.go#L860)).
+That source behavior is consistent with the fixture publication failure, but it
+does not reveal the uncaptured port fields from the run. A fixture-only opaque
+loopback TCP relay topology has been accepted for implementation; its code and
+actual Linux connectivity remain unverified.
 
 ## Evidence handling
 

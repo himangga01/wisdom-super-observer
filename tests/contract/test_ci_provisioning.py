@@ -155,7 +155,7 @@ def test_restricted_role_catalog_rejects_privileges_membership_and_missing_role(
         provisioning.assert_restricted_roles({})
 
 
-def test_export_escapes_passwords_masks_all_secrets_and_writes_eight_urls(
+def test_export_escapes_passwords_masks_all_secrets_and_writes_nine_urls(
     provisioning,
     tmp_path,
     capsys,
@@ -165,19 +165,19 @@ def test_export_escapes_passwords_masks_all_secrets_and_writes_eight_urls(
     passwords = {role: f"different-{role}:/@%" for role in provisioning.ROLES.values()}
     provisioning.export_environment(url, passwords, output)
     lines = output.read_text().splitlines()
-    assert len(lines) == 8
+    assert len(lines) == 9
     assert lines[0] == "WSO_TEST_ADMIN_DATABASE_URL=" + ADMIN
     assert any("wso_app:different-wso_app%3A%2F%40%25@" in line for line in lines)
     masks = capsys.readouterr().out.splitlines()
     assert all(line.startswith("::add-mask::") for line in masks)
     assert "::add-mask::fixture-secret" in masks
-    assert len(masks) == 16
+    assert len(masks) == 18
 
 
 def test_job_and_dispatch_logins_are_separate_required_runtime_roles(provisioning):
     assert provisioning.ROLES["DISPATCH"] == "wso_dispatcher"
     assert provisioning.ROLES["JOB"] == "wso_job_worker"
-    assert len(set(provisioning.ROLES.values())) == 7
+    assert len(set(provisioning.ROLES.values())) == 8
     safe = {role: (False,) * 6 + (True, 0) for role in provisioning.ROLES.values()}
     for role in ("wso_dispatcher", "wso_job_worker"):
         missing = safe.copy()

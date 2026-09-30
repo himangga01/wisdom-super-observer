@@ -57,6 +57,7 @@ ROLES = {
     'WORKER': 'wso_connection_worker',
     'DISPATCH': 'wso_dispatcher',
     'JOB': 'wso_job_worker',
+    'ASSET_MAINTENANCE': 'wso_asset_maintenance',
 }
 
 
@@ -78,7 +79,7 @@ def load() -> dict:
     state = json.loads(STATE.read_text(encoding='utf-8'))
     # Extend older clusters without rotating saved secrets, URLs or metadata.
     changed = False
-    for key in ('WORKER', 'DISPATCH', 'JOB'):
+    for key in ('WORKER', 'DISPATCH', 'JOB', 'ASSET_MAINTENANCE'):
         role = ROLES[key]
         if role not in state['passwords']:
             state['passwords'][role] = secrets.token_urlsafe(36)
@@ -241,6 +242,10 @@ def existing_application_roles(connection) -> list[str]:
     jobs_required = applied[0][0] not in (
         '0001_tenants', '0001b_tenant_grants', '0001c_auth_sessions', '0002_connections',
     )
+    assets_required = applied[0][0] not in (
+        '0001_tenants', '0001b_tenant_grants', '0001c_auth_sessions',
+        '0002_connections', '0003_jobs',
+    )
     roles = []
     for role in list(ROLES.values())[1:]:
         exists = connection.execute(
@@ -256,8 +261,25 @@ def existing_application_roles(connection) -> list[str]:
             # absence indicates a damaged migration and must fail closed.
             if not jobs_required:
                 continue
+        if role == 'wso_asset_maintenance' and not assets_required:
+            continue
         raise RuntimeError(f'Migration-created role missing: {role}')
     return roles
+
+
+def assert_restricted_application_roles(connection, roles: list[str]) -> None:
+    rows = connection.execute(
+        'SELECT r.rolname, r.rolsuper, r.rolcreatedb, r.rolcreaterole, '
+        'r.rolreplication, r.rolbypassrls, r.rolinherit, r.rolcanlogin, '
+        '(SELECT count(*) FROM pg_auth_members m '
+        'WHERE m.member=r.oid OR m.roleid=r.oid) '
+        'FROM pg_roles r WHERE r.rolname = ANY(%s)', (roles,),
+    ).fetchall()
+    if {row[0] for row in rows} != set(roles):
+        raise RuntimeError('Migration-created role missing during validation')
+    for row in rows:
+        if len(row) != 9 or any(row[1:7]) or row[7] is not True or row[8]:
+            raise RuntimeError(f'Unsafe runtime role: {row[0]}')
 
 
 def provision(state: dict, bootstrap: bool = False) -> None:
@@ -281,7 +303,9 @@ def provision(state: dict, bootstrap: bool = False) -> None:
             command.upgrade(config, '0001_tenants')
     provisioned = []
     with connect(state) as connection:
-        for role in existing_application_roles(connection):
+        roles = existing_application_roles(connection)
+        assert_restricted_application_roles(connection, roles)
+        for role in roles:
             # Utility statements cannot use server placeholders. psycopg's
             # composable Identifier/Literal safely quote both identifier and secret.
             connection.execute(sql.SQL('ALTER ROLE {} PASSWORD {}').format(
@@ -307,6 +331,7 @@ def status(state: dict) -> None:
         # Catalog existence is authoritative even if the saved provisioned list
         # predates a new migration. Optional roles may be absent before upgrade.
         existing_roles = existing_application_roles(connection)
+        assert_restricted_application_roles(connection, existing_roles)
     for role in existing_roles:
         with connect(state, role) as connection:
             row = connection.execute(
@@ -315,22 +340,14 @@ def status(state: dict) -> None:
             ).fetchone()
             if any(row[1:7]) or not row[7]:
                 raise RuntimeError(f'Unsafe runtime role: {role}')
-            if role in ('wso_app', 'wso_identity_bootstrap'):
-                memberships = connection.execute(
-                    'SELECT count(*) FROM pg_auth_members WHERE member = (SELECT oid FROM pg_roles WHERE rolname = %s)',
-                    (role,),
-                ).fetchone()[0]
-                if memberships:
-                    raise RuntimeError(f'Unexpected runtime role membership: {role}')
-            if role in ('wso_connection_worker', 'wso_dispatcher', 'wso_job_worker'):
-                memberships = connection.execute(
-                    'SELECT count(*) FROM pg_auth_members '
-                    'WHERE member = (SELECT oid FROM pg_roles WHERE rolname = %s) '
-                    'OR roleid = (SELECT oid FROM pg_roles WHERE rolname = %s)',
-                    (role, role),
-                ).fetchone()[0]
-                if memberships:
-                    raise RuntimeError(f'Unexpected runtime role membership: {role}')
+            memberships = connection.execute(
+                'SELECT count(*) FROM pg_auth_members '
+                'WHERE member = (SELECT oid FROM pg_roles WHERE rolname = %s) '
+                'OR roleid = (SELECT oid FROM pg_roles WHERE rolname = %s)',
+                (role, role),
+            ).fetchone()[0]
+            if memberships:
+                raise RuntimeError(f'Unexpected runtime role membership: {role}')
             print(f'{role}: login OK; privileged flags false')
     print('Environment loader: ' + str(RUNTIME / 'env.ps1'))
 

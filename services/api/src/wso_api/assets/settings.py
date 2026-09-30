@@ -3,6 +3,7 @@
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass
+from ipaddress import ip_address
 from pathlib import Path
 from types import MappingProxyType
 from uuid import UUID
@@ -61,12 +62,18 @@ def _key_mapping(value: Mapping[str, Path]) -> Mapping[str, Path]:
 @dataclass(frozen=True, slots=True, repr=False, kw_only=True)
 class AssetSettings:
     app_database_url: str
+    identity_database_url: str
+    session_database_url: str
     s3: S3RuntimeConfig
     active_key_id: str
     key_files: Mapping[str, Path]
+    db_hostaddr: str | None = None
 
     def __post_init__(self) -> None:
         _role_url(self.app_database_url, "wso_app")
+        _role_url(self.identity_database_url, "wso_identity_bootstrap")
+        _role_url(self.session_database_url, "wso_web_session")
+        _hostaddr(self.db_hostaddr)
         key_id_valid(self.active_key_id)
         if not isinstance(self.s3, S3RuntimeConfig):
             raise TypeError("invalid private object configuration")
@@ -81,12 +88,25 @@ class AssetMaintenanceSettings:
     maintenance_database_url: str
     s3: S3RuntimeConfig
     worker_id: str
+    db_hostaddr: str | None = None
 
     def __post_init__(self) -> None:
         _role_url(self.maintenance_database_url, "wso_asset_maintenance")
+        _hostaddr(self.db_hostaddr)
         if not isinstance(self.s3, S3RuntimeConfig):
             raise TypeError("invalid private object configuration")
         opaque_valid(self.worker_id, 128)
+
+
+def _hostaddr(value: str | None) -> None:
+    if value is None:
+        return
+    try:
+        if type(value) is not str or "%" in value or len(value) > 45:
+            raise ValueError("invalid address")
+        ip_address(value)
+    except ValueError:
+        raise ValueError("invalid private database address") from None
 
 
 def _required(env: Mapping[str, str], name: str) -> str:
@@ -112,7 +132,7 @@ def _s3_settings(env: Mapping[str, str], *, maintenance: bool) -> S3RuntimeConfi
         credentials=S3Credentials(
             access_key_id=_required(env, prefix + "_ACCESS_KEY_ID"),
             secret_access_key=_required(env, prefix + "_SECRET_ACCESS_KEY"),
-            session_token=env.get(prefix + "_SESSION_TOKEN"),
+            session_token=env.get(prefix + "_SESSION_TOKEN") or None,
         ),
         namespace=InstallationNamespace(
             UUID(_required(env, "WSO_ASSET_INSTALLATION_ID")),
@@ -149,9 +169,12 @@ def load_asset_settings(env: Mapping[str, str]) -> AssetSettings:
     try:
         return AssetSettings(
             app_database_url=_required(env, "WSO_APP_DATABASE_URL"),
+            identity_database_url=_required(env, "WSO_IDENTITY_DATABASE_URL"),
+            session_database_url=_required(env, "WSO_SESSION_DATABASE_URL"),
             s3=_s3_settings(env, maintenance=False),
             active_key_id=_required(env, "WSO_ASSET_ACTIVE_KEY_ID"),
             key_files=_load_keys(_required(env, "WSO_ASSET_KEY_FILES_JSON")),
+            db_hostaddr=env.get("WSO_ASSET_DB_HOSTADDR") or None,
         )
     except (KeyError, TypeError, ValueError, RecursionError):
         raise ValueError("invalid private asset startup configuration") from None
@@ -165,6 +188,7 @@ def load_asset_maintenance_settings(env: Mapping[str, str]) -> AssetMaintenanceS
             ),
             s3=_s3_settings(env, maintenance=True),
             worker_id=_required(env, "WSO_ASSET_MAINTENANCE_WORKER_ID"),
+            db_hostaddr=env.get("WSO_ASSET_DB_HOSTADDR") or None,
         )
     except (KeyError, TypeError, ValueError, RecursionError):
         raise ValueError("invalid private asset startup configuration") from None

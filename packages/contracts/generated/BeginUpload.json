@@ -1,0 +1,142 @@
+{
+  "$defs": {
+    "Checksum": {
+      "additionalProperties": false,
+      "properties": {
+        "algorithm": {
+          "const": "SHA256",
+          "title": "Algorithm",
+          "type": "string"
+        },
+        "value": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "algorithm",
+        "value"
+      ],
+      "title": "Checksum",
+      "type": "object"
+    },
+    "StoreScope": {
+      "additionalProperties": false,
+      "properties": {
+        "scope_kind": {
+          "const": "STORE",
+          "default": "STORE",
+          "title": "Scope Kind",
+          "type": "string"
+        },
+        "store_id": {
+          "format": "uuid",
+          "title": "Store Id",
+          "type": "string"
+        },
+        "tenant_id": {
+          "format": "uuid",
+          "title": "Tenant Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tenant_id",
+        "store_id"
+      ],
+      "title": "StoreScope",
+      "type": "object"
+    },
+    "TenantScope": {
+      "additionalProperties": false,
+      "properties": {
+        "scope_kind": {
+          "const": "TENANT",
+          "default": "TENANT",
+          "title": "Scope Kind",
+          "type": "string"
+        },
+        "tenant_id": {
+          "format": "uuid",
+          "title": "Tenant Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tenant_id"
+      ],
+      "title": "TenantScope",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "byte_size": {
+      "maximum": 20971520,
+      "minimum": 1,
+      "title": "Byte Size",
+      "type": "integer"
+    },
+    "checksum": {
+      "$ref": "#/$defs/Checksum"
+    },
+    "content_type": {
+      "enum": [
+        "image/jpeg",
+        "image/png"
+      ],
+      "title": "Content Type",
+      "type": "string"
+    },
+    "parent_asset_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Parent Asset Id"
+    },
+    "purpose": {
+      "enum": [
+        "IMPORT_PHOTO",
+        "IMPORT_CROP",
+        "EVIDENCE"
+      ],
+      "title": "Purpose",
+      "type": "string"
+    },
+    "scope": {
+      "discriminator": {
+        "mapping": {
+          "STORE": "#/$defs/StoreScope",
+          "TENANT": "#/$defs/TenantScope"
+        },
+        "propertyName": "scope_kind"
+      },
+      "oneOf": [
+        {
+          "$ref": "#/$defs/TenantScope"
+        },
+        {
+          "$ref": "#/$defs/StoreScope"
+        }
+      ],
+      "title": "Scope"
+    }
+  },
+  "required": [
+    "scope",
+    "purpose",
+    "content_type",
+    "byte_size",
+    "checksum"
+  ],
+  "title": "BeginUpload",
+  "type": "object"
+}

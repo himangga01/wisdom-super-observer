@@ -1,0 +1,39 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "asset_id": {
+      "format": "uuid",
+      "title": "Asset Id",
+      "type": "string"
+    },
+    "download_path": {
+      "maxLength": 200,
+      "title": "Download Path",
+      "type": "string"
+    },
+    "expires_at": {
+      "format": "date-time",
+      "title": "Expires At",
+      "type": "string"
+    },
+    "id": {
+      "format": "uuid",
+      "title": "Id",
+      "type": "string"
+    },
+    "token": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Token",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "asset_id",
+    "download_path",
+    "token",
+    "expires_at"
+  ],
+  "title": "DownloadTicket",
+  "type": "object"
+}

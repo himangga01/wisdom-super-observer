@@ -27,6 +27,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sess
 from sqlalchemy.pool import NullPool
 from sqlalchemy.sql import func
 
+from wso_core.db_budget import AuthorizationDbControls
 from wso_core.tenancy import TenantAuthorization
 
 
@@ -168,6 +169,7 @@ def tenant_session(
     *,
     authorization: TenantAuthorization | None = None,
     session_factory: sessionmaker[Session] | None = None,
+    db_controls: AuthorizationDbControls | None = None,
 ) -> Iterator[Session]:
     """Open a tenant transaction for a bootstrap-authorized tenant choice.
 
@@ -181,38 +183,62 @@ def tenant_session(
         or not authorization._valid_for(tenant_id)
     ):
         raise PermissionError("tenant selection is not authorized")
-    factory = session_factory or _app_factory()
-    with factory.begin() as session:
+    if db_controls is not None:
+        if session_factory is not None:
+            raise ValueError("bounded tenant provider and legacy factory are ambiguous")
+        db_controls.deadline.remaining_ms()
+        transaction = db_controls.factories.tenant(deadline=db_controls.deadline)
+    else:
+        factory = session_factory or _app_factory()
+        transaction = factory.begin()
+    with transaction as session:
         role: str = session.execute(text("SELECT current_user")).scalar_one()
         if role != "wso_app":
             raise PermissionError("tenant connection must use application role")
         target = session.execute(
             text("SELECT pg_backend_pid() AS pid, txid_current() AS transaction_id")
         ).one()
-        bind = session.get_bind()
-        # NullPool guarantees redemption also works when the tenant pool has
-        # only one connection. No privileged or bootstrap credential is used.
-        redemption = create_engine(
-            bind.engine.url, poolclass=NullPool, hide_parameters=True
+        consume_statement = text(
+            "SELECT public.wso_consume_tenant_grant("
+            ":token, :pid, :transaction_id, :tenant_id, :user_id, :role)"
         )
-        try:
-            with redemption.begin() as connection:
+        consume_parameters = {
+            "token": authorization._grant_token,
+            "pid": target.pid,
+            "transaction_id": target.transaction_id,
+            "tenant_id": tenant_id,
+            "user_id": authorization.user_id,
+            "role": authorization.role,
+        }
+        if db_controls is not None:
+            db_controls.deadline.remaining_ms()
+            with db_controls.factories.redemption(
+                deadline=db_controls.deadline
+            ) as connection:
+                if (
+                    connection.execute(text("SELECT current_user")).scalar_one()
+                    != "wso_app"
+                ):
+                    raise PermissionError(
+                        "redemption connection must use application role"
+                    )
                 authorized: bool = connection.execute(
-                    text(
-                        "SELECT public.wso_consume_tenant_grant("
-                        ":token, :pid, :transaction_id, :tenant_id, :user_id, :role)"
-                    ),
-                    {
-                        "token": authorization._grant_token,
-                        "pid": target.pid,
-                        "transaction_id": target.transaction_id,
-                        "tenant_id": tenant_id,
-                        "user_id": authorization.user_id,
-                        "role": authorization.role,
-                    },
+                    consume_statement, consume_parameters
                 ).scalar_one()
-        finally:
-            redemption.dispose()
+        else:
+            bind = session.get_bind()
+            # NullPool guarantees redemption also works when the tenant pool has
+            # only one connection. No privileged or bootstrap credential is used.
+            redemption = create_engine(
+                bind.engine.url, poolclass=NullPool, hide_parameters=True
+            )
+            try:
+                with redemption.begin() as connection:
+                    authorized = connection.execute(
+                        consume_statement, consume_parameters
+                    ).scalar_one()
+            finally:
+                redemption.dispose()
         # Revalidate and lock membership on the actual business transaction,
         # closing the race after the separate redemption transaction commits.
         current_tenant: UUID | None = session.execute(

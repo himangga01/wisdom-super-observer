@@ -1,0 +1,40 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "asset_id": {
+      "format": "uuid",
+      "title": "Asset Id",
+      "type": "string"
+    },
+    "expires_at": {
+      "format": "date-time",
+      "title": "Expires At",
+      "type": "string"
+    },
+    "id": {
+      "format": "uuid",
+      "title": "Id",
+      "type": "string"
+    },
+    "max_bytes": {
+      "maximum": 20971520,
+      "minimum": 1,
+      "title": "Max Bytes",
+      "type": "integer"
+    },
+    "upload_path": {
+      "maxLength": 200,
+      "title": "Upload Path",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "asset_id",
+    "upload_path",
+    "expires_at",
+    "max_bytes"
+  ],
+  "title": "UploadSession",
+  "type": "object"
+}

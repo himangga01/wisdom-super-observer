@@ -40,7 +40,10 @@ try {
         '--ignore=tests/integration/test_private_assets.py', '-q'
     )
     if ($WithPostgres) {
-        $roles = @('ADMIN', 'APP', 'IDENTITY', 'MIGRATOR', 'SESSION', 'WORKER', 'DISPATCH', 'JOB')
+        $roles = @(
+            'ADMIN', 'APP', 'IDENTITY', 'MIGRATOR', 'SESSION', 'WORKER', 'DISPATCH', 'JOB',
+            'ASSET_MAINTENANCE'
+        )
         $provided = @($roles | Where-Object {
             -not [string]::IsNullOrWhiteSpace(
                 [Environment]::GetEnvironmentVariable("WSO_TEST_${_}_DATABASE_URL")
@@ -53,7 +56,7 @@ try {
             }
             . $loader
         } elseif ($provided.Count -ne $roles.Count) {
-            throw 'Explicit PostgreSQL configuration requires all eight role URLs.'
+            throw 'Explicit PostgreSQL configuration requires all nine role URLs.'
         }
         foreach ($role in $roles) {
             $url = [Environment]::GetEnvironmentVariable("WSO_TEST_${role}_DATABASE_URL")
@@ -96,11 +99,13 @@ try {
         throw 'Checked-in contract exports are missing.'
     }
     $expectedExports = @(
+        'Asset.json', 'BeginUpload.json', 'Checksum.json', 'DownloadTicket.json',
         'DispatchReference.json', 'EventEnvelope.json', 'ImportJobPayload.json',
         'IncidentSummary.json', 'JobItemView.json', 'JobScope.json', 'JobView.json',
         'Money.json', 'ProductCandidate.json', 'SignedMoney.json',
         'RegistrationJobPayload.json',
-        'StoreScope.json', 'TenantScope.json', 'VariantOption.json', 'openapi.json'
+        'StoreScope.json', 'TenantScope.json', 'UploadSession.json', 'VariantOption.json',
+        'openapi.json'
     )
     $actualExports = @(Get-ChildItem -LiteralPath $generated -File -Recurse |
         ForEach-Object { [IO.Path]::GetRelativePath($generated, $_.FullName) })

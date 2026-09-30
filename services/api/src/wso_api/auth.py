@@ -10,7 +10,7 @@ import secrets
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
-from typing import Annotated, Any, Protocol
+from typing import Annotated, Any, Protocol, runtime_checkable
 from urllib.parse import urlsplit
 from uuid import UUID
 
@@ -20,6 +20,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
+from wso_core.db_budget import AuthorizationDbControls, DbUnavailable
 from wso_core.tenancy import identity_session
 
 SESSION_COOKIE = "__Host-wso-session"
@@ -153,6 +154,13 @@ class SessionStore(Protocol):
     def revoke(self, digest: str, csrf_digest: str) -> bool: ...
 
 
+@runtime_checkable
+class BudgetedSessionStore(Protocol):
+    def get_bounded(
+        self, digest: str, *, db_controls: AuthorizationDbControls
+    ) -> WebSession | None: ...
+
+
 class PostgresSessionStore:
     """Only function calls are available to the dedicated session DB role."""
 
@@ -194,24 +202,31 @@ class PostgresSessionStore:
                 ).scalar_one()
             )
 
+    @staticmethod
+    def _get(db: Session, digest: str) -> WebSession | None:
+        PostgresSessionStore._check_role(db)
+        row = db.execute(
+            text("SELECT * FROM public.wso_get_web_session(:digest)"),
+            {"digest": digest},
+        ).first()
+        return (
+            None
+            if row is None
+            else WebSession(
+                row.issuer, row.subject, row.user_id, row.csrf_digest, row.expires_at
+            )
+        )
+
     def get(self, digest: str) -> WebSession | None:
         with self._factory.begin() as db:
-            self._check_role(db)
-            row = db.execute(
-                text("SELECT * FROM public.wso_get_web_session(:digest)"),
-                {"digest": digest},
-            ).first()
-            return (
-                None
-                if row is None
-                else WebSession(
-                    row.issuer,
-                    row.subject,
-                    row.user_id,
-                    row.csrf_digest,
-                    row.expires_at,
-                )
-            )
+            return self._get(db, digest)
+
+    def get_bounded(
+        self, digest: str, *, db_controls: AuthorizationDbControls
+    ) -> WebSession | None:
+        db_controls.deadline.remaining_ms()
+        with db_controls.factories.web_session(deadline=db_controls.deadline) as db:
+            return self._get(db, digest)
 
     def revoke(self, digest: str, csrf_digest: str) -> bool:
         with self._factory.begin() as db:
@@ -237,7 +252,16 @@ class AuthService:
         self.settings, self.verifier, self.sessions = settings, verifier, sessions
         self.identity_factory, self.tenant_factory = identity_factory, tenant_factory
 
-    def identity(self, session: WebSession | VerifiedPrincipal) -> Any:
+    def identity(
+        self,
+        session: WebSession | VerifiedPrincipal,
+        *,
+        db_controls: AuthorizationDbControls | None = None,
+    ) -> Any:
+        if db_controls is not None:
+            return identity_session(
+                session.issuer, session.subject, db_controls=db_controls
+            )
         return identity_session(
             session.issuer, session.subject, session_factory=self.identity_factory
         )
@@ -279,11 +303,25 @@ class AuthService:
             "expires_at": expires,
         }
 
-    def authenticate(self, request: Request) -> WebSession:
+    def authenticate(
+        self, request: Request, *, db_controls: AuthorizationDbControls | None = None
+    ) -> WebSession:
         token = request.cookies.get(SESSION_COOKIE)
         if not token or len(token) > 128:
             raise AuthFailure()
-        session = self.sessions.get(token_digest(token))
+        if db_controls is None:
+            session = self.sessions.get(token_digest(token))
+        else:
+            try:
+                db_controls.deadline.remaining_ms()
+                if not isinstance(self.sessions, BudgetedSessionStore):
+                    raise AuthFailure(503, "auth_unavailable")
+                session = self.sessions.get_bounded(
+                    token_digest(token), db_controls=db_controls
+                )
+                db_controls.deadline.remaining_ms()
+            except DbUnavailable as exc:
+                raise AuthFailure(503, "auth_unavailable") from exc
         if session is None or session.expires_at <= datetime.now(UTC):
             raise AuthFailure()
         return session

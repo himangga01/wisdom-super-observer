@@ -7,6 +7,13 @@ from typing import Any
 
 from pydantic import TypeAdapter
 from wso_api.main import create_app
+from wso_contracts.assets import (
+    Asset,
+    BeginUpload,
+    Checksum,
+    DownloadTicket,
+    UploadSession,
+)
 from wso_contracts.jobs import (
     DispatchReference,
     ImportJobPayload,
@@ -27,7 +34,11 @@ from wso_contracts.models import (
 )
 
 MODELS = (
+    Asset,
+    BeginUpload,
+    Checksum,
     DispatchReference,
+    DownloadTicket,
     EventEnvelope,
     ImportJobPayload,
     IncidentSummary,
@@ -39,6 +50,7 @@ MODELS = (
     SignedMoney,
     StoreScope,
     TenantScope,
+    UploadSession,
     VariantOption,
 )
 
