@@ -1,285 +1,489 @@
-"""Offline probe-validator contracts; never actual SeaweedFS acceptance."""
+"""Offline boundary validators; never actual MinIO acceptance."""
 
+import json
+from collections import Counter
 from io import BytesIO
+from itertools import product
 from unittest.mock import Mock
+from xml.etree import ElementTree
 
 import pytest
 from botocore.exceptions import ClientError
 
-from tests.support.asset_provider import AssetProvider
+from tests.support.asset_provider import AssetProvider, policy_config
 
 
-def provider_error(status, code):
+def error(status, code):
     return ClientError(
-        {
-            "ResponseMetadata": {"HTTPStatusCode": status},
-            "Error": {"Code": code, "Message": "sanitized"},
-        },
+        {"ResponseMetadata": {"HTTPStatusCode": status}, "Error": {"Code": code}},
         "Probe",
     )
 
 
+def test_multipart_bucket_authority_has_no_fabricated_prefix_condition():
+    policies = policy_config("dedicated", "installed/", {})
+    for name in ("wso-gateway", "wso-maintenance"):
+        rows = policies[name]["Statement"]
+        assert [
+            row for row in rows if row["Action"] == ["s3:ListBucketMultipartUploads"]
+        ] == [
+            {
+                "Effect": "Allow",
+                "Action": ["s3:ListBucketMultipartUploads"],
+                "Resource": "arn:aws:s3:::dedicated",
+            }
+        ]
+        assert next(row for row in rows if row["Action"] == ["s3:ListBucket"])[
+            "Condition"
+        ] == {"StringLike": {"s3:prefix": ["installed/", "installed/*"]}}
+        assert all(row["Resource"] != "*" for row in rows)
+    assert "s3:GetObject" not in policies["wso-maintenance"]["Statement"][0]["Action"]
+
+
+def test_private_synthetic_acl_is_not_a_canonical_owner_identity():
+    AssetProvider.require_private_acl(
+        {
+            "Owner": {"ID": "", "DisplayName": ""},
+            "Grants": [
+                {
+                    "Grantee": {"Type": "CanonicalUser", "ID": "", "DisplayName": ""},
+                    "Permission": "FULL_CONTROL",
+                }
+            ],
+        }
+    )
+
+
+@pytest.mark.parametrize(
+    "grants",
+    [
+        [],
+        [
+            {
+                "Grantee": {
+                    "Type": "Group",
+                    "URI": "http://acs.amazonaws.com/groups/global/AllUsers",
+                },
+                "Permission": "READ",
+            }
+        ],
+        [
+            {
+                "Grantee": {"Type": "CanonicalUser", "ID": "foreign"},
+                "Permission": "FULL_CONTROL",
+            }
+        ],
+    ],
+)
+def test_unexpected_synthetic_acl_fails_closed(grants):
+    with pytest.raises(RuntimeError):
+        AssetProvider.require_private_acl({"Owner": {"ID": ""}, "Grants": grants})
+
+
 @pytest.mark.parametrize(
     "status,code",
-    [
-        (501, "NotImplemented"),
-        (403, "NotImplemented"),
-        (400, "InvalidRequest"),
-        (403, "UnknownError"),
-    ],
+    [(501, "NotImplemented"), (403, "UnknownError"), (400, "InvalidRequest")],
 )
-@pytest.mark.parametrize("ownership", [False, True])
-def test_generic_unsupported_is_not_privacy_enforcement(status, code, ownership):
-    operation = Mock(side_effect=provider_error(status, code))
-    with pytest.raises(RuntimeError, match="security capability failed"):
-        AssetProvider.denied(operation, "public grant", ownership=ownership)
+def test_unsupported_is_not_supported_iam_denial(status, code):
+    with pytest.raises(RuntimeError):
+        AssetProvider.denied(Mock(side_effect=error(status, code)), "policy mutation")
 
 
-def test_explicit_ownership_acl_denial_is_valid_only_in_acl_probe():
-    operation = Mock(side_effect=provider_error(400, "AccessControlListNotSupported"))
-    AssetProvider.denied(operation, "ownership enforcement", ownership=True)
-    with pytest.raises(RuntimeError, match="security capability failed"):
-        AssetProvider.denied(operation, "runtime IAM permission")
-
-
-@pytest.mark.parametrize(
-    "readback",
-    [
-        None,
-        {},
-        {"Rules": []},
-        {"Rules": [{"ObjectOwnership": "ObjectWriter"}]},
-        {"Rules": [{"ObjectOwnership": "BucketOwnerEnforced"}], "unexpected": True},
-    ],
-)
-def test_ownership_readback_must_exactly_match_enforced_mode(tmp_path, readback):
-    provider = AssetProvider(tmp_path)
-    admin = Mock()
-    admin.get_bucket_ownership_controls.return_value = {"OwnershipControls": readback}
-    provider.clients["bootstrap"] = admin
-    with pytest.raises(RuntimeError, match="ownership"):
-        provider.configure_ownership()
-
-
-def test_ownership_api_failure_is_not_optional(tmp_path):
-    provider = AssetProvider(tmp_path)
-    admin = Mock()
-    admin.put_bucket_ownership_controls.side_effect = provider_error(
-        501, "NotImplemented"
-    )
-    provider.clients["bootstrap"] = admin
-    with pytest.raises(RuntimeError, match="ownership"):
-        provider.configure_ownership()
-    assert provider.receipt is None
-
-
-def test_enforced_ownership_has_exact_put_and_readback(tmp_path):
-    provider = AssetProvider(tmp_path)
-    admin = Mock()
-    ownership = {"Rules": [{"ObjectOwnership": "BucketOwnerEnforced"}]}
-    admin.get_bucket_ownership_controls.return_value = {"OwnershipControls": ownership}
-    provider.clients["bootstrap"] = admin
-    provider.configure_ownership()
-    admin.put_bucket_ownership_controls.assert_called_once_with(
-        Bucket=provider.bucket, OwnershipControls=ownership
-    )
-    admin.get_bucket_ownership_controls.assert_called_once_with(Bucket=provider.bucket)
-
-
-@pytest.mark.parametrize(
-    "grantee",
-    [
-        {"Type": "Group", "URI": "http://acs.amazonaws.com/groups/global/AllUsers"},
-        {
-            "Type": "Group",
-            "URI": "http://acs.amazonaws.com/groups/global/AuthenticatedUsers",
+def result():
+    return {
+        "added": {
+            "policies": ["wso-gateway", "wso-maintenance"],
+            "users": ["gateway-key", "maintenance-key"],
+            "userPolicies": [
+                {"gateway-key": ["wso-gateway"]},
+                {"maintenance-key": ["wso-maintenance"]},
+            ],
         },
-        {"Type": "CanonicalUser", "ID": "foreign-owner"},
+        "skipped": {},
+        "removed": {},
+        "failed": {},
+    }
+
+
+@pytest.mark.parametrize(
+    "corruption",
+    [
+        "failed",
+        "skipped",
+        "removed",
+        "unknown",
+        "extra-user",
+        "duplicate-user",
+        "wrong-policy",
+        "legacy",
     ],
 )
-def test_public_or_foreign_acl_is_rejected(grantee):
-    with pytest.raises(RuntimeError, match="private owner"):
-        AssetProvider.require_private_acl(
-            {
-                "Owner": {"ID": "owner"},
-                "Grants": [{"Grantee": grantee, "Permission": "READ"}],
-            }
+def test_partial_or_unknown_mc_import_rejected(corruption):
+    from tests.support.asset_minio import validate_import_result
+
+    value = result()
+    if corruption in {"failed", "skipped", "removed"}:
+        value[corruption] = {"users": ["gateway-key"]}
+    elif corruption == "unknown":
+        value["status"] = "success"
+    elif corruption == "extra-user":
+        value["added"]["users"].append("unrelated")
+    elif corruption == "duplicate-user":
+        value["added"]["users"].append("gateway-key")
+    elif corruption == "wrong-policy":
+        value["added"]["userPolicies"][0] = {"gateway-key": ["consoleAdmin"]}
+    else:
+        value = "legacy success"
+    with pytest.raises(RuntimeError, match="IAM import"):
+        validate_import_result(
+            json.dumps(value),
+            {"gateway": ("gateway-key", "a"), "cleanup": ("maintenance-key", "b")},
         )
 
 
-def test_missing_bucket_policy_requires_real_not_found(tmp_path):
-    provider = AssetProvider(tmp_path)
-    admin = Mock()
-    provider.clients["bootstrap"] = admin
-    admin.get_bucket_policy.side_effect = provider_error(404, "NoSuchBucketPolicy")
-    provider.inspect_no_bucket_policy()
-    admin.get_bucket_policy.side_effect = provider_error(501, "NotImplemented")
-    with pytest.raises(RuntimeError, match="bucket policy"):
-        provider.inspect_no_bucket_policy()
+def test_exact_mc_import_added_entities():
+    from tests.support.asset_minio import validate_import_result
+
+    validate_import_result(
+        json.dumps(result()),
+        {"gateway": ("gateway-key", "a"), "cleanup": ("maintenance-key", "b")},
+    )
 
 
-def offline_profile_probe(tmp_path, monkeypatch):
-    """Replace only external SDK/HTTP boundaries; execute the real probe validators."""
+@pytest.mark.parametrize("field", ["users", "policies"])
+def test_mc_added_entity_dictionary_cannot_substitute_for_a_list(field):
+    from tests.support.asset_minio import validate_import_result
+
+    value = result()
+    value["added"][field] = dict.fromkeys(value["added"][field], "unexpected")
+    with pytest.raises(RuntimeError, match="IAM import"):
+        validate_import_result(
+            json.dumps(value),
+            {"gateway": ("gateway-key", "a"), "cleanup": ("maintenance-key", "b")},
+        )
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://github.com/file",
+        "https://evil.invalid/file",
+        "https://github.com.evil.invalid/file",
+        "https://user:secret@github.com/file",
+    ],
+)
+def test_nonofficial_or_credentialed_redirect_rejected(url):
+    from tests.support.asset_minio import validate_download_url
+
+    with pytest.raises(RuntimeError):
+        validate_download_url(url)
+
+
+@pytest.mark.parametrize("length,digest", [(3, "good"), (4, "bad")])
+def test_fixed_artifact_length_and_hash_required(length, digest):
+    from tests.support.asset_minio import validate_artifact
+
+    with pytest.raises(RuntimeError):
+        validate_artifact(length, digest, 4, "good")
+
+
+def effect_provider(tmp_path, monkeypatch):
     provider = AssetProvider(tmp_path)
     provider.endpoint = "http://unused.invalid"
-    provider.clients = {name: Mock() for name in ("bootstrap", "gateway", "cleanup")}
-    for client in provider.clients.values():
-        for operation in (
-            "put_bucket_acl",
-            "put_object_acl",
-            "put_bucket_ownership_controls",
-            "delete_bucket_ownership_controls",
-            "put_bucket_policy",
-            "delete_bucket_policy",
-            "put_object",
-            "create_multipart_upload",
-        ):
-            getattr(client, operation).side_effect = provider_error(403, "AccessDenied")
-    admin = provider.clients["bootstrap"]
-    private_acl = {
-        "Owner": {"ID": "owner"},
+    admin = Mock()
+    provider.clients = {"bootstrap": admin}
+    admin.get_object.return_value = {"Body": BytesIO(b"ciphertext")}
+    admin.head_object.return_value = {"ContentLength": 10}
+    admin.get_object_acl.return_value = {
+        "Owner": {"ID": ""},
         "Grants": [
             {
-                "Grantee": {"Type": "CanonicalUser", "ID": "owner"},
+                "Grantee": {"Type": "CanonicalUser", "ID": ""},
                 "Permission": "FULL_CONTROL",
             }
         ],
     }
-    admin.get_bucket_acl.return_value = private_acl
-    admin.get_object_acl.return_value = private_acl
-    admin.get_bucket_policy.side_effect = provider_error(404, "NoSuchBucketPolicy")
-    admin.get_bucket_ownership_controls.return_value = {
-        "OwnershipControls": {"Rules": [{"ObjectOwnership": "BucketOwnerEnforced"}]}
-    }
-    admin.list_objects_v2.return_value = {}
-    admin.list_multipart_uploads.return_value = {}
-    admin.get_object.return_value = {"Body": BytesIO(b"ciphertext")}
     monkeypatch.setattr(provider, "raw_http", Mock(return_value=(403, b"")))
     return provider
 
 
-def test_required_public_grant_matrix_reaches_every_sdk_boundary(tmp_path, monkeypatch):
-    provider = offline_profile_probe(tmp_path, monkeypatch)
-    key = provider.prefix + "capability/private"
-    provider.privacy_profile(key, b"ciphertext")
-    # Independently derived from the ruling: three canned ACLs plus both groups
-    # in read and full-control forms, on existing object, PUT and multipart.
-    required = {
-        ("ACL", "public-read"),
-        ("ACL", "public-read-write"),
-        ("ACL", "authenticated-read"),
-        ("GrantRead", 'uri="http://acs.amazonaws.com/groups/global/AllUsers"'),
-        ("GrantFullControl", 'uri="http://acs.amazonaws.com/groups/global/AllUsers"'),
-        (
-            "GrantRead",
-            'uri="http://acs.amazonaws.com/groups/global/AuthenticatedUsers"',
-        ),
-        (
-            "GrantFullControl",
-            'uri="http://acs.amazonaws.com/groups/global/AuthenticatedUsers"',
-        ),
+@pytest.mark.parametrize("method", ["GET", "HEAD"])
+def test_inert_request_still_requires_anonymous_denial(tmp_path, monkeypatch, method):
+    provider = effect_provider(tmp_path, monkeypatch)
+    provider.raw_http.side_effect = lambda actual, *_: (
+        200 if actual == method else 403,
+        b"",
+    )
+    with pytest.raises(RuntimeError, match="anonymous"):
+        provider.private_effect(provider.prefix + "private", b"ciphertext")
+
+
+def test_inert_request_requires_original_signed_bytes(tmp_path, monkeypatch):
+    provider = effect_provider(tmp_path, monkeypatch)
+    provider.clients["bootstrap"].get_object.return_value = {
+        "Body": BytesIO(b"changed")
     }
-    for client in provider.clients.values():
-        for operation in ("put_object_acl", "put_object", "create_multipart_upload"):
-            attempts = []
-            for call in getattr(client, operation).call_args_list:
-                grant = {
-                    name: value
-                    for name, value in call.kwargs.items()
-                    if name in {"ACL", "GrantRead", "GrantFullControl"}
-                }
-                if "AccessControlPolicy" in call.kwargs:
-                    public = call.kwargs["AccessControlPolicy"]["Grants"][1]
-                    grant = {
-                        {"READ": "GrantRead", "FULL_CONTROL": "GrantFullControl"}[
-                            public["Permission"]
-                        ]: 'uri="' + public["Grantee"]["URI"] + '"'
-                    }
-                if grant == {"ACL": "private"}:
-                    continue  # The separate runtime administrative IAM probe.
-                assert call.kwargs["Bucket"] == provider.bucket
-                assert call.kwargs["Key"].startswith(provider.prefix)
-                attempts.append(next(iter(grant.items())))
-            assert len(attempts) == 7
-            assert set(attempts) == required
-    assert provider.receipt is None  # A subprobe alone cannot mint acceptance.
+    with pytest.raises(RuntimeError, match="bytes"):
+        provider.private_effect(provider.prefix + "private", b"ciphertext")
 
 
-def test_existing_object_explicit_group_grants_use_valid_policy_body(
+def test_accepted_multipart_completes_before_private_effect(tmp_path, monkeypatch):
+    provider = AssetProvider(tmp_path)
+    actor = Mock()
+    actor.upload_part.return_value = {"ETag": "part"}
+    effects = []
+    actor.complete_multipart_upload.side_effect = lambda **_: effects.append("complete")
+    monkeypatch.setattr(
+        provider, "private_effect", lambda *_: effects.append("effect"), raising=False
+    )
+    provider.materialize_public_upload(actor, "owned", "upload", b"ciphertext")
+    assert effects == ["complete", "effect"]
+
+
+def test_multipart_pages_refuse_foreign_rows_and_repeated_markers(tmp_path):
+    provider = AssetProvider(tmp_path)
+    client = Mock()
+    client.list_multipart_uploads.return_value = {
+        "Uploads": [{"Key": "foreign", "UploadId": "id"}],
+        "IsTruncated": False,
+    }
+    with pytest.raises(RuntimeError, match="foreign"):
+        provider.multipart_pages(client, provider.prefix)
+    client.list_multipart_uploads.return_value = {
+        "Uploads": [],
+        "IsTruncated": True,
+        "NextKeyMarker": "marker",
+        "NextUploadIdMarker": "id",
+    }
+    with pytest.raises(RuntimeError, match="pagination"):
+        provider.multipart_pages(client, provider.prefix)
+
+
+def test_iam_archive_contains_only_pinned_regular_users_and_fixed_mappings():
+    import zipfile
+
+    from tests.support.asset_minio import iam_archive_bytes
+
+    credentials = {
+        "bootstrap": ("root-key", "root-secret"),
+        "gateway": ("gateway-key", "gateway-secret"),
+        "cleanup": ("maintenance-key", "maintenance-secret"),
+    }
+    policies = policy_config("dedicated", "installed/", credentials)
+    with zipfile.ZipFile(BytesIO(iam_archive_bytes(credentials, policies))) as archive:
+        assert set(archive.namelist()) == {
+            "iam-assets/policies.json",
+            "iam-assets/users.json",
+            "iam-assets/user_mappings.json",
+        }
+        assert json.loads(archive.read("iam-assets/users.json")) == {
+            "gateway-key": {"secretKey": "gateway-secret", "status": "enabled"},
+            "maintenance-key": {"secretKey": "maintenance-secret", "status": "enabled"},
+        }
+        assert json.loads(archive.read("iam-assets/user_mappings.json")) == {
+            "gateway-key": {"version": 1, "policy": "wso-gateway"},
+            "maintenance-key": {"version": 1, "policy": "wso-maintenance"},
+        }
+        assert json.loads(archive.read("iam-assets/policies.json")) == policies
+
+
+def test_source_characterized_controls_require_effects_without_bootstrap_mutations(
     tmp_path, monkeypatch
 ):
-    provider = offline_profile_probe(tmp_path, monkeypatch)
-    provider.privacy_profile(provider.prefix + "capability/private", b"ciphertext")
-    for client in provider.clients.values():
-        policies = [
-            call.kwargs["AccessControlPolicy"]
-            for call in client.put_object_acl.call_args_list
-            if "AccessControlPolicy" in call.kwargs
-        ]
-        assert len(policies) == 4
-        assert {
-            (policy["Grants"][1]["Permission"], policy["Grants"][1]["Grantee"]["URI"])
-            for policy in policies
-        } == {
-            ("READ", "http://acs.amazonaws.com/groups/global/AllUsers"),
-            ("FULL_CONTROL", "http://acs.amazonaws.com/groups/global/AllUsers"),
-            ("READ", "http://acs.amazonaws.com/groups/global/AuthenticatedUsers"),
-            (
-                "FULL_CONTROL",
-                "http://acs.amazonaws.com/groups/global/AuthenticatedUsers",
-            ),
-        }
-        for policy in policies:
-            assert policy["Owner"] == {"ID": "owner"}
-            assert policy["Grants"][0] == {
-                "Grantee": {"Type": "CanonicalUser", "ID": "owner"},
+    provider = AssetProvider(tmp_path)
+    provider.clients = {name: Mock() for name in ("bootstrap", "gateway", "cleanup")}
+    effects = []
+    monkeypatch.setattr(
+        provider, "private_effect", lambda *_: effects.append("verified")
+    )
+    monkeypatch.setattr(provider, "inspect_no_bucket_policy", lambda: None)
+    provider.clients["bootstrap"].get_bucket_acl.return_value = {
+        "Owner": {"ID": ""},
+        "Grants": [
+            {
+                "Grantee": {"Type": "CanonicalUser", "ID": ""},
                 "Permission": "FULL_CONTROL",
             }
-            assert policy["Grants"][1]["Grantee"]["Type"] == "Group"
-
-
-@pytest.mark.parametrize("identity", ["bootstrap", "gateway", "cleanup"])
-@pytest.mark.parametrize(
-    "operation", ["put_object_acl", "put_object", "create_multipart_upload"]
-)
-def test_any_public_grant_success_fails_closed(
-    tmp_path, monkeypatch, identity, operation
-):
-    provider = offline_profile_probe(tmp_path, monkeypatch)
-
-    def public_success(**arguments):
-        if arguments.get("ACL") == "private":
-            raise provider_error(403, "AccessDenied")
-        return {}
-
-    getattr(provider.clients[identity], operation).side_effect = public_success
-    with pytest.raises(RuntimeError, match="public ACL/grant refusal"):
-        provider.privacy_profile(provider.prefix + "capability/private", b"ciphertext")
-    assert provider.receipt is None
-
-
-@pytest.mark.parametrize("anonymous_probe", range(4))
-def test_any_anonymous_access_success_fails_closed(
-    tmp_path, monkeypatch, anonymous_probe
-):
-    provider = offline_profile_probe(tmp_path, monkeypatch)
-    statuses = [(403, b"")] * 4
-    statuses[anonymous_probe] = (200, b"")
-    provider.raw_http.side_effect = statuses
-    with pytest.raises(RuntimeError, match="anonymous"):
-        provider.privacy_profile(provider.prefix + "capability/private", b"ciphertext")
-    assert provider.receipt is None
+        ],
+    }
+    mutations = (
+        "put_bucket_policy",
+        "delete_bucket_policy",
+        "put_bucket_acl",
+        "put_object_acl",
+        "put_bucket_ownership_controls",
+        "delete_bucket_ownership_controls",
+        "put_public_access_block",
+        "delete_public_access_block",
+    )
+    for name, actor in provider.clients.items():
+        actor.get_bucket_ownership_controls.side_effect = error(501, "NotImplemented")
+        actor.get_public_access_block.side_effect = error(501, "NotImplemented")
+        for mutation in mutations:
+            getattr(actor, mutation).side_effect = (
+                AssertionError("bootstrap mutations prohibited")
+                if name == "bootstrap"
+                else error(403, "AccessDenied")
+            )
+    provider.control_profile("owned-private", b"ciphertext")
+    assert len(effects) == 22
+    for mutation in mutations:
+        assert not getattr(provider.clients["bootstrap"], mutation).called
 
 
 @pytest.mark.parametrize(
-    "listing,field",
-    [("list_objects_v2", "Contents"), ("list_multipart_uploads", "Uploads")],
+    "status,code",
+    [(403, "AccessDenied"), (400, "InvalidRequest"), (501, "UnknownError")],
 )
-def test_denied_public_attempt_must_not_leave_resources(
-    tmp_path, monkeypatch, listing, field
-):
-    provider = offline_profile_probe(tmp_path, monkeypatch)
-    getattr(provider.clients["bootstrap"], listing).return_value = {field: [{}]}
-    with pytest.raises(RuntimeError, match="left an"):
-        provider.privacy_profile(provider.prefix + "capability/private", b"ciphertext")
+def test_unsupported_get_requires_exact_pinned_501(status, code):
+    with pytest.raises(RuntimeError, match="unsupported-control"):
+        AssetProvider.unsupported(Mock(side_effect=error(status, code)))
+
+
+def test_failed_public_effect_keeps_sanitized_typed_outcome(tmp_path, monkeypatch):
+    provider = AssetProvider(tmp_path)
+    actor = Mock()
+    actor.put_object.return_value = {"ResponseMetadata": {"HTTPStatusCode": 200}}
+    monkeypatch.setattr(
+        provider,
+        "private_effect",
+        Mock(side_effect=RuntimeError("private bytes changed")),
+    )
+    with pytest.raises(
+        RuntimeError, match="actor=bootstrap operation=put_object variant=0 status=200"
+    ):
+        provider.verify_public_attempt(
+            actor,
+            "bootstrap",
+            0,
+            "put_object",
+            {
+                "Bucket": provider.bucket,
+                "Key": provider.prefix + "new",
+                "Body": b"ciphertext",
+            },
+            provider.prefix + "original",
+            b"ciphertext",
+        )
+    assert provider.outcomes == [
+        {
+            "actor": "bootstrap",
+            "operation": "put_object",
+            "variant": 0,
+            "status": 200,
+            "code": "accepted-inert-candidate",
+            "effects_verified": False,
+        }
+    ]
     assert provider.receipt is None
+
+
+@pytest.mark.parametrize("unexpected", ["success", "unsupported"])
+def test_failed_admin_denial_reports_actual_typed_result(unexpected):
+    operation = (
+        Mock(return_value={"ResponseMetadata": {"HTTPStatusCode": 200}})
+        if unexpected == "success"
+        else Mock(side_effect=error(501, "NotImplemented"))
+    )
+    expected = (
+        "actual_status=200 actual_code=SUCCESS"
+        if unexpected == "success"
+        else "actual_status=501 actual_code=NotImplemented"
+    )
+    with pytest.raises(RuntimeError, match=expected):
+        AssetProvider.denied(operation, "runtime public policy")
+
+
+def test_numeric_403_is_not_an_administrative_access_denied():
+    with pytest.raises(RuntimeError, match="actual_code=403"):
+        AssetProvider.denied(Mock(side_effect=error(403, "403")), "public policy")
+
+
+def test_numeric_403_allowed_only_for_explicit_head_probe():
+    AssetProvider.denied(
+        Mock(side_effect=error(403, "403")), "maintenance HEAD", head=True
+    )
+
+
+def test_exact_actor_operation_public_grant_matrix_and_valid_xml(tmp_path, monkeypatch):
+    from botocore.serialize import create_serializer
+    from botocore.session import get_session
+
+    provider = AssetProvider(tmp_path)
+    provider.work = tmp_path
+    provider.clients = {name: Mock() for name in ("bootstrap", "gateway", "cleanup")}
+    monkeypatch.setattr(provider, "control_profile", lambda *_: None)
+    monkeypatch.setattr(provider, "private_effect", lambda *_: None)
+    monkeypatch.setattr(provider, "raw_http", Mock(return_value=(403, b"")))
+    provider.endpoint = "http://unused.invalid"
+    seen = []
+    model = get_session().get_service_model("s3")
+    serializer = create_serializer("rest-xml")
+
+    def record(actor, name, _index, operation, arguments, original, body):
+        assert actor is provider.clients[name]
+        assert arguments["Bucket"] == provider.bucket
+        assert arguments["Key"].startswith(provider.prefix)
+        if "ACL" in arguments:
+            grant = ("canned", arguments["ACL"])
+        elif operation == "put_object_acl":
+            policy = arguments["AccessControlPolicy"]
+            owner = "0" * 64
+            assert policy["Owner"] == {"ID": owner}
+            assert policy["Grants"][0] == {
+                "Grantee": {"Type": "CanonicalUser", "ID": owner},
+                "Permission": "FULL_CONTROL",
+            }
+            assert len(policy["Grants"]) == 2
+            public = policy["Grants"][1]
+            group = public["Grantee"]
+            assert group["Type"] == "Group"
+            uri = group["URI"]
+            assert uri in {
+                "http://acs.amazonaws.com/groups/global/AllUsers",
+                "http://acs.amazonaws.com/groups/global/AuthenticatedUsers",
+            }
+            grant = ("group", uri.rsplit("/", 1)[1], public["Permission"])
+            encoded = serializer.serialize_to_request(
+                arguments, model.operation_model("PutObjectAcl")
+            )["body"]
+            xml = ElementTree.fromstring(encoded)
+            assert xml.find("{*}Owner/{*}ID").text == owner
+            xml_grants = xml.findall("{*}AccessControlList/{*}Grant")
+            assert len(xml_grants) == 2
+            assert xml_grants[1].find("{*}Grantee/{*}URI").text == uri
+            assert xml_grants[1].find("{*}Permission").text == public["Permission"]
+        else:
+            field = "GrantRead" if "GrantRead" in arguments else "GrantFullControl"
+            header = arguments[field]
+            assert header.startswith('uri="http://acs.amazonaws.com/groups/global/')
+            assert header.endswith('"')
+            grant = (
+                "group",
+                header[:-1].rsplit("/", 1)[1],
+                "READ" if field == "GrantRead" else "FULL_CONTROL",
+            )
+        if operation == "put_object_acl":
+            assert arguments["Key"] == original
+        elif operation == "put_object":
+            assert arguments["Body"] == body
+        seen.append((name, operation, grant))
+        provider.outcomes.append({"effects_verified": True})
+
+    monkeypatch.setattr(provider, "verify_public_attempt", record)
+    provider.privacy_profile(provider.prefix + "private", b"ciphertext")
+    expected_grants = {
+        ("canned", "public-read"),
+        ("canned", "public-read-write"),
+        ("canned", "authenticated-read"),
+        ("group", "AllUsers", "READ"),
+        ("group", "AllUsers", "FULL_CONTROL"),
+        ("group", "AuthenticatedUsers", "READ"),
+        ("group", "AuthenticatedUsers", "FULL_CONTROL"),
+    }
+    expected = product(
+        ("bootstrap", "gateway", "cleanup"),
+        ("put_object_acl", "put_object", "create_multipart_upload"),
+        expected_grants,
+    )
+    assert Counter(seen) == Counter(expected)

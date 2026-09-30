@@ -82,12 +82,18 @@ must prove actual provider and authentication preflight before the missing route
 assertion. No S3/lifecycle acceptance or APK parity is claimed at this stage.
 
 The [latest foundation run](../engineering/linux-ci.md#latest-foundation-run)
-at `e77bea4` passed 656 ordinary Python cases and ten actual Celery/Valkey
+at `dbe68fa` passed 696 ordinary Python cases and ten actual Celery/Valkey
 recovery cases, with zero skips, plus the existing frontend/browser gates.
-The separate private asset probe failed before HTTP because the selected
-SeaweedFS public-access-block API is unsupported. The explicit private
-IAM/ownership profile now requires actual public-ACL/grant and anonymous denial
-checks; it remains unverified until its Linux probe passes.
+The two separate private asset probes failed before HTTP at provider setup:
+unsupported public-access-block API, then an unproven public ACL/grant refusal.
+SeaweedFS is excluded. The selected MinIO fixture candidate requires dedicated
+buckets and actual post-attempt byte/privacy checks; actual acceptance is pending.
+
+The committed `aedbe2d` primitives passed 855 local PostgreSQL-selected Python
+cases. Its subsequent Linux run passed 855 ordinary cases and ten actual
+recovery cases, then failed mypy at a Windows-only function reference. Full
+Linux success is not claimed. The minimal typing correction has a clean scoped
+review and focused Linux/Windows checks; full rerun remains pending.
 
 Storage work uses a fixed work cutoff before helper creation and refuses
 dispatch after a late startup return. Synchronous OS/runtime process creation

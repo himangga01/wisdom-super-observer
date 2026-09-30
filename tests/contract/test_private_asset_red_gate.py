@@ -14,10 +14,15 @@ def evidence():
         "baseline_sha": BASELINE_SHA,
         "stage": "ASSET_REQUEST_OBSERVED",
         "provider": {
-            "provider": "SeaweedFS",
-            "version": "4.47",
-            "security_profile": "seaweedfs-private-iam-ownership-v1",
-            "digest": "chrislusf/seaweedfs@sha256:" + "a" * 64,
+            "provider": "MinIO",
+            "version": "RELEASE.2025-04-22T22-12-26Z",
+            "security_profile": "minio-inert-acl-dedicated-bucket-v1",
+            "artifact_kind": "official-binaries-local-scratch-image",
+            "binary_sha256": "53e2a2cb16c5366ea6fbbc479c19ddb4c6a0948273e752f740fb1fbf27bb817c",
+            "client_version": "RELEASE.2025-04-16T18-13-26Z",
+            "client_binary_sha256": "ac90da87a35641be5a0ac75d49de5161ddb47d629b5ba01261b0ae9e00aea15f",
+            "source_commit": "0d7408fc9969caf07de6a8c3a84f9fbb10a6739e",
+            "image_id": "sha256:" + "a" * 64,
             "capabilities": "private IAM/put/get/head/delete/multipart/list/abort/presign-expiry",
             "owned_resource_mapping": True,
         },
@@ -209,8 +214,13 @@ def test_incomplete_or_substituted_receipt_is_refused(tmp_path, key, value):
 @pytest.mark.parametrize(
     "key,value",
     [
-        ("digest", "chrislusf/seaweedfs:4.47"),
-        ("version", "4.46"),
+        ("image_id", "minio-local:fixture"),
+        ("version", "DEVELOPMENT.GOGET"),
+        ("binary_sha256", "b" * 64),
+        ("client_binary_sha256", "b" * 64),
+        ("source_commit", "b" * 40),
+        ("client_version", "unknown"),
+        ("artifact_kind", "official-container-repodigest"),
         ("owned_resource_mapping", 1),
         ("capabilities", "unverified"),
         ("security_profile", "aws-public-access-block-v1"),
@@ -231,6 +241,22 @@ def test_receipt_without_actual_privacy_profile_is_refused(tmp_path):
     junit, receipt = files(tmp_path)
     body = evidence()
     del body["provider"]["security_profile"]
+    receipt.write_text(json.dumps(body), encoding="utf-8")
+    with pytest.raises(ValueError):
+        verify_baseline_red(junit, receipt, pytest_exit=1)
+
+
+def test_excluded_seaweed_profile_cannot_satisfy_new_baseline_gate(tmp_path):
+    junit, receipt = files(tmp_path)
+    body = evidence()
+    body["provider"] = {
+        "provider": "SeaweedFS",
+        "version": "4.47",
+        "security_profile": "seaweedfs-private-iam-ownership-v1",
+        "digest": "chrislusf/seaweedfs@sha256:" + "a" * 64,
+        "capabilities": "private IAM/put/get/head/delete/multipart/list/abort/presign-expiry",
+        "owned_resource_mapping": True,
+    }
     receipt.write_text(json.dumps(body), encoding="utf-8")
     with pytest.raises(ValueError):
         verify_baseline_red(junit, receipt, pytest_exit=1)

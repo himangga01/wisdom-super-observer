@@ -157,8 +157,8 @@ Linux PostgreSQL fixture and runs only the initial photo-upload case against
 sealed T05 commit `6565929776c2ff5b9ff55670bc4567b6d2cf4821`. An explicit overlay
 copies the provider/HTTP fixture and locked dependency/test infrastructure;
 it copies no asset product code, contracts, routes or migrations. PostgreSQL
-uses the recorded immutable digest above. SeaweedFS 4.47's digest and private
-IAM capabilities must be observed by the provider fixture before any RED proof.
+uses the recorded immutable digest above. The selected provider's exact artifact
+identity and actual private IAM capabilities must be observed before any RED proof.
 
 Success of this probe means the actual S3 and authenticated HTTP/CSRF preflight
 passed, then the missing asset route returned 404 versus expected 201. The
@@ -176,10 +176,10 @@ separate workflow selects it deliberately and cannot skip a missing runtime.
 
 ### Latest foundation run
 
-[Run 36726648204](https://github.com/himangga01/wisdom-super-observer/actions/runs/36726648204)
-passed for commit `e77bea43c4097bf5adc66a14d478b4c89fd37082`. The ordinary Python
-suite passed 656 cases with zero skips in 98.90 seconds; the separate actual
-Celery/Valkey recovery suite passed all ten cases with zero skips in 251.34
+[Run 36733796406](https://github.com/himangga01/wisdom-super-observer/actions/runs/36733796406)
+passed for commit `dbe68fa6d0c6e32c9d25f7811eeb608da4c7a94a`. The ordinary Python
+suite passed 696 cases with zero skips in 101.23 seconds; the separate actual
+Celery/Valkey recovery suite passed all ten cases with zero skips in 252.83
 seconds. Ruff, mypy on 26 source files, 15 frontend unit cases, frontend
 typecheck/lint/build, 15 deterministic generated documents, the 77-row checker,
 26 HTTPS Chrome cases, Valkey smoke and owned-resource cleanup passed.
@@ -199,13 +199,40 @@ one setup error in 8.67 seconds: SeaweedFS 4.47 returned `NotImplemented` for
 owned PostgreSQL cleanup succeeded. No authenticated HTTP or completed provider
 preflight was reached, and no meaningful missing-feature RED was accepted.
 
-The local fixture candidate is now being evaluated under the explicit
-`seaweedfs-private-iam-ownership-v1` security profile: enforced bucket ownership
-with readback, refusal of public ACLs/grants and anonymous access, and actual
-IAM, multipart, expiry and cleanup checks. The receipt checker requires that
-exact profile. Unsupported APIs or successful public ACL requests must fail
-setup. This profile has not yet passed an actual Linux run and does not approve
-the provider for production.
+### Second private asset probe: required ACL refusal failed
+
+[Run 36733796553](https://github.com/himangga01/wisdom-super-observer/actions/runs/36733796553)
+used infrastructure `dbe68fa`, still sealing product source at `6565929`.
+PostgreSQL and dependency setup succeeded. The selected test reported one
+setup error in 9.08 seconds: `bootstrap public ACL/grant refusal` failed.
+The diagnostic does not distinguish an accepted request from an unexpected
+error; it establishes that the required refusal was not proven. The strict RED
+gate rejected incomplete evidence. No actual HTTP preflight or meaningful
+missing-feature RED was accepted. SeaweedFS 4.47 is excluded as this fixture's
+candidate.
+
+The replacement candidate is official MinIO
+`RELEASE.2025-04-22T22-12-26Z`, with an independently pinned official `mc`
+client. Its proposed `minio-inert-acl-dedicated-bucket-v1` profile requires
+actual signed byte checks and anonymous GET/HEAD denial after every public ACL
+attempt. It claims neither AWS PublicAccessBlock nor BucketOwnerEnforced
+compatibility. Each installation requires a separate private bucket and
+distinct runtime credentials. Artifact hashes, local image identity and
+all actual capability checks must be recorded before a receipt is accepted.
+The [private asset runbook](private-assets.md) records the portability and
+containment constraints. Actual MinIO acceptance remains pending.
+
+### Asset primitive run: tests passed, Linux typing gate failed
+
+[Run 36737333575](https://github.com/himangga01/wisdom-super-observer/actions/runs/36737333575)
+at `aedbe2d4c85f208d65c50a9ffdc27f72a602667e` passed 855 ordinary Python cases
+with zero skips in 115.58 seconds and ten actual recovery cases with zero skips
+in 249.25 seconds. Ruff passed. Linux mypy then failed at the Windows-only
+`msvcrt.get_osfhandle` reference in `asset_crypto.py`; the frontend/browser and
+Valkey smoke gates were not reached. Owned PostgreSQL cleanup succeeded.
+This run is **failed**, despite the passing test subsets. A minimal platform
+guard was independently reviewed and passed focused Linux/Windows typing and
+crypto checks; its subsequent full Linux run remains to be observed.
 
 ## Evidence handling
 

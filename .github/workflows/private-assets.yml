@@ -54,7 +54,8 @@ jobs:
           # No product asset module, contract model, route or migration is copied.
           for task_path in \
             pyproject.toml packages/core/pyproject.toml uv.lock \
-            tests/support/asset_provider.py tests/support/asset_harness.py \
+            tests/support/asset_provider.py tests/support/asset_minio.py \
+            tests/support/asset_harness.py \
             tests/support/asset_process.py tests/integration/test_private_assets.py \
             scripts/dev/owned-ci-postgres.sh scripts/check_private_asset_red.py; do
             mkdir -p "$task_baseline/$(dirname "$task_path")"

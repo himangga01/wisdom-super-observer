@@ -1,12 +1,15 @@
-"""Owned SeaweedFS capability probe. Never substitute an in-memory S3 service."""
+"""Owned official MinIO fixture. Every acceptance probe uses real S3/HTTP."""
 
 from __future__ import annotations
 
+import io
 import json
 import os
 import re
 import secrets
+import shutil
 import subprocess
+import tarfile
 import time
 from functools import partial
 from pathlib import Path
@@ -14,90 +17,87 @@ from uuid import uuid4
 
 import httpx
 
+from tests.support.asset_minio import (
+    CLIENT_SHA,
+    CLIENT_VERSION,
+    SERVER_COMMIT,
+    SERVER_SHA,
+    SERVER_VERSION,
+    LocalDocker,
+    download_artifact,
+    private_file,
+    provision_users,
+    require_linux_ci,
+    verify_binary_version,
+)
+
 LABEL = "wso.assets.owner"
-IMAGE = "chrislusf/seaweedfs:4.47"
-SECURITY_PROFILE = "seaweedfs-private-iam-ownership-v1"
+SECURITY_PROFILE = "minio-inert-acl-dedicated-bucket-v1"
 
 
 def private_json(path, value):
-    descriptor = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-    with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
-        json.dump(value, stream)
+    private_file(path, json.dumps(value).encode("utf-8"))
 
 
 def policy_config(bucket, prefix, identities):
-    """Static IAM policy documents, deliberately without legacy coarse Actions."""
+    """Dedicated bucket; ordinary listing prefix scoped, multipart metadata bucket scoped."""
     bucket_arn = f"arn:aws:s3:::{bucket}"
-    object_arn = f"{bucket_arn}/{prefix}*"
-    definitions = {
-        "bootstrap": [{"Effect": "Allow", "Action": "s3:*", "Resource": "*"}],
-        "gateway": [
-            {
-                "Effect": "Allow",
-                "Action": [
-                    "s3:PutObject",
-                    "s3:GetObject",
-                    "s3:AbortMultipartUpload",
-                    "s3:ListMultipartUploadParts",
-                ],
-                "Resource": object_arn,
-            },
-        ],
-        "cleanup": [
-            {
-                "Effect": "Allow",
-                "Action": [
-                    "s3:DeleteObject",
-                    "s3:AbortMultipartUpload",
-                    "s3:ListMultipartUploadParts",
-                ],
-                "Resource": object_arn,
-            },
-        ],
-    }
-    for name in ("gateway", "cleanup"):
-        definitions[name].append(
-            {
-                "Effect": "Allow",
-                "Action": ["s3:ListBucket", "s3:ListBucketMultipartUploads"],
-                "Resource": bucket_arn,
-                "Condition": {"StringLike": {"s3:prefix": [prefix, prefix + "*"]}},
-            }
-        )
-    return {
-        "identities": [
-            {
-                "name": name,
-                "credentials": [
-                    {"accessKey": credentials[0], "secretKey": credentials[1]}
-                ],
-                "policyNames": [name],
-                "account": {"id": "asset-fixture", "displayName": "asset-fixture"},
-            }
-            for name, credentials in identities.items()
-        ],
-        "policies": [
-            {
-                "name": name,
-                "content": json.dumps(
-                    {"Version": "2012-10-17", "Statement": statements}
-                ),
-            }
-            for name, statements in definitions.items()
-        ],
-    }
+    definitions = {}
+    for name, actions in (
+        (
+            "wso-gateway",
+            [
+                "s3:PutObject",
+                "s3:GetObject",
+                "s3:AbortMultipartUpload",
+                "s3:ListMultipartUploadParts",
+            ],
+        ),
+        (
+            "wso-maintenance",
+            [
+                "s3:DeleteObject",
+                "s3:AbortMultipartUpload",
+                "s3:ListMultipartUploadParts",
+            ],
+        ),
+    ):
+        definitions[name] = {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Action": actions,
+                    "Resource": f"{bucket_arn}/{prefix}*",
+                },
+                {
+                    "Effect": "Allow",
+                    "Action": ["s3:ListBucket"],
+                    "Resource": bucket_arn,
+                    "Condition": {"StringLike": {"s3:prefix": [prefix, prefix + "*"]}},
+                },
+                {
+                    "Effect": "Allow",
+                    "Action": ["s3:ListBucketMultipartUploads"],
+                    "Resource": bucket_arn,
+                },
+            ],
+        }
+    return definitions
 
 
 class AssetProvider:
     def __init__(self, directory):
-        self.directory = Path(directory)
+        self.directory = Path(directory).resolve()
         self.owner = uuid4().hex
         self.installation_id = uuid4()
         self.bucket = "wso-assets-" + self.owner
         self.prefix = f"wso-assets/v1/{self.installation_id.hex}/"
-        self.volume = f"wso-assets-data-{self.owner}"
-        self.container = f"wso-assets-s3-{self.owner}"
-        self.network = f"wso-assets-net-{self.owner}"
+        self.volume = "wso-assets-data-" + self.owner
+        self.container = "wso-assets-s3-" + self.owner
+        self.network = "wso-assets-net-" + self.owner
+        self.image_tag = "wso-assets-minio:" + self.owner
+        self.work = None
         self.created = []
         self.clients = {}
         self.credentials = {
@@ -105,53 +105,86 @@ class AssetProvider:
             for name in ("bootstrap", "gateway", "cleanup")
         }
         self.receipt = None
+        self.outcomes = []
+        self.docker_target = None
+
+    def docker_invocation(self, *arguments):
+        if self.docker_target is None:
+            if self.work is None:
+                raise RuntimeError("owned local Docker target is not initialized")
+            self.docker_target = LocalDocker(self.work)
+        return self.docker_target.command(*arguments)
 
     def docker(self, *arguments):
+        command, environment = self.docker_invocation(*arguments)
         try:
             result = subprocess.run(
-                ["docker", *arguments],
+                command,
+                env=environment,
                 check=True,
                 capture_output=True,
                 text=True,
-                timeout=120,
+                timeout=180,
             )
+            if len(result.stdout) > 1048576:
+                raise RuntimeError("owned Docker output exceeded bound")
             return result.stdout.strip()
         except (OSError, subprocess.SubprocessError):
             raise RuntimeError("owned asset Docker operation failed") from None
 
     def start(self):
-        self.docker("pull", IMAGE)
-        image = json.loads(self.docker("image", "inspect", IMAGE))[0]
-        digests = [
-            digest
-            for digest in image["RepoDigests"]
-            if re.fullmatch(
-                r"(?:docker.io/)?chrislusf/seaweedfs@sha256:[0-9a-f]{64}", digest
-            )
-        ]
-        if len(digests) != 1:
-            raise RuntimeError("SeaweedFS immutable image digest unavailable")
-        self.image = digests[0]
-        version = self.docker(
-            "run",
-            "--rm",
-            "--network",
-            "none",
-            "--entrypoint",
-            "/usr/bin/weed",
-            self.image,
-            "version",
+        require_linux_ci()
+        self.work = self.directory / ("minio-" + self.owner)
+        self.work.mkdir(mode=0o700)
+        private_json(self.work / "owner.json", {"owner": self.owner})
+        # Fix and verify the local target before any download/build/mutation.
+        self.docker_target = LocalDocker(self.work)
+        for name in ("minio", "mc"):
+            binary = download_artifact(self.work, name)
+            verify_binary_version(binary, name, self.work)
+        context = self.work / "image"
+        context.mkdir(mode=0o700)
+        (context / "data").mkdir(mode=0o700)
+        shutil.copyfile(self.work / "minio", context / "minio")
+        dockerfile = (
+            "FROM scratch\n"
+            f'LABEL {LABEL}="{self.owner}" wso.assets.source="{SERVER_COMMIT}" wso.assets.binary="{SERVER_SHA}"\n'
+            "COPY --chmod=0555 minio /minio\n"
+            "COPY --chown=65532:65532 --chmod=0700 data /data\n"
+            'USER 65532:65532\nVOLUME ["/data"]\nEXPOSE 9000\nENTRYPOINT ["/minio"]\n'
         )
-        if not re.search(r"\b4\.47\b", version):
-            raise RuntimeError("SeaweedFS executable version differs from 4.47")
-        config = self.directory / "s3-identities.json"
-        private_json(config, policy_config(self.bucket, self.prefix, self.credentials))
-        for kind, name in (("volume", self.volume), ("network", self.network)):
-            self.docker(kind, "create", "--label", f"{LABEL}={self.owner}", name)
+        private_file(context / "Dockerfile", dockerfile.encode())
+        self.created.append(("image", self.image_tag))
+        self.docker("build", "--network=none", "--tag", self.image_tag, str(context))
+        image = self.inspect("image", self.image_tag)
+        self.image = image["Id"]
+        if not re.fullmatch(r"sha256:[0-9a-f]{64}", self.image):
+            raise RuntimeError("local image identity unavailable")
+        self.assert_image(image)
+        for kind, name, extra in (
+            ("volume", self.volume, ()),
+            ("network", self.network, ("--internal",)),
+        ):
             self.created.append((kind, name))
+            self.docker(
+                kind, "create", *extra, "--label", f"{LABEL}={self.owner}", name
+            )
+        self.env_file = self.work / "server.env"
+        private_file(
+            self.env_file,
+            (
+                f"MINIO_ROOT_USER={self.credentials['bootstrap'][0]}\nMINIO_ROOT_PASSWORD={self.credentials['bootstrap'][1]}\n"
+                "MINIO_BROWSER=off\nMINIO_UPDATE=off\n"
+            ).encode(),
+        )
+        if (
+            self.env_file.stat().st_mode & 0o777 != 0o600
+            or self.env_file.stat().st_uid != os.getuid()
+        ):
+            raise RuntimeError("bootstrap environment file is not private")
+        self.created.append(("container", self.container))
         self.docker(
-            "run",
-            "--detach",
+            "create",
             "--name",
             self.container,
             "--label",
@@ -161,35 +194,64 @@ class AssetProvider:
             "--log-driver",
             "none",
             "--publish",
-            "127.0.0.1::8333",
+            "127.0.0.1::9000",
+            "--cap-drop=ALL",
+            "--security-opt=no-new-privileges:true",
+            "--read-only",
+            "--memory=2g",
+            "--cpus=2",
+            "--pids-limit=128",
+            "--tmpfs",
+            "/tmp:rw,noexec,nosuid,nodev,size=64m,mode=0700,uid=65532,gid=65532",
             "--mount",
             f"type=volume,src={self.volume},dst=/data",
-            "--mount",
-            f"type=bind,src={config},dst=/etc/wso-s3.json,readonly",
-            "--entrypoint",
-            "/usr/bin/weed",
+            "--env-file",
+            str(self.env_file),
             self.image,
             "server",
-            "-dir=/data",
-            "-volume.max=2",
-            "-master.volumeSizeLimitMB=64",
-            "-ip=127.0.0.1",
-            "-ip.bind=0.0.0.0",
-            "-s3",
-            "-s3.config=/etc/wso-s3.json",
+            "/data",
+            "--address",
+            ":9000",
+            "--console-address",
+            ":9001",
+            "--quiet",
         )
-        self.created.append(("container", self.container))
+        self.assert_container_mapping(self.inspect("container", self.container))
+        self.verify_data_volume()
+        self.docker("start", self.container)
         state = self.inspect("container", self.container)
-        if any(
-            value.startswith(("AWS_ACCESS_KEY_ID=", "AWS_SECRET_ACCESS_KEY="))
-            for value in state["Config"]["Env"]
+        self.assert_container_mapping(state)
+        ports = state["NetworkSettings"]["Ports"].get("9000/tcp")
+        if (
+            not isinstance(ports, list)
+            or len(ports) != 1
+            or ports[0]["HostIp"] != "127.0.0.1"
+            or not ports[0]["HostPort"].isdigit()
         ):
-            raise RuntimeError("SeaweedFS ambient admin fallback is forbidden")
-        ports = state["NetworkSettings"]["Ports"]["8333/tcp"]
-        if len(ports) != 1 or ports[0]["HostIp"] != "127.0.0.1":
-            raise RuntimeError("asset provider must bind only loopback")
+            raise RuntimeError("provider must publish only owned loopback S3")
         self.endpoint = "http://127.0.0.1:" + ports[0]["HostPort"]
-        self.assert_container_mapping(state, config)
+        self.configure_clients()
+        deadline = time.monotonic() + 60
+        while True:
+            try:
+                self.clients["bootstrap"].list_buckets()
+                break
+            except Exception:  # noqa: BLE001 -- sanitize startup provider details
+                if time.monotonic() >= deadline:
+                    raise RuntimeError(
+                        "MinIO did not become authenticated ready"
+                    ) from None
+                time.sleep(0.2)
+        provision_users(
+            self.work,
+            self.endpoint,
+            self.credentials,
+            policy_config(self.bucket, self.prefix, self.credentials),
+        )
+        self.preflight()
+        return self
+
+    def configure_clients(self):
         import boto3
         from botocore.config import Config
 
@@ -210,63 +272,189 @@ class AssetProvider:
                     response_checksum_validation="when_required",
                 ),
             )
-        deadline = time.monotonic() + 60
-        while True:
-            try:
-                self.clients["bootstrap"].list_buckets()
-                break
-            except Exception:  # noqa: BLE001 -- retry startup without provider details
-                if time.monotonic() >= deadline:
-                    raise RuntimeError(
-                        "SeaweedFS did not become authenticated ready"
-                    ) from None
-                time.sleep(0.2)
-        self.preflight()
-        return self
 
     def inspect(self, kind, name):
         arguments = (
             ["inspect", name] if kind == "container" else [kind, "inspect", name]
         )
         data = json.loads(self.docker(*arguments))[0]
-        labels = data["Config"]["Labels"] if kind == "container" else data["Labels"]
+        labels = (
+            data["Config"]["Labels"]
+            if kind in {"container", "image"}
+            else data["Labels"]
+        )
         if labels.get(LABEL) != self.owner:
             raise RuntimeError("asset resource owner mismatch; cleanup refused")
         return data
 
-    def assert_container_mapping(self, state, config):
-        mounts = {mount["Destination"]: mount for mount in state["Mounts"]}
+    def assert_image(self, image):
+        config = image["Config"]
+        if (
+            config["User"] != "65532:65532"
+            or config["Entrypoint"] != ["/minio"]
+            or config["Labels"].get("wso.assets.source") != SERVER_COMMIT
+            or config["Labels"].get("wso.assets.binary") != SERVER_SHA
+            or image["Os"] != "linux"
+            or image["Architecture"] != "amd64"
+        ):
+            raise RuntimeError("owned scratch image mapping mismatch")
+
+    def assert_container_mapping(self, state):
+        host = state["HostConfig"]
+        mounts = state["Mounts"]
+        data = [item for item in mounts if item["Destination"] == "/data"]
+        environment = dict(item.split("=", 1) for item in state["Config"]["Env"])
+        binding = host.get("PortBindings", {}).get("9000/tcp", [])
+        temporary = host.get("Tmpfs", {}).get("/tmp", "").split(",")
         if (
             state["Name"] != "/" + self.container
+            or state["Image"] != self.image
             or state["Config"]["Image"] != self.image
+            or state["Config"]["User"] != "65532:65532"
+            or state["Config"]["Entrypoint"] != ["/minio"]
+            or state["Config"]["Cmd"]
+            != [
+                "server",
+                "/data",
+                "--address",
+                ":9000",
+                "--console-address",
+                ":9001",
+                "--quiet",
+            ]
             or set(state["NetworkSettings"]["Networks"]) != {self.network}
-            or mounts["/data"]["Type"] != "volume"
-            or mounts["/data"]["Name"] != self.volume
-            or mounts["/data"]["RW"] is not True
-            or mounts["/etc/wso-s3.json"]["Type"] != "bind"
-            or mounts["/etc/wso-s3.json"]["Source"] != str(config)
-            or mounts["/etc/wso-s3.json"]["RW"] is not False
+            or host["NetworkMode"] != self.network
+            or len(data) != 1
+            or data[0]["Type"] != "volume"
+            or data[0]["Name"] != self.volume
+            or data[0]["RW"] is not True
+            or any(
+                item["Destination"] != "/data"
+                and not (item["Destination"] == "/tmp" and item["Type"] == "tmpfs")
+                for item in mounts
+            )
+            or host.get("Binds")
+            or host.get("Devices")
+            or host.get("DeviceRequests")
+            or host["Privileged"] is not False
+            or host["ReadonlyRootfs"] is not True
+            or host["CapDrop"] != ["ALL"]
+            or host["SecurityOpt"] != ["no-new-privileges:true"]
+            or host["Memory"] != 2147483648
+            or host["NanoCpus"] != 2000000000
+            or host["PidsLimit"] != 128
+            or host["LogConfig"]["Type"] != "none"
+            or host.get("PortBindings") is None
+            or set(host["PortBindings"]) != {"9000/tcp"}
+            or len(binding) != 1
+            or binding[0].get("HostIp") != "127.0.0.1"
+            or not isinstance(binding[0].get("HostPort"), str)
+            or (binding[0]["HostPort"] != "" and not binding[0]["HostPort"].isdigit())
+            or set(host.get("Tmpfs", {})) != {"/tmp"}
+            or len(temporary) != 8
+            or set(temporary)
+            != {
+                "rw",
+                "noexec",
+                "nosuid",
+                "nodev",
+                "size=64m",
+                "mode=0700",
+                "uid=65532",
+                "gid=65532",
+            }
+            or environment.get("MINIO_ROOT_USER") != self.credentials["bootstrap"][0]
+            or environment.get("MINIO_ROOT_PASSWORD")
+            != self.credentials["bootstrap"][1]
+            or environment.get("MINIO_BROWSER") != "off"
+            or environment.get("MINIO_UPDATE") != "off"
+            or any(key.startswith("AWS_") for key in environment)
         ):
             raise RuntimeError("asset container resource mapping mismatch")
-        self.inspect("volume", self.volume)
-        self.inspect("network", self.network)
+        if (
+            self.inspect("volume", self.volume)["Name"] != self.volume
+            or self.inspect("network", self.network).get("Internal") is not True
+        ):
+            raise RuntimeError("private volume/internal network mapping mismatch")
+        image = self.inspect("image", self.image)
+        self.assert_image(image)
+
+    def verify_data_volume(self):
+        # Before server execution the copy-up volume is empty. Docker cp supplies
+        # actual tar metadata without a privileged shell/helper or host mount.
+        try:
+            command, environment = self.docker_invocation(
+                "cp", self.container + ":/data", "-"
+            )
+            result = subprocess.run(
+                command,
+                env=environment,
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                timeout=15,
+                check=True,
+            )
+            if len(result.stdout) > 1048576:
+                raise ValueError
+            with tarfile.open(fileobj=io.BytesIO(result.stdout)) as archive:
+                entries = archive.getmembers()
+            if (
+                len(entries) != 1
+                or not entries[0].isdir()
+                or entries[0].name.rstrip("/") != "data"
+                or (entries[0].uid, entries[0].gid, entries[0].mode)
+                != (65532, 65532, 0o700)
+            ):
+                raise ValueError
+        except (OSError, ValueError, tarfile.TarError, subprocess.SubprocessError):
+            raise RuntimeError(
+                "actual nonroot data volume UID/GID/mode verification failed"
+            ) from None
 
     @staticmethod
-    def denied(operation, label, *, ownership=False):
+    def error_identity(error):
+        status = error.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+        code = error.response.get("Error", {}).get("Code", "unknown")
+        return status, code if isinstance(code, str) and re.fullmatch(
+            r"[A-Za-z0-9]{1,64}", code
+        ) else "unknown"
+
+    @staticmethod
+    def denied(operation, label, *, head=False):
+        from botocore.exceptions import ClientError
+
+        try:
+            result = operation()
+        except ClientError as error:
+            status, code = AssetProvider.error_identity(error)
+            if (status, code) == (403, "AccessDenied") or (
+                head and (status, code) == (403, "403")
+            ):
+                return
+        else:
+            status = (
+                result.get("ResponseMetadata", {}).get("HTTPStatusCode")
+                if isinstance(result, dict)
+                else None
+            )
+            code = "SUCCESS"
+        status = status if isinstance(status, int) else None
+        raise RuntimeError(
+            "provider security capability failed: "
+            + label
+            + f" actual_status={status} actual_code={code}"
+        ) from None
+
+    @staticmethod
+    def unsupported(operation):
         from botocore.exceptions import ClientError
 
         try:
             operation()
         except ClientError as error:
-            denial = (
-                error.response["ResponseMetadata"]["HTTPStatusCode"],
-                error.response["Error"]["Code"],
-            )
-            if denial in {(403, "AccessDenied"), (403, "403")} or (
-                ownership and denial == (400, "AccessControlListNotSupported")
-            ):
+            if AssetProvider.error_identity(error) == (501, "NotImplemented"):
                 return
-        raise RuntimeError("provider security capability failed: " + label)
+        raise RuntimeError("pinned unsupported-control behavior differs")
 
     @staticmethod
     def raw_http(method, url, **kwargs):
@@ -287,37 +475,26 @@ class AssetProvider:
     def raw_get(url):
         return AssetProvider.raw_http("GET", url)
 
-    def configure_ownership(self):
-        from botocore.exceptions import ClientError
-
-        admin = self.clients["bootstrap"]
-        enforced = {"Rules": [{"ObjectOwnership": "BucketOwnerEnforced"}]}
-        try:
-            admin.put_bucket_ownership_controls(
-                Bucket=self.bucket, OwnershipControls=enforced
-            )
-            observed = admin.get_bucket_ownership_controls(Bucket=self.bucket)
-        except ClientError:
-            raise RuntimeError("required ownership API failed") from None
-        if observed.get("OwnershipControls") != enforced:
-            raise RuntimeError(
-                "required ownership readback differs from BucketOwnerEnforced"
-            )
-
     @staticmethod
     def require_private_acl(response):
-        owner = response.get("Owner", {}).get("ID")
+        owner = response.get("Owner", {})
         grants = response.get("Grants", [])
         if (
-            not isinstance(owner, str)
-            or not owner
+            owner.get("ID", "") != ""
+            or owner.get("DisplayName", "") != ""
             or len(grants) != 1
-            or grants[0].get("Permission") != "FULL_CONTROL"
-            or grants[0].get("Grantee", {}).get("Type") != "CanonicalUser"
-            or grants[0]["Grantee"].get("ID") != owner
-            or grants[0]["Grantee"].get("URI") is not None
         ):
-            raise RuntimeError("ACL is not private owner-only full control")
+            raise RuntimeError("synthetic private ACL shape differs")
+        grant = grants[0]
+        grantee = grant.get("Grantee", {})
+        if (
+            grant.get("Permission") != "FULL_CONTROL"
+            or grantee.get("Type") != "CanonicalUser"
+            or grantee.get("ID", "") != ""
+            or grantee.get("DisplayName", "") != ""
+            or grantee.get("URI") is not None
+        ):
+            raise RuntimeError("synthetic private ACL shape differs")
 
     def inspect_no_bucket_policy(self):
         from botocore.exceptions import ClientError
@@ -325,23 +502,169 @@ class AssetProvider:
         try:
             self.clients["bootstrap"].get_bucket_policy(Bucket=self.bucket)
         except ClientError as error:
-            if (
-                error.response["ResponseMetadata"]["HTTPStatusCode"] == 404
-                and error.response["Error"]["Code"] == "NoSuchBucketPolicy"
-            ):
+            if self.error_identity(error) == (404, "NoSuchBucketPolicy"):
                 return
         raise RuntimeError("absence of public bucket policy could not be established")
 
-    def privacy_profile(self, key, body):
-        """Real valid-public-grant attempts, with no unsupported-operation fallback."""
+    def private_effect(self, key, body):
         admin = self.clients["bootstrap"]
-        bucket = self.bucket
+        if admin.head_object(Bucket=self.bucket, Key=key)["ContentLength"] != len(body):
+            raise RuntimeError("private signed bytes length changed")
+        stream = admin.get_object(Bucket=self.bucket, Key=key)["Body"]
+        try:
+            if stream.read() != body:
+                raise RuntimeError("private signed bytes changed")
+        finally:
+            stream.close()
+        self.require_private_acl(admin.get_object_acl(Bucket=self.bucket, Key=key))
+        for method in ("GET", "HEAD"):
+            if self.raw_http(method, f"{self.endpoint}/{self.bucket}/{key}")[0] != 403:
+                raise RuntimeError(
+                    "anonymous " + method + " private access was allowed"
+                )
+
+    def materialize_public_upload(self, actor, key, upload, body):
+        part = actor.upload_part(
+            Bucket=self.bucket, Key=key, UploadId=upload, PartNumber=1, Body=body
+        )
+        actor.complete_multipart_upload(
+            Bucket=self.bucket,
+            Key=key,
+            UploadId=upload,
+            MultipartUpload={"Parts": [{"PartNumber": 1, "ETag": part["ETag"]}]},
+        )
+        self.private_effect(key, body)
+
+    def multipart_pages(self, actor, prefix):
+        rows, seen, markers = [], set(), {}
+        for _ in range(1000):
+            page = actor.list_multipart_uploads(
+                Bucket=self.bucket, Prefix=prefix, MaxUploads=1, **markers
+            )
+            for row in page.get("Uploads", []):
+                if (
+                    not isinstance(row.get("Key"), str)
+                    or not row["Key"].startswith(prefix)
+                    or not isinstance(row.get("UploadId"), str)
+                    or not row["UploadId"]
+                ):
+                    raise RuntimeError(
+                        "multipart listing returned foreign or malformed row"
+                    )
+                rows.append(row)
+            if page.get("IsTruncated") is False:
+                return rows, len(seen) + 1
+            next_marker = (page.get("NextKeyMarker"), page.get("NextUploadIdMarker"))
+            if (
+                page.get("IsTruncated") is not True
+                or not all(isinstance(item, str) and item for item in next_marker)
+                or next_marker in seen
+            ):
+                raise RuntimeError("multipart pagination checkpoint invalid")
+            seen.add(next_marker)
+            markers = {"KeyMarker": next_marker[0], "UploadIdMarker": next_marker[1]}
+        raise RuntimeError("multipart pagination bound exceeded")
+
+    def object_pages(self, actor, prefix):
+        rows, seen, arguments = [], set(), {}
+        for _ in range(1000):
+            page = actor.list_objects_v2(
+                Bucket=self.bucket, Prefix=prefix, MaxKeys=1, **arguments
+            )
+            for row in page.get("Contents", []):
+                if not isinstance(row.get("Key"), str) or not row["Key"].startswith(
+                    prefix
+                ):
+                    raise RuntimeError("object listing returned foreign row")
+                rows.append(row)
+            if page.get("IsTruncated") is False:
+                return rows, len(seen) + 1
+            token = page.get("NextContinuationToken")
+            if (
+                page.get("IsTruncated") is not True
+                or not isinstance(token, str)
+                or not token
+                or token in seen
+            ):
+                raise RuntimeError("object pagination checkpoint invalid")
+            seen.add(token)
+            arguments = {"ContinuationToken": token}
+        raise RuntimeError("object pagination bound exceeded")
+
+    def exact_absence(self, key):
+        from botocore.exceptions import ClientError
+
+        admin = self.clients["bootstrap"]
+        try:
+            admin.head_object(Bucket=self.bucket, Key=key)
+        except ClientError as error:
+            if self.error_identity(error) not in {(404, "NoSuchKey"), (404, "404")}:
+                raise RuntimeError("exact absence HEAD failed") from None
+        else:
+            raise RuntimeError("unexpected surviving object")
+        if self.multipart_pages(admin, key)[0]:
+            raise RuntimeError("unexpected surviving upload")
+
+    def public_attempt(self, actor, operation, arguments):
+        from botocore.exceptions import ClientError
+
+        try:
+            result = getattr(actor, operation)(**arguments)
+        except ClientError as error:
+            status, code = self.error_identity(error)
+            if (status, code) not in {(403, "AccessDenied"), (501, "NotImplemented")}:
+                raise RuntimeError(
+                    f"public mutation unexpected status={status} code={code}"
+                ) from None
+            return False, {"status": status, "code": code}, None
+        status = result.get("ResponseMetadata", {}).get("HTTPStatusCode")
+        if status not in {200, 204}:
+            raise RuntimeError("public mutation unexpected success status")
+        return True, {"status": status, "code": "accepted-inert-candidate"}, result
+
+    def verify_public_attempt(
+        self, actor, name, index, operation, arguments, original, body
+    ):
+        accepted, outcome, result = self.public_attempt(actor, operation, arguments)
+        record = {
+            "actor": name,
+            "operation": operation,
+            "variant": index,
+            **outcome,
+            "effects_verified": False,
+        }
+        self.outcomes.append(record)
+        new_key = arguments["Key"]
+        try:
+            if accepted and operation == "create_multipart_upload":
+                upload = result.get("UploadId")
+                if not isinstance(upload, str) or not upload:
+                    raise RuntimeError(
+                        "accepted public multipart lacks upload identity"
+                    )
+                self.materialize_public_upload(actor, new_key, upload, body)
+            elif accepted and operation == "put_object":
+                self.private_effect(new_key, body)
+            elif operation != "put_object_acl":
+                self.exact_absence(new_key)
+            self.private_effect(original, body)
+            admin = self.clients["bootstrap"]
+            self.require_private_acl(admin.get_bucket_acl(Bucket=self.bucket))
+            self.inspect_no_bucket_policy()
+            if accepted and operation != "put_object_acl":
+                admin.delete_object(Bucket=self.bucket, Key=new_key)
+                self.exact_absence(new_key)
+        except Exception:  # noqa: BLE001 -- sanitized failure, never passing fallback
+            raise RuntimeError(
+                f"inert ACL effect failed actor={name} operation={operation} variant={index} status={outcome['status']} code={outcome['code']}"
+            ) from None
+        record["effects_verified"] = True
+
+    def control_profile(self, key, body):
+        admin, bucket = self.clients["bootstrap"], self.bucket
         self.inspect_no_bucket_policy()
         self.require_private_acl(admin.get_bucket_acl(Bucket=bucket))
-        object_acl = admin.get_object_acl(Bucket=bucket, Key=key)
-        self.require_private_acl(object_acl)
-        owner_id = object_acl["Owner"]["ID"]
-        public_policy = json.dumps(
+        policy = json.dumps(
             {
                 "Version": "2012-10-17",
                 "Statement": [
@@ -355,20 +678,56 @@ class AssetProvider:
             }
         )
         for name in ("gateway", "cleanup"):
-            client = self.clients[name]
+            actor = self.clients[name]
             for operation in (
-                partial(client.put_bucket_acl, Bucket=bucket, ACL="private"),
-                partial(client.put_object_acl, Bucket=bucket, Key=key, ACL="private"),
+                partial(actor.put_bucket_policy, Bucket=bucket, Policy=policy),
+                partial(actor.delete_bucket_policy, Bucket=bucket),
+                partial(actor.put_bucket_acl, Bucket=bucket, ACL="private"),
+                partial(actor.put_object_acl, Bucket=bucket, Key=key, ACL="private"),
                 partial(
-                    client.put_bucket_ownership_controls,
+                    actor.put_bucket_ownership_controls,
                     Bucket=bucket,
-                    OwnershipControls={"Rules": [{"ObjectOwnership": "ObjectWriter"}]},
+                    OwnershipControls={
+                        "Rules": [{"ObjectOwnership": "BucketOwnerEnforced"}]
+                    },
                 ),
-                partial(client.delete_bucket_ownership_controls, Bucket=bucket),
-                partial(client.put_bucket_policy, Bucket=bucket, Policy=public_policy),
-                partial(client.delete_bucket_policy, Bucket=bucket),
+                partial(actor.delete_bucket_ownership_controls, Bucket=bucket),
+                partial(
+                    actor.put_public_access_block,
+                    Bucket=bucket,
+                    PublicAccessBlockConfiguration={
+                        name: True
+                        for name in (
+                            "BlockPublicAcls",
+                            "IgnorePublicAcls",
+                            "BlockPublicPolicy",
+                            "RestrictPublicBuckets",
+                        )
+                    },
+                ),
+                partial(actor.delete_public_access_block, Bucket=bucket),
             ):
-                self.denied(operation, name + " administrative mutation denial")
+                # Control mutation queries can reach generic bucket creation/
+                # deletion routes. Their denial is not working BOE/PAB support.
+                self.denied(operation, name + " administrative/bucket-route mutation")
+                self.private_effect(key, body)
+                self.require_private_acl(admin.get_bucket_acl(Bucket=bucket))
+                self.inspect_no_bucket_policy()
+        # Exact unsupported GET behavior, not IAM enforcement. Omit bootstrap
+        # PUT/DELETE queries that source routing could treat as bucket mutations.
+        for actor in self.clients.values():
+            for operation in (
+                partial(actor.get_bucket_ownership_controls, Bucket=bucket),
+                partial(actor.get_public_access_block, Bucket=bucket),
+            ):
+                self.unsupported(operation)
+                self.private_effect(key, body)
+                self.require_private_acl(admin.get_bucket_acl(Bucket=bucket))
+                self.inspect_no_bucket_policy()
+
+    def privacy_profile(self, key, body):
+        bucket = self.bucket
+        self.control_profile(key, body)
         variants = [
             {"ACL": acl}
             for acl in ("public-read", "public-read-write", "authenticated-read")
@@ -379,117 +738,85 @@ class AssetProvider:
                     {grant: f'uri="http://acs.amazonaws.com/groups/global/{group}"'}
                 )
         for name in ("bootstrap", "gateway", "cleanup"):
-            client = self.clients[name]
-            for variant in variants:
-                existing_variant = variant
+            actor = self.clients[name]
+            for index, variant in enumerate(variants):
+                existing = variant
                 if "ACL" not in variant:
-                    grant_name, uri_header = next(iter(variant.items()))
-                    existing_variant = {
+                    grant, header = next(iter(variant.items()))
+                    # A syntactically valid known fixture canonical identifier;
+                    # MinIO's synthetic empty-ID ACL is not identity authority.
+                    owner = "0" * 64
+                    existing = {
                         "AccessControlPolicy": {
-                            "Owner": {"ID": owner_id},
+                            "Owner": {"ID": owner},
                             "Grants": [
                                 {
-                                    "Grantee": {
-                                        "Type": "CanonicalUser",
-                                        "ID": owner_id,
-                                    },
+                                    "Grantee": {"Type": "CanonicalUser", "ID": owner},
                                     "Permission": "FULL_CONTROL",
                                 },
                                 {
-                                    "Grantee": {
-                                        "Type": "Group",
-                                        "URI": uri_header[5:-1],
-                                    },
+                                    "Grantee": {"Type": "Group", "URI": header[5:-1]},
                                     "Permission": "READ"
-                                    if grant_name == "GrantRead"
+                                    if grant == "GrantRead"
                                     else "FULL_CONTROL",
                                 },
                             ],
                         }
                     }
-                # Each new key stays within this owned installation. If a probe
-                # unexpectedly succeeds, setup fails and guarded volume teardown
-                # removes all bytes/uploads; there is no passing-profile receipt.
-                new_key = key + "-privacy-" + uuid4().hex
                 for operation in (
-                    partial(
-                        client.put_object_acl,
-                        Bucket=bucket,
-                        Key=key,
-                        **existing_variant,
-                    ),
-                    partial(
-                        client.put_object,
-                        Bucket=bucket,
-                        Key=new_key,
-                        Body=body,
-                        **variant,
-                    ),
-                    partial(
-                        client.create_multipart_upload,
-                        Bucket=bucket,
-                        Key=new_key,
-                        **variant,
-                    ),
+                    "put_object_acl",
+                    "put_object",
+                    "create_multipart_upload",
                 ):
-                    self.denied(
-                        operation, name + " public ACL/grant refusal", ownership=True
+                    new_key = (
+                        key
+                        if operation == "put_object_acl"
+                        else key + "-privacy-" + uuid4().hex
                     )
-                if admin.list_objects_v2(Bucket=bucket, Prefix=new_key).get("Contents"):
-                    raise RuntimeError("denied public PUT left an object")
-                if admin.list_multipart_uploads(Bucket=bucket, Prefix=new_key).get(
-                    "Uploads"
-                ):
-                    raise RuntimeError("denied public multipart left an upload")
-        object_url = f"{self.endpoint}/{bucket}/{key}"
-        bucket_url = f"{self.endpoint}/{bucket}"
-        for method, url, arguments in (
-            ("GET", object_url, {}),
-            ("HEAD", object_url, {}),
-            ("GET", bucket_url, {"params": {"list-type": "2", "prefix": self.prefix}}),
-            ("PUT", object_url, {"content": b"anonymous-forbidden"}),
+                    arguments = {
+                        "Bucket": bucket,
+                        "Key": new_key,
+                        **(existing if operation == "put_object_acl" else variant),
+                    }
+                    if operation == "put_object":
+                        arguments["Body"] = body
+                    self.verify_public_attempt(
+                        actor, name, index, operation, arguments, key, body
+                    )
+        if len(self.outcomes) != 63 or not all(
+            row["effects_verified"] is True for row in self.outcomes
         ):
+            raise RuntimeError("incomplete public grant effect matrix")
+        private_json(self.work / "public-effects.json", self.outcomes)
+        for method, arguments in (
+            ("GET", {"params": {"list-type": "2", "prefix": self.prefix}}),
+            ("PUT", {"content": b"anonymous-forbidden"}),
+        ):
+            url = f"{self.endpoint}/{bucket}" + ("/" + key if method == "PUT" else "")
             if self.raw_http(method, url, **arguments)[0] != 403:
-                raise RuntimeError(
-                    "anonymous " + method + " private access was allowed"
-                )
-        self.require_private_acl(admin.get_bucket_acl(Bucket=bucket))
-        self.require_private_acl(admin.get_object_acl(Bucket=bucket, Key=key))
-        self.inspect_no_bucket_policy()
-        enforced = {"Rules": [{"ObjectOwnership": "BucketOwnerEnforced"}]}
-        if (
-            admin.get_bucket_ownership_controls(Bucket=bucket).get("OwnershipControls")
-            != enforced
-        ):
-            raise RuntimeError("runtime probe changed enforced ownership")
-        stream = admin.get_object(Bucket=bucket, Key=key)["Body"]
-        try:
-            if stream.read() != body:
-                raise RuntimeError("privacy probe modified private ciphertext")
-        finally:
-            stream.close()
+                raise RuntimeError("anonymous list/write capability failed")
+        self.private_effect(key, body)
 
     def preflight(self):
-        """Every receipt below represents an actual provider request."""
+        """Real provider-only bootstrap, followed by the unchanged HTTP harness."""
         from botocore.exceptions import ClientError
 
         admin, gateway, cleanup = (
             self.clients[name] for name in ("bootstrap", "gateway", "cleanup")
         )
         bucket = self.bucket
-        admin.create_bucket(Bucket=bucket, ACL="private")
-        self.configure_ownership()
+        admin.create_bucket(Bucket=bucket)
         if admin.get_bucket_versioning(Bucket=bucket).get("Status") not in (
             None,
             "Suspended",
         ):
-            raise RuntimeError("versioned buckets are forbidden in asset fixture")
+            raise RuntimeError("versioned buckets are forbidden")
         try:
             locking = admin.get_object_lock_configuration(Bucket=bucket)
         except ClientError as error:
-            if (
-                error.response["Error"]["Code"]
-                != "ObjectLockConfigurationNotFoundError"
+            if self.error_identity(error) != (
+                404,
+                "ObjectLockConfigurationNotFoundError",
             ):
                 raise RuntimeError(
                     "Object Lock profile cannot be established"
@@ -504,118 +831,228 @@ class AssetProvider:
         body = b"WSOAST01" + secrets.token_bytes(128)
         gateway.put_object(Bucket=bucket, Key=key, Body=body)
         if gateway.head_object(Bucket=bucket, Key=key)["ContentLength"] != len(body):
-            raise RuntimeError("provider authenticated HEAD failed")
+            raise RuntimeError("gateway authenticated HEAD failed")
         stream = gateway.get_object(Bucket=bucket, Key=key)["Body"]
         try:
             if stream.read() != body:
-                raise RuntimeError("provider authenticated GET failed")
+                raise RuntimeError("gateway authenticated GET failed")
         finally:
             stream.close()
         self.privacy_profile(key, body)
         presign = gateway.generate_presigned_url(
             "get_object", Params={"Bucket": bucket, "Key": key}, ExpiresIn=2
         )
-        status, downloaded = self.raw_get(presign)
-        if status != 200 or downloaded != body:
-            raise RuntimeError("provider actual presigned ciphertext GET failed")
+        if self.raw_get(presign) != (200, body):
+            raise RuntimeError("actual presigned ciphertext GET failed")
         time.sleep(3)
         if self.raw_get(presign)[0] != 403:
-            raise RuntimeError("provider actual presigned URL expiry failed")
-        if self.raw_get(f"{self.endpoint}/{bucket}/{key}")[0] != 403:
-            raise RuntimeError("anonymous ciphertext access was allowed")
+            raise RuntimeError("actual signed URL expiry failed")
         for operation in (
-            lambda: cleanup.get_object(Bucket=bucket, Key=key),
-            lambda: cleanup.head_object(Bucket=bucket, Key=key),
-            lambda: cleanup.put_object(Bucket=bucket, Key=key, Body=b"forbidden"),
+            partial(cleanup.get_object, Bucket=bucket, Key=key),
+            partial(cleanup.put_object, Bucket=bucket, Key=key, Body=b"forbidden"),
         ):
-            self.denied(operation, "cleanup read/write denial")
-        uploads = []
-        for complete in (True, False):
-            upload_key = key + ("-complete" if complete else "-abort")
-            upload = gateway.create_multipart_upload(Bucket=bucket, Key=upload_key)[
-                "UploadId"
-            ]
-            uploads.append((upload_key, upload))
-            part = gateway.upload_part(
-                Bucket=bucket, Key=upload_key, UploadId=upload, PartNumber=1, Body=body
-            )
-            listed = cleanup.list_multipart_uploads(Bucket=bucket, Prefix=self.prefix)
-            if not any(row["UploadId"] == upload for row in listed.get("Uploads", [])):
-                raise RuntimeError("cleanup multipart listing failed")
-            cleanup.list_parts(Bucket=bucket, Key=upload_key, UploadId=upload)
-            if complete:
-                gateway.complete_multipart_upload(
-                    Bucket=bucket,
-                    Key=upload_key,
-                    UploadId=upload,
-                    MultipartUpload={
-                        "Parts": [{"PartNumber": 1, "ETag": part["ETag"]}]
-                    },
-                )
-                cleanup.delete_object(Bucket=bucket, Key=upload_key)
-            else:
-                cleanup.abort_multipart_upload(
-                    Bucket=bucket, Key=upload_key, UploadId=upload
-                )
+            self.denied(operation, "maintenance no-read/write")
+        self.denied(
+            partial(cleanup.head_object, Bucket=bucket, Key=key),
+            "maintenance HEAD no-read",
+            head=True,
+        )
+        # Seed a synthetic foreign namespace and a separate owned foreign bucket.
         foreign = f"wso-assets/v1/{uuid4().hex}/foreign"
         admin.put_object(Bucket=bucket, Key=foreign, Body=b"foreign-preserved")
         foreign_upload = admin.create_multipart_upload(Bucket=bucket, Key=foreign)[
             "UploadId"
         ]
-        for operation in (
-            lambda: cleanup.delete_object(Bucket=bucket, Key=foreign),
-            lambda: cleanup.get_object(Bucket=bucket, Key=foreign),
-            lambda: cleanup.head_object(Bucket=bucket, Key=foreign),
-            lambda: cleanup.put_object(Bucket=bucket, Key=foreign, Body=b"forbidden"),
-            lambda: cleanup.abort_multipart_upload(
-                Bucket=bucket, Key=foreign, UploadId=foreign_upload
-            ),
-            lambda: cleanup.list_objects_v2(Bucket=bucket, Prefix="wso-assets/v1/"),
-            lambda: cleanup.list_multipart_uploads(
-                Bucket=bucket, Prefix="wso-assets/v1/"
-            ),
-            lambda: gateway.put_object(Bucket=bucket, Key=foreign, Body=b"forbidden"),
+        foreign_bucket = bucket + "-foreign"
+        admin.create_bucket(Bucket=foreign_bucket)
+        for actor in (gateway, cleanup):
+            self.denied(
+                partial(actor.head_object, Bucket=bucket, Key=foreign),
+                "foreign HEAD authority",
+                head=True,
+            )
+            for operation in (
+                partial(actor.get_object, Bucket=bucket, Key=foreign),
+                partial(actor.delete_object, Bucket=bucket, Key=foreign),
+                partial(
+                    actor.put_object, Bucket=bucket, Key=foreign, Body=b"forbidden"
+                ),
+                partial(
+                    actor.abort_multipart_upload,
+                    Bucket=bucket,
+                    Key=foreign,
+                    UploadId=foreign_upload,
+                ),
+                partial(
+                    actor.list_parts,
+                    Bucket=bucket,
+                    Key=foreign,
+                    UploadId=foreign_upload,
+                ),
+                partial(actor.list_objects_v2, Bucket=bucket, Prefix="wso-assets/v1/"),
+                partial(
+                    actor.list_objects_v2, Bucket=foreign_bucket, Prefix=self.prefix
+                ),
+                partial(
+                    actor.list_multipart_uploads,
+                    Bucket=foreign_bucket,
+                    Prefix=self.prefix,
+                ),
+            ):
+                self.denied(operation, "foreign namespace/bucket authority")
+        # Truthful raw bucket metadata authority; not a same-bucket prefix denial.
+        raw_foreign = cleanup.list_multipart_uploads(Bucket=bucket, Prefix=foreign)
+        if not any(
+            row.get("UploadId") == foreign_upload
+            for row in raw_foreign.get("Uploads", [])
         ):
-            self.denied(operation, "foreign prefix denial")
-        cleanup.delete_object(Bucket=bucket, Key=key)
-        if cleanup.list_objects_v2(Bucket=bucket, Prefix=key).get("Contents"):
-            raise RuntimeError("cleanup consistent exact-key absence failed")
-        if cleanup.list_multipart_uploads(Bucket=bucket, Prefix=key).get("Uploads"):
-            raise RuntimeError("cleanup incomplete upload absence failed")
-        if admin.head_object(Bucket=bucket, Key=foreign)["ContentLength"] != len(
-            b"foreign-preserved"
+            raise RuntimeError(
+                "dedicated bucket multipart metadata observation differs"
+            )
+        uploads = []
+        objects = [key]
+        for index in range(3):
+            upload_key = key + f"-page-{index}"
+            gateway.put_object(Bucket=bucket, Key=upload_key, Body=body)
+            objects.append(upload_key)
+            upload = gateway.create_multipart_upload(Bucket=bucket, Key=upload_key)[
+                "UploadId"
+            ]
+            part = gateway.upload_part(
+                Bucket=bucket, Key=upload_key, UploadId=upload, PartNumber=1, Body=body
+            )
+            uploads.append((upload_key, upload, part["ETag"]))
+            cleanup.list_parts(Bucket=bucket, Key=upload_key, UploadId=upload)
+        object_rows, object_pages = self.object_pages(cleanup, self.prefix)
+        upload_rows, upload_pages = self.multipart_pages(cleanup, self.prefix)
+        if (
+            object_pages < 2
+            or upload_pages < 2
+            or {row["Key"] for row in object_rows} != set(objects)
+            or {(row["Key"], row["UploadId"]) for row in upload_rows}
+            != {(item[0], item[1]) for item in uploads}
         ):
-            raise RuntimeError("foreign prefix was altered")
+            raise RuntimeError("actual forced pagination/filter checkpoints failed")
+        for index, (upload_key, upload, etag) in enumerate(uploads):
+            if index == 0:
+                gateway.complete_multipart_upload(
+                    Bucket=bucket,
+                    Key=upload_key,
+                    UploadId=upload,
+                    MultipartUpload={"Parts": [{"PartNumber": 1, "ETag": etag}]},
+                )
+                self.private_effect(upload_key, body)
+            else:
+                cleanup.abort_multipart_upload(
+                    Bucket=bucket, Key=upload_key, UploadId=upload
+                )
+        for object_key in objects:
+            cleanup.delete_object(Bucket=bucket, Key=object_key)
+            self.exact_absence(object_key)
+        if (
+            self.object_pages(cleanup, self.prefix)[0]
+            or self.multipart_pages(cleanup, self.prefix)[0]
+        ):
+            raise RuntimeError("maintenance final prefix absence failed")
+        stream = admin.get_object(Bucket=bucket, Key=foreign)["Body"]
+        try:
+            if stream.read() != b"foreign-preserved":
+                raise RuntimeError("foreign object bytes changed")
+        finally:
+            stream.close()
+        if not any(
+            row.get("UploadId") == foreign_upload
+            for row in admin.list_multipart_uploads(Bucket=bucket, Prefix=foreign).get(
+                "Uploads", []
+            )
+        ):
+            raise RuntimeError("foreign upload was altered")
         admin.abort_multipart_upload(
             Bucket=bucket, Key=foreign, UploadId=foreign_upload
         )
         admin.delete_object(Bucket=bucket, Key=foreign)
+        admin.delete_bucket(Bucket=foreign_bucket)
+        self.assert_container_mapping(self.inspect("container", self.container))
         self.receipt = {
-            "provider": "SeaweedFS",
-            "version": "4.47",
-            "digest": self.image,
+            "provider": "MinIO",
+            "version": SERVER_VERSION,
             "security_profile": SECURITY_PROFILE,
+            "artifact_kind": "official-binaries-local-scratch-image",
+            "binary_sha256": SERVER_SHA,
+            "client_version": CLIENT_VERSION,
+            "client_binary_sha256": CLIENT_SHA,
+            "source_commit": SERVER_COMMIT,
+            "image_id": self.image,
             "capabilities": "private IAM/put/get/head/delete/multipart/list/abort/presign-expiry",
+            "owned_resource_mapping": True,
         }
-        private_json(self.directory / "provider-receipt.json", self.receipt)
+        private_json(self.work / "provider-receipt.json", self.receipt)
 
     def close(self):
         failures = []
         for client in self.clients.values():
-            client.close()
+            try:
+                client.close()
+            except Exception:  # noqa: BLE001 -- still tear down all owned resources
+                failures.append("client")
         for kind, name in reversed(self.created):
             try:
                 state = self.inspect(kind, name)
                 if kind == "container":
-                    self.assert_container_mapping(
-                        state, self.directory / "s3-identities.json"
-                    )
+                    self.assert_container_mapping(state)
                     self.docker("container", "rm", "--force", name)
+                elif kind == "image":
+                    self.assert_image(state)
+                    if getattr(self, "image", state["Id"]) != state["Id"]:
+                        raise RuntimeError("image cleanup identity differs")
+                    self.docker("image", "rm", state["Id"])
                 else:
                     self.docker(kind, "rm", name)
-            except Exception:  # noqa: BLE001 -- continue guarded resource cleanup
+            except Exception:  # noqa: BLE001 -- finish other guarded teardown steps
                 failures.append(kind)
+        if self.work is not None:
+            try:
+                resolved = self.work.resolve()
+                if (
+                    resolved.parent != self.directory
+                    or resolved.name != "minio-" + self.owner
+                    or self.work.is_symlink()
+                    or json.loads((self.work / "owner.json").read_text())["owner"]
+                    != self.owner
+                ):
+                    raise RuntimeError("private fixture directory owner mismatch")
+                shutil.rmtree(resolved)
+            except Exception:  # noqa: BLE001 -- refuse foreign private file cleanup
+                failures.append("private-files")
         if failures:
             raise RuntimeError(
                 "owned asset resource cleanup failed: " + ", ".join(failures)
             )
+
+
+def provider_only():
+    import tempfile
+
+    require_linux_ci()
+    root = Path(__file__).resolve().parents[2]
+    receipt = root / ".superpowers/verification/private-assets-provider-evidence.json"
+    receipt.parent.mkdir(parents=True, exist_ok=True)
+    receipt.unlink(missing_ok=True)
+    with tempfile.TemporaryDirectory(prefix="wso-private-assets-") as directory:
+        os.chmod(directory, 0o700)
+        provider = AssetProvider(directory)
+        try:
+            provider.start()
+            evidence = dict(provider.receipt)
+        finally:
+            provider.close()
+        private_json(receipt, evidence)
+    print("actual MinIO provider preflight and owned teardown passed")
+
+
+if __name__ == "__main__":
+    import sys
+
+    if sys.argv[1:] != ["--provider-only"]:
+        raise SystemExit("requires --provider-only")
+    provider_only()

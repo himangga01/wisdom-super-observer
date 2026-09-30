@@ -42,20 +42,25 @@ def _verify_receipt(path: Path) -> None:
             observed.get("provider"), dict
         ):
             raise TypeError("baseline RED receipt shape is invalid")
-        digest = observed["provider"].get("digest")
-        if not isinstance(digest, str) or not re.fullmatch(
-            r"(?:docker.io/)?chrislusf/seaweedfs@sha256:[0-9a-f]{64}", digest
+        image_id = observed["provider"].get("image_id")
+        if not isinstance(image_id, str) or not re.fullmatch(
+            r"sha256:[0-9a-f]{64}", image_id
         ):
-            raise ValueError("baseline RED provider digest is invalid")
+            raise ValueError("baseline RED provider image identity is invalid")
         expected = {
             "schema_version": 1,
             "baseline_sha": BASELINE_SHA,
             "stage": "ASSET_REQUEST_OBSERVED",
             "provider": {
-                "provider": "SeaweedFS",
-                "version": "4.47",
-                "security_profile": "seaweedfs-private-iam-ownership-v1",
-                "digest": digest,
+                "provider": "MinIO",
+                "version": "RELEASE.2025-04-22T22-12-26Z",
+                "security_profile": "minio-inert-acl-dedicated-bucket-v1",
+                "artifact_kind": "official-binaries-local-scratch-image",
+                "binary_sha256": "53e2a2cb16c5366ea6fbbc479c19ddb4c6a0948273e752f740fb1fbf27bb817c",
+                "client_version": "RELEASE.2025-04-16T18-13-26Z",
+                "client_binary_sha256": "ac90da87a35641be5a0ac75d49de5161ddb47d629b5ba01261b0ae9e00aea15f",
+                "source_commit": "0d7408fc9969caf07de6a8c3a84f9fbb10a6739e",
+                "image_id": image_id,
                 "capabilities": "private IAM/put/get/head/delete/multipart/list/abort/presign-expiry",
                 "owned_resource_mapping": True,
             },
