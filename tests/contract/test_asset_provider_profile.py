@@ -13,6 +13,404 @@ from botocore.exceptions import ClientError
 from tests.support.asset_provider import AssetProvider, policy_config
 
 
+def acl_diagnostic_fixture(tmp_path):
+    provider = AssetProvider(tmp_path)
+    provider.endpoint = "http://unused.invalid"
+    admin, actor = Mock(), Mock()
+    provider.clients = {"bootstrap": admin}
+    private_acl = {
+        "Owner": {},
+        "Grants": [
+            {"Grantee": {"Type": "CanonicalUser"}, "Permission": "FULL_CONTROL"}
+        ],
+    }
+    admin.head_object.side_effect = lambda **kw: (
+        {"ContentLength": 10, "ResponseMetadata": {"HTTPStatusCode": 200}}
+        if admin.delete_object.call_count == 0
+        else (_ for _ in ()).throw(error(404, "NoSuchKey"))
+    )
+    admin.get_object.side_effect = lambda **kw: {
+        "Body": BytesIO(b"ciphertext"),
+        "ResponseMetadata": {"HTTPStatusCode": 200},
+    }
+    admin.get_object_acl.return_value = private_acl
+    admin.get_bucket_acl.return_value = private_acl
+    admin.get_bucket_policy.side_effect = error(404, "NoSuchBucketPolicy")
+    admin.list_multipart_uploads.return_value = {"IsTruncated": False}
+    actor.put_object.return_value = {"ResponseMetadata": {"HTTPStatusCode": 200}}
+    actor.create_multipart_upload.return_value = {
+        "ResponseMetadata": {"HTTPStatusCode": 200},
+        "UploadId": "private-upload",
+    }
+    actor.upload_part.return_value = {"ETag": "private-etag"}
+    provider.raw_http = Mock(return_value=(403, b""))
+    return provider, admin, actor
+
+
+def acl_diagnostic_run(
+    provider, actor, operation="put_object", name="gateway", variant=1
+):
+    with pytest.raises(RuntimeError) as caught:
+        provider.verify_public_attempt(
+            actor,
+            name,
+            variant,
+            operation,
+            {
+                "Key": "private-original"
+                if operation == "put_object_acl"
+                else "private-new"
+            },
+            "private-original",
+            b"ciphertext",
+        )
+    assert provider.receipt is None
+    assert all(not item["effects_verified"] for item in provider.outcomes)
+    return str(caught.value)
+
+
+@pytest.mark.parametrize("target", ["new", "original"])
+def test_acl_failure_attributes_signed_head_target(tmp_path, target):
+    provider, admin, actor = acl_diagnostic_fixture(tmp_path)
+
+    def head(**kw):
+        if kw["Key"] == "private-" + target:
+            raise error(503, "SlowDown")
+        return {"ContentLength": 10}
+
+    admin.head_object.side_effect = head
+    message = acl_diagnostic_run(provider, actor)
+    assert f'"target": "{target}"' in message
+    assert '"component": "signed_head"' in message
+    assert '"observed_status": 503' in message
+    assert '"observed_code": "SlowDown"' in message
+    assert "private-" not in message
+
+
+@pytest.mark.parametrize("target", ["new", "original"])
+@pytest.mark.parametrize(
+    "component",
+    [
+        "signed_get_open",
+        "signed_get_read",
+        "signed_get_close",
+        "object_acl",
+        "anonymous_get",
+        "anonymous_head",
+    ],
+)
+def test_acl_failure_attributes_each_private_effect(tmp_path, target, component):
+    provider, admin, actor = acl_diagnostic_fixture(tmp_path)
+    sequence = 0 if target == "new" else 1
+    sentinel = "secret-url-key-cookie-credential"
+    streams = [Mock(), Mock()]
+    for stream in streams:
+        stream.read.return_value = b"ciphertext"
+    if component in {"signed_get_read", "signed_get_close"}:
+        getattr(
+            streams[sequence], component.removeprefix("signed_get_")
+        ).side_effect = OSError(sentinel)
+    responses = [{"Body": stream} for stream in streams]
+    if component == "signed_get_open":
+        responses[sequence] = error(503, "SlowDown")
+    admin.get_object.side_effect = responses
+    if component == "object_acl":
+        acl_responses = [admin.get_object_acl.return_value] * 2
+        acl_responses[sequence] = {"Grants": []}
+        admin.get_object_acl.side_effect = acl_responses
+    if component.startswith("anonymous"):
+        responses = [(403, b"")] * 4
+        responses[sequence * 2 + (component == "anonymous_head")] = (
+            200,
+            b"private-body",
+        )
+        provider.raw_http.side_effect = responses
+    message = acl_diagnostic_run(provider, actor)
+    assert f'"target": "{target}"' in message
+    assert f'"component": "{component}"' in message
+    assert sentinel not in message and "private-body" not in message
+    if component != "signed_get_open":
+        streams[sequence].close.assert_called_once_with()
+
+
+@pytest.mark.parametrize(
+    "component",
+    [
+        "bucket_acl",
+        "policy_absence",
+        "delete_new",
+        "absence_head",
+        "absence_multipart_page",
+    ],
+)
+def test_acl_failure_attributes_bucket_and_cleanup(tmp_path, component):
+    provider, admin, actor = acl_diagnostic_fixture(tmp_path)
+    target = (
+        "bucket" if component in {"bucket_acl", "policy_absence"} else "new_cleanup"
+    )
+    if component == "bucket_acl":
+        admin.get_bucket_acl.return_value = {"Grants": []}
+    elif component == "policy_absence":
+        admin.get_bucket_policy.side_effect = None
+        admin.get_bucket_policy.return_value = {"Policy": "private-policy"}
+    elif component == "delete_new":
+        admin.delete_object.side_effect = error(403, "AccessDenied")
+    elif component == "absence_head":
+        admin.head_object.side_effect = None
+        admin.head_object.return_value = {"ContentLength": 10}
+    else:
+        admin.list_multipart_uploads.side_effect = error(503, "SlowDown")
+    message = acl_diagnostic_run(provider, actor)
+    assert f'"target": "{target}"' in message
+    assert f'"component": "{component}"' in message
+    assert "private-policy" not in message
+
+
+@pytest.mark.parametrize(
+    "component", ["multipart_identity", "upload_part", "complete_multipart"]
+)
+def test_acl_failure_attributes_materialization(tmp_path, component):
+    provider, _, actor = acl_diagnostic_fixture(tmp_path)
+    if component == "multipart_identity":
+        actor.create_multipart_upload.return_value.pop("UploadId")
+    else:
+        getattr(
+            actor,
+            component.removesuffix("_multipart") + "_multipart_upload"
+            if component == "complete_multipart"
+            else component,
+        ).side_effect = error(503, "SlowDown")
+    message = acl_diagnostic_run(provider, actor, "create_multipart_upload")
+    assert '"target": "new"' in message
+    assert f'"component": "{component}"' in message
+
+
+@pytest.mark.parametrize("read_failure", ["exception", "bytes", "comparison"])
+def test_acl_first_failure_survives_required_close(tmp_path, read_failure):
+    provider, admin, actor = acl_diagnostic_fixture(tmp_path)
+    stream = Mock()
+    stream.read.side_effect = (
+        OSError("secret-read") if read_failure == "exception" else None
+    )
+    stream.read.return_value = b"wrong-private-bytes"
+    if read_failure == "comparison":
+
+        class UnsafeComparison:
+            def __ne__(self, other):
+                raise RuntimeError("secret-comparison")
+
+        stream.read.return_value = UnsafeComparison()
+    stream.close.side_effect = OSError("secret-close")
+    admin.get_object.side_effect = None
+    admin.get_object.return_value = {"Body": stream}
+    message = acl_diagnostic_run(provider, actor)
+    assert '"component": "signed_get_read"' in message
+    assert '"close_failed": true' in message
+    condition = {
+        "exception": "TRANSPORT_ERROR",
+        "bytes": "BYTES_MISMATCH",
+        "comparison": "UNKNOWN",
+    }[read_failure]
+    assert f'"condition": "{condition}"' in message
+    assert "secret-" not in message and "wrong-private" not in message
+    stream.close.assert_called_once_with()
+    admin.get_object_acl.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "status", [True, False, 503.0, 99, 600, "private-status", None]
+)
+def test_acl_diagnostic_status_is_exact_bounded_integer(tmp_path, status):
+    provider, admin, actor = acl_diagnostic_fixture(tmp_path)
+    admin.head_object.side_effect = error(status, "PrivateCredentialCode")
+    message = acl_diagnostic_run(provider, actor)
+    assert '"observed_status": null' in message
+    assert '"observed_code": "UNKNOWN"' in message
+    assert "private-status" not in message and "PrivateCredentialCode" not in message
+
+
+@pytest.mark.parametrize("mutation_error", ["sdk", "transport"])
+@pytest.mark.parametrize("operation", ["put_object", "put_object_acl"])
+def test_acl_mutation_response_is_separate_and_sanitized(
+    tmp_path, mutation_error, operation
+):
+    provider, admin, actor = acl_diagnostic_fixture(tmp_path)
+    getattr(actor, operation).side_effect = (
+        error(418, "PrivateCredentialCode")
+        if mutation_error == "sdk"
+        else OSError("secret-url-body")
+    )
+    message = acl_diagnostic_run(provider, actor, operation)
+    assert '"component": "mutation_response"' in message
+    target = "original" if operation == "put_object_acl" else "new"
+    assert f'"target": "{target}"' in message
+    assert "code=UNKNOWN" in message
+    assert "PrivateCredentialCode" not in message and "secret-url-body" not in message
+    admin.head_object.assert_not_called()
+    assert provider.outcomes == [
+        {
+            "actor": "gateway",
+            "operation": operation,
+            "variant": 1,
+            "status": None,
+            "code": "UNKNOWN",
+            "effects_verified": False,
+        }
+    ]
+
+
+@pytest.mark.parametrize(
+    "part",
+    [{}, {"ETag": None}, {"ETag": ""}, {"ETag": False}, {"ETag": 128}, {"ETag": []}],
+)
+def test_acl_upload_part_identity_failure_precedes_completion(tmp_path, part):
+    provider, _, actor = acl_diagnostic_fixture(tmp_path)
+    actor.upload_part.return_value = {
+        **part,
+        "ResponseMetadata": {"HTTPStatusCode": 200},
+    }
+    message = acl_diagnostic_run(provider, actor, "create_multipart_upload")
+    assert '"target": "new"' in message
+    assert '"component": "upload_part"' in message
+    assert '"observed_status": 200' in message
+    assert '"observed_code": "SUCCESS"' in message
+    assert '"condition": "UNKNOWN"' in message
+    actor.upload_part.assert_called_once()
+    actor.complete_multipart_upload.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("name", "secret-actor"),
+        ("operation", "secret-operation"),
+        ("variant", True),
+        ("variant", 7),
+        ("name", []),
+        ("operation", {}),
+    ],
+)
+def test_acl_attempt_rejects_unsafe_identity_before_io(tmp_path, field, value):
+    provider, admin, actor = acl_diagnostic_fixture(tmp_path)
+    arguments = {"name": "gateway", "operation": "put_object", "variant": 1}
+    arguments[field] = value
+    message = acl_diagnostic_run(provider, actor, **arguments)
+    assert message == "invalid fixed ACL attempt identity"
+    actor.put_object.assert_not_called()
+    admin.head_object.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "component,condition",
+    [
+        ("signed_head", "LENGTH_MISMATCH"),
+        ("absence_multipart_page", "PAGINATION_INVALID"),
+        ("absence_multipart_page", "UPLOAD_SURVIVED"),
+    ],
+)
+def test_acl_semantic_failure_reports_fixed_condition(tmp_path, component, condition):
+    provider, admin, actor = acl_diagnostic_fixture(tmp_path)
+    if condition == "LENGTH_MISMATCH":
+        admin.head_object.side_effect = None
+        admin.head_object.return_value = {"ContentLength": 11}
+    elif condition == "PAGINATION_INVALID":
+        admin.list_multipart_uploads.return_value = {
+            "IsTruncated": True,
+            "NextKeyMarker": "private-key",
+            "NextUploadIdMarker": "",
+        }
+    else:
+        admin.list_multipart_uploads.return_value = {
+            "IsTruncated": False,
+            "Uploads": [{"Key": "private-new", "UploadId": "private-upload"}],
+        }
+    message = acl_diagnostic_run(provider, actor)
+    assert f'"component": "{component}"' in message
+    assert f'"condition": "{condition}"' in message
+    assert "private-key" not in message and "private-upload" not in message
+
+
+@pytest.mark.parametrize("operation", ["put_object", "create_multipart_upload"])
+def test_acl_refused_new_mutation_retains_absence_target(tmp_path, operation):
+    provider, admin, actor = acl_diagnostic_fixture(tmp_path)
+    getattr(actor, operation).side_effect = error(403, "AccessDenied")
+    admin.head_object.side_effect = error(503, "SlowDown")
+    message = acl_diagnostic_run(provider, actor, operation)
+    assert "status=403 code=AccessDenied" in message
+    assert '"target": "new"' in message
+    assert '"component": "absence_head"' in message
+    assert '"observed_status": 503' in message
+
+
+def test_acl_success_keeps_exact_operation_order_and_outcome(tmp_path):
+    provider, admin, actor = acl_diagnostic_fixture(tmp_path)
+    trace = Mock()
+    trace.attach_mock(actor, "actor")
+    trace.attach_mock(admin, "admin")
+    trace.attach_mock(provider.raw_http, "http")
+    provider.verify_public_attempt(
+        actor,
+        "gateway",
+        1,
+        "put_object",
+        {"Key": "private-new"},
+        "private-original",
+        b"ciphertext",
+    )
+    assert [call[0] for call in trace.mock_calls] == [
+        "actor.put_object",
+        "admin.head_object",
+        "admin.get_object",
+        "admin.get_object_acl",
+        "http",
+        "http",
+        "admin.head_object",
+        "admin.get_object",
+        "admin.get_object_acl",
+        "http",
+        "http",
+        "admin.get_bucket_acl",
+        "admin.get_bucket_policy",
+        "admin.delete_object",
+        "admin.head_object",
+        "admin.list_multipart_uploads",
+    ]
+    assert provider.outcomes == [
+        {
+            "actor": "gateway",
+            "operation": "put_object",
+            "variant": 1,
+            "status": 200,
+            "code": "accepted-inert-candidate",
+            "effects_verified": True,
+        }
+    ]
+
+
+def test_acl_diagnostic_output_normalizes_unapproved_fields():
+    from tests.support.asset_provider import acl_fields
+
+    fields = {
+        "target": "new",
+        "component": "signed_head",
+        "observed_status": True,
+        "observed_code": "private-code",
+        "condition": "private-condition",
+        "close_failed": "private-bool",
+        "private-field": "private-value",
+    }
+    assert acl_fields(fields) == {
+        "target": "new",
+        "component": "signed_head",
+        "observed_status": None,
+        "observed_code": "UNKNOWN",
+        "condition": "UNKNOWN",
+    }
+    for field in ("target", "component"):
+        with pytest.raises(RuntimeError, match="invalid fixed ACL diagnostic metadata"):
+            acl_fields({**fields, field: "private-label"})
+
+
 def relay_identity_fixture(tmp_path):
     provider = AssetProvider(tmp_path)
     provider.container_id = "a" * 64

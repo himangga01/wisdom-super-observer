@@ -49,6 +49,157 @@ CONTROL_RESULTS = {
     "get_public_access_block": (501, "NotImplemented"),
 }
 
+ACL_COMPONENTS = frozenset(
+    [
+        "mutation_response",
+        "multipart_identity",
+        "upload_part",
+        "complete_multipart",
+        "signed_head",
+        "signed_get_open",
+        "signed_get_read",
+        "signed_get_close",
+        "object_acl",
+        "anonymous_get",
+        "anonymous_head",
+        "bucket_acl",
+        "policy_absence",
+        "delete_new",
+        "absence_head",
+        "absence_multipart_page",
+    ]
+)
+ACL_CODES = frozenset(
+    [
+        "AccessDenied",
+        "NotImplemented",
+        "MalformedXML",
+        "NoSuchKey",
+        "NoSuchBucketPolicy",
+        "NoSuchUpload",
+        "NoSuchBucket",
+        "InvalidRequest",
+        "InvalidArgument",
+        "SlowDown",
+        "InternalError",
+        "RequestTimeout",
+        "SignatureDoesNotMatch",
+        "InvalidAccessKeyId",
+        "403",
+        "404",
+        "UNKNOWN",
+        "TRANSPORT_ERROR",
+        "SUCCESS",
+    ]
+)
+ACL_CONDITIONS = frozenset(
+    [
+        "STATUS_MISMATCH",
+        "LENGTH_MISMATCH",
+        "BYTES_MISMATCH",
+        "ACL_SHAPE",
+        "POLICY_PRESENT",
+        "OBJECT_SURVIVED",
+        "UPLOAD_SURVIVED",
+        "PAGINATION_INVALID",
+        "TRANSPORT_ERROR",
+        "UNKNOWN",
+    ]
+)
+
+
+def acl_status(value):
+    return value if type(value) is int and 100 <= value <= 599 else None
+
+
+def acl_fields(fields):
+    """Final output boundary rejects unsafe labels and drops unapproved fields."""
+    target, component = fields.get("target"), fields.get("component")
+    if (
+        type(target) is not str
+        or target not in {"new", "original", "bucket", "new_cleanup"}
+        or type(component) is not str
+        or component not in ACL_COMPONENTS
+    ):
+        raise RuntimeError("invalid fixed ACL diagnostic metadata") from None
+    code, condition = fields.get("observed_code"), fields.get("condition")
+    normalized = {
+        "target": target,
+        "component": component,
+        "observed_status": acl_status(fields.get("observed_status")),
+        "observed_code": code if type(code) is str and code in ACL_CODES else "UNKNOWN",
+        "condition": condition
+        if type(condition) is str and condition in ACL_CONDITIONS
+        else "UNKNOWN",
+    }
+    if fields.get("close_failed") is True:
+        normalized["close_failed"] = True
+    return normalized
+
+
+class AclEffectFailure(RuntimeError):
+    def __init__(self, message, fields):
+        super().__init__(message)
+        self.fields = acl_fields(fields)
+
+
+class AclDiagnostic:
+    """Explicit per-attempt state; exceptions retain a sanitized immutable snapshot."""
+
+    def __init__(self):
+        self.target = "new"
+        self.fields = {}
+
+    def begin(self, component):
+        if (
+            self.target not in {"new", "original", "bucket", "new_cleanup"}
+            or component not in ACL_COMPONENTS
+        ):
+            raise RuntimeError("invalid fixed ACL diagnostic context") from None
+        self.fields = {
+            "target": self.target,
+            "component": component,
+            "observed_status": None,
+            "observed_code": "UNKNOWN",
+            "condition": "UNKNOWN",
+        }
+
+    def observe(self, status, code):
+        self.fields["observed_status"] = acl_status(status)
+        self.fields["observed_code"] = (
+            code if type(code) is str and code in ACL_CODES else "UNKNOWN"
+        )
+
+    def fail(self, message, condition):
+        self.fields["condition"] = (
+            condition
+            if type(condition) is str and condition in ACL_CONDITIONS
+            else "UNKNOWN"
+        )
+        raise AclEffectFailure(message, self.fields) from None
+
+    def call(self, component, operation):
+        from botocore.exceptions import ClientError
+
+        self.begin(component)
+        try:
+            result = operation()
+        except ClientError as error:
+            self.observe(*AssetProvider.error_identity(error))
+            self.fail("private ACL SDK effect failed", "STATUS_MISMATCH")
+        except Exception:  # noqa: BLE001 -- sanitized transport only
+            self.observe(None, "TRANSPORT_ERROR")
+            self.fail("private ACL effect transport failed", "TRANSPORT_ERROR")
+        if isinstance(result, dict):
+            metadata = result.get("ResponseMetadata")
+            self.observe(
+                metadata.get("HTTPStatusCode") if isinstance(metadata, dict) else None,
+                "SUCCESS",
+            )
+        else:
+            self.observe(None, "SUCCESS")
+        return result
+
 
 def no_host_bindings(value):
     return value is None or (
@@ -676,50 +827,117 @@ class AssetProvider:
         ):
             raise RuntimeError("synthetic private ACL shape differs")
 
-    def inspect_no_bucket_policy(self):
+    def inspect_no_bucket_policy(self, diagnostic=None):
         from botocore.exceptions import ClientError
 
+        diagnostic = diagnostic or AclDiagnostic()
+        diagnostic.begin("policy_absence")
         try:
-            self.clients["bootstrap"].get_bucket_policy(Bucket=self.bucket)
+            response = self.clients["bootstrap"].get_bucket_policy(Bucket=self.bucket)
         except ClientError as error:
+            diagnostic.observe(*self.error_identity(error))
             if self.error_identity(error) == (404, "NoSuchBucketPolicy"):
                 return
-        raise RuntimeError("absence of public bucket policy could not be established")
+            diagnostic.fail(
+                "absence of public bucket policy could not be established",
+                "STATUS_MISMATCH",
+            )
+        except Exception:  # noqa: BLE001 -- sanitized transport only
+            diagnostic.observe(None, "TRANSPORT_ERROR")
+            diagnostic.fail("private policy probe transport failed", "TRANSPORT_ERROR")
+        diagnostic.observe(
+            response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+            if isinstance(response, dict)
+            else None,
+            "SUCCESS",
+        )
+        diagnostic.fail(
+            "absence of public bucket policy could not be established", "POLICY_PRESENT"
+        )
 
-    def private_effect(self, key, body):
+    def private_effect(self, key, body, diagnostic=None):
+        diagnostic = diagnostic or AclDiagnostic()
         admin = self.clients["bootstrap"]
-        if admin.head_object(Bucket=self.bucket, Key=key)["ContentLength"] != len(body):
-            raise RuntimeError("private signed bytes length changed")
-        stream = admin.get_object(Bucket=self.bucket, Key=key)["Body"]
+        if diagnostic.call(
+            "signed_head", lambda: admin.head_object(Bucket=self.bucket, Key=key)
+        )["ContentLength"] != len(body):
+            diagnostic.fail("private signed bytes length changed", "LENGTH_MISMATCH")
+        stream = diagnostic.call(
+            "signed_get_open", lambda: admin.get_object(Bucket=self.bucket, Key=key)
+        )["Body"]
+        first_failure = None
         try:
-            if stream.read() != body:
-                raise RuntimeError("private signed bytes changed")
+            if diagnostic.call("signed_get_read", lambda: stream.read()) != body:
+                diagnostic.fail("private signed bytes changed", "BYTES_MISMATCH")
+        except Exception as error:  # noqa: BLE001 -- snapshot first failure before close
+            first_failure = (
+                error
+                if isinstance(error, AclEffectFailure)
+                else AclEffectFailure(
+                    "private signed bytes check failed", diagnostic.fields
+                )
+            )
+            raise first_failure from None
         finally:
-            stream.close()
-        self.require_private_acl(admin.get_object_acl(Bucket=self.bucket, Key=key))
+            try:
+                diagnostic.call("signed_get_close", lambda: stream.close())
+            except AclEffectFailure:
+                if first_failure is None:
+                    raise
+                if isinstance(first_failure, AclEffectFailure):
+                    first_failure.fields["close_failed"] = True
+        response = diagnostic.call(
+            "object_acl", lambda: admin.get_object_acl(Bucket=self.bucket, Key=key)
+        )
+        try:
+            self.require_private_acl(response)
+        except Exception:  # noqa: BLE001 -- fixed ACL shape, never raw grant data
+            diagnostic.fail("synthetic private ACL shape differs", "ACL_SHAPE")
         for method in ("GET", "HEAD"):
-            if self.raw_http(method, f"{self.endpoint}/{self.bucket}/{key}")[0] != 403:
-                raise RuntimeError(
-                    "anonymous " + method + " private access was allowed"
+            status = diagnostic.call(
+                "anonymous_" + method.lower(),
+                lambda method=method: self.raw_http(
+                    method, f"{self.endpoint}/{self.bucket}/{key}"
+                ),
+            )[0]
+            diagnostic.observe(status, "SUCCESS")
+            if status != 403:
+                diagnostic.fail(
+                    "anonymous " + method + " private access was allowed",
+                    "STATUS_MISMATCH",
                 )
 
-    def materialize_public_upload(self, actor, key, upload, body):
-        part = actor.upload_part(
-            Bucket=self.bucket, Key=key, UploadId=upload, PartNumber=1, Body=body
+    def materialize_public_upload(self, actor, key, upload, body, diagnostic=None):
+        diagnostic = diagnostic or AclDiagnostic()
+        part = diagnostic.call(
+            "upload_part",
+            lambda: actor.upload_part(
+                Bucket=self.bucket, Key=key, UploadId=upload, PartNumber=1, Body=body
+            ),
         )
-        actor.complete_multipart_upload(
-            Bucket=self.bucket,
-            Key=key,
-            UploadId=upload,
-            MultipartUpload={"Parts": [{"PartNumber": 1, "ETag": part["ETag"]}]},
+        etag = part.get("ETag") if isinstance(part, dict) else None
+        if type(etag) is not str or not etag:
+            diagnostic.fail("upload part response lacks usable identity", "UNKNOWN")
+        diagnostic.call(
+            "complete_multipart",
+            lambda: actor.complete_multipart_upload(
+                Bucket=self.bucket,
+                Key=key,
+                UploadId=upload,
+                MultipartUpload={"Parts": [{"PartNumber": 1, "ETag": etag}]},
+            ),
         )
-        self.private_effect(key, body)
+        self.private_effect(key, body, diagnostic)
 
-    def multipart_pages(self, actor, prefix):
+    def multipart_pages(self, actor, prefix, diagnostic=None):
+        diagnostic = diagnostic or AclDiagnostic()
         rows, seen, markers = [], set(), {}
         for _ in range(1000):
-            page = actor.list_multipart_uploads(
-                Bucket=self.bucket, Prefix=prefix, MaxUploads=1, **markers
+            page = diagnostic.call(
+                "absence_multipart_page",
+                lambda markers=markers: actor.list_multipart_uploads(
+                    Bucket=self.bucket, Prefix=prefix, MaxUploads=1, **markers
+                ),
             )
             for row in page.get("Uploads", []):
                 if (
@@ -728,8 +946,9 @@ class AssetProvider:
                     or not isinstance(row.get("UploadId"), str)
                     or not row["UploadId"]
                 ):
-                    raise RuntimeError(
-                        "multipart listing returned foreign or malformed row"
+                    diagnostic.fail(
+                        "multipart listing returned foreign or malformed row",
+                        "PAGINATION_INVALID",
                     )
                 rows.append(row)
             if page.get("IsTruncated") is False:
@@ -740,10 +959,12 @@ class AssetProvider:
                 or not all(isinstance(item, str) and item for item in next_marker)
                 or next_marker in seen
             ):
-                raise RuntimeError("multipart pagination checkpoint invalid")
+                diagnostic.fail(
+                    "multipart pagination checkpoint invalid", "PAGINATION_INVALID"
+                )
             seen.add(next_marker)
             markers = {"KeyMarker": next_marker[0], "UploadIdMarker": next_marker[1]}
-        raise RuntimeError("multipart pagination bound exceeded")
+        diagnostic.fail("multipart pagination bound exceeded", "PAGINATION_INVALID")
 
     def object_pages(self, actor, prefix):
         rows, seen, arguments = [], set(), {}
@@ -771,72 +992,143 @@ class AssetProvider:
             arguments = {"ContinuationToken": token}
         raise RuntimeError("object pagination bound exceeded")
 
-    def exact_absence(self, key):
+    def exact_absence(self, key, diagnostic=None):
         from botocore.exceptions import ClientError
 
+        diagnostic = diagnostic or AclDiagnostic()
+        diagnostic.begin("absence_head")
         admin = self.clients["bootstrap"]
         try:
-            admin.head_object(Bucket=self.bucket, Key=key)
+            response = admin.head_object(Bucket=self.bucket, Key=key)
         except ClientError as error:
+            diagnostic.observe(*self.error_identity(error))
             if self.error_identity(error) not in {(404, "NoSuchKey"), (404, "404")}:
-                raise RuntimeError("exact absence HEAD failed") from None
+                diagnostic.fail("exact absence HEAD failed", "STATUS_MISMATCH")
+        except Exception:  # noqa: BLE001 -- sanitized transport only
+            diagnostic.observe(None, "TRANSPORT_ERROR")
+            diagnostic.fail("exact absence HEAD transport failed", "TRANSPORT_ERROR")
         else:
-            raise RuntimeError("unexpected surviving object")
-        if self.multipart_pages(admin, key)[0]:
-            raise RuntimeError("unexpected surviving upload")
+            diagnostic.observe(
+                response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+                if isinstance(response, dict)
+                else None,
+                "SUCCESS",
+            )
+            diagnostic.fail("unexpected surviving object", "OBJECT_SURVIVED")
+        if self.multipart_pages(admin, key, diagnostic)[0]:
+            diagnostic.fail("unexpected surviving upload", "UPLOAD_SURVIVED")
 
-    def public_attempt(self, actor, operation, arguments):
+    def public_attempt(self, actor, operation, arguments, diagnostic=None):
         from botocore.exceptions import ClientError
 
+        diagnostic = diagnostic or AclDiagnostic()
+        diagnostic.begin("mutation_response")
         try:
             result = getattr(actor, operation)(**arguments)
         except ClientError as error:
             status, code = self.error_identity(error)
+            diagnostic.observe(status, code)
             if (status, code) not in {(403, "AccessDenied"), (501, "NotImplemented")}:
-                raise RuntimeError(
-                    f"public mutation unexpected status={status} code={code}"
-                ) from None
+                diagnostic.fail(
+                    "public mutation unexpected response", "STATUS_MISMATCH"
+                )
             return False, {"status": status, "code": code}, None
+        except Exception:  # noqa: BLE001 -- sanitized mutation transport only
+            diagnostic.observe(None, "TRANSPORT_ERROR")
+            diagnostic.fail("public mutation transport failed", "TRANSPORT_ERROR")
         status = result.get("ResponseMetadata", {}).get("HTTPStatusCode")
+        diagnostic.observe(status, "SUCCESS")
         if status not in {200, 204}:
-            raise RuntimeError("public mutation unexpected success status")
+            diagnostic.fail(
+                "public mutation unexpected success status", "STATUS_MISMATCH"
+            )
         return True, {"status": status, "code": "accepted-inert-candidate"}, result
 
     def verify_public_attempt(
         self, actor, name, index, operation, arguments, original, body
     ):
-        accepted, outcome, result = self.public_attempt(actor, operation, arguments)
+        if (
+            type(name) is not str
+            or name not in {"bootstrap", "gateway", "cleanup"}
+            or type(operation) is not str
+            or operation
+            not in {"put_object_acl", "put_object", "create_multipart_upload"}
+            or type(index) is not int
+            or not 0 <= index <= 6
+        ):
+            raise RuntimeError("invalid fixed ACL attempt identity") from None
+        diagnostic = AclDiagnostic()
+        diagnostic.target = "original" if operation == "put_object_acl" else "new"
         record = {
             "actor": name,
             "operation": operation,
             "variant": index,
-            **outcome,
+            "status": None,
+            "code": "UNKNOWN",
             "effects_verified": False,
         }
         self.outcomes.append(record)
+        outcome = {"status": None, "code": "UNKNOWN"}
+        try:
+            accepted, outcome, result = self.public_attempt(
+                actor, operation, arguments, diagnostic
+            )
+        except Exception as error:  # noqa: BLE001 -- bounded mutation attribution
+            fields = (
+                error.fields
+                if isinstance(error, AclEffectFailure)
+                else diagnostic.fields
+            )
+            raise RuntimeError(
+                f"inert ACL effect failed actor={name} operation={operation} variant={index} status=None code=UNKNOWN diagnostic="
+                + json.dumps(acl_fields(fields), sort_keys=True)
+            ) from None
+        record.update(status=acl_status(outcome["status"]), code=outcome["code"])
         new_key = arguments["Key"]
         try:
             if accepted and operation == "create_multipart_upload":
+                diagnostic.begin("multipart_identity")
+                diagnostic.observe(outcome["status"], "SUCCESS")
                 upload = result.get("UploadId")
                 if not isinstance(upload, str) or not upload:
-                    raise RuntimeError(
-                        "accepted public multipart lacks upload identity"
+                    diagnostic.fail(
+                        "accepted public multipart lacks upload identity", "UNKNOWN"
                     )
-                self.materialize_public_upload(actor, new_key, upload, body)
+                self.materialize_public_upload(actor, new_key, upload, body, diagnostic)
             elif accepted and operation == "put_object":
-                self.private_effect(new_key, body)
+                diagnostic.begin("signed_head")
+                self.private_effect(new_key, body, diagnostic)
             elif operation != "put_object_acl":
-                self.exact_absence(new_key)
-            self.private_effect(original, body)
+                self.exact_absence(new_key, diagnostic)
+            diagnostic.target = "original"
+            diagnostic.begin("signed_head")
+            self.private_effect(original, body, diagnostic)
             admin = self.clients["bootstrap"]
-            self.require_private_acl(admin.get_bucket_acl(Bucket=self.bucket))
-            self.inspect_no_bucket_policy()
+            diagnostic.target = "bucket"
+            response = diagnostic.call(
+                "bucket_acl", lambda: admin.get_bucket_acl(Bucket=self.bucket)
+            )
+            try:
+                self.require_private_acl(response)
+            except Exception:  # noqa: BLE001 -- fixed ACL shape, never raw grant data
+                diagnostic.fail("synthetic private ACL shape differs", "ACL_SHAPE")
+            self.inspect_no_bucket_policy(diagnostic)
             if accepted and operation != "put_object_acl":
-                admin.delete_object(Bucket=self.bucket, Key=new_key)
-                self.exact_absence(new_key)
-        except Exception:  # noqa: BLE001 -- sanitized failure, never passing fallback
+                diagnostic.target = "new_cleanup"
+                diagnostic.call(
+                    "delete_new",
+                    lambda: admin.delete_object(Bucket=self.bucket, Key=new_key),
+                )
+                self.exact_absence(new_key, diagnostic)
+        except Exception as error:  # noqa: BLE001 -- bounded effect attribution
+            fields = (
+                error.fields
+                if isinstance(error, AclEffectFailure)
+                else diagnostic.fields
+            )
             raise RuntimeError(
-                f"inert ACL effect failed actor={name} operation={operation} variant={index} status={outcome['status']} code={outcome['code']}"
+                f"inert ACL effect failed actor={name} operation={operation} variant={index} status={acl_status(outcome['status'])} code={outcome['code']} diagnostic="
+                + json.dumps(acl_fields(fields), sort_keys=True)
             ) from None
         record["effects_verified"] = True
 
