@@ -1,0 +1,35 @@
+{
+  "additionalProperties": false,
+  "description": "Prerequisite references; the intake handler belongs to its domain task.",
+  "properties": {
+    "connection_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Connection Id"
+    },
+    "import_id": {
+      "format": "uuid",
+      "title": "Import Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "import_id"
+  ],
+  "title": "ImportJobPayload",
+  "type": "object"
+}

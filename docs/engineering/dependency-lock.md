@@ -10,6 +10,7 @@ The repository's `uv.lock` and `pnpm-lock.yaml` are the authoritative resolved P
 | pnpm | 11.25.0 | `pnpm --version` | Available |
 | FastAPI / Pydantic / Uvicorn | 0.141.1 / 2.13.5 / 0.54.0 | `python -m uv tree --depth 1` and `uv.lock` | Integrated offline checks passed; real dependency readiness pending |
 | SQLAlchemy / Psycopg / Alembic | 2.1.1 / 3.3.6 / 1.20.0 | `uv.lock`; restricted-role PostgreSQL integration | Online migration roundtrip, tenant isolation and auth/store tests passed |
+| Celery / Kombu / Redis client | 5.6.3 / 5.6.2 / 6.4.0 | Exact `celery[redis]==5.6.3` manifest and `uv.lock` | PostgreSQL job domain tests passed; actual Linux process/transport recovery remains pending |
 | PyJWT / cryptography | 2.15.1 / 50.0.1 | `uv.lock`; signed-token rejection, AES-256-GCM/AAD tamper tests and actual PostgreSQL session/connection tests | Independent RS256 validation and protected worker-only credential access verified; production KMS integration remains pending |
 | openid-client | 6.8.8 | `pnpm-lock.yaml`; [maintainer OIDC example](https://github.com/panva/openid-client/blob/main/examples/oidc.ts) | Authorization code/PKCE and HTTPS signed-issuer browser tests passed |
 | httpx2 / httpcore2 (development) | 2.13.1 / 2.13.1 | `uv.lock`; installed Starlette 1.7.0 TestClient transport | Explicit current TestClient dependency; legacy httpx remains for direct test clients |

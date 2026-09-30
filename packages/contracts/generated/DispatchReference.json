@@ -1,0 +1,47 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "job_id": {
+      "format": "uuid",
+      "title": "Job Id",
+      "type": "string"
+    },
+    "kind": {
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Kind",
+      "type": "string"
+    },
+    "lease_generation": {
+      "maximum": 9223372036854775807,
+      "minimum": 1,
+      "title": "Lease Generation",
+      "type": "integer"
+    },
+    "outbox_id": {
+      "format": "uuid",
+      "title": "Outbox Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "tenant_id": {
+      "format": "uuid",
+      "title": "Tenant Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "job_id",
+    "outbox_id",
+    "tenant_id",
+    "kind",
+    "lease_generation"
+  ],
+  "title": "DispatchReference",
+  "type": "object"
+}

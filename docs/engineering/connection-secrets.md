@@ -50,7 +50,7 @@ The database prevents untrusted roles from fetching saved ciphertext. The cipher
 
 ## Lifecycle integration points
 
-`wso_private.connection_revocations` records tenant, connection, prior generation, reason and timestamp. The current public generation and these durable records support later T05/W05 browser/session/job cancellation consumers. T04 does not create remote sessions or a broker and does not claim that future browser or job cancellation consumers already run.
+`wso_private.connection_revocations` records tenant, connection, prior generation, reason and timestamp. T05 extends these records with local job revocation and fenced job-bound capabilities; see [durable jobs](durable-jobs.md). W05 remote browser/session consumers remain pending. T04 itself does not create remote sessions or a broker.
 
 The original plan's `SecretStore.put` interface was refined to an encrypt-only preparation step and atomic lifecycle mutation so credential replacement, generation advance, audit and revocation cannot commit separately. `SecretStore.prepare` never reads saved ciphertext. Saved credentials are only retrieved through a worker capability; a connection UUID and generation alone cannot decrypt them.
 

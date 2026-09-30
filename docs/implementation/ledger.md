@@ -13,14 +13,15 @@ This ledger tracks executable service work. The separate [parity ledger](../inte
 | Linux CI foundation | Pinned Actions and guarded disposable PostgreSQL/Valkey verification workflow implemented; independent review approved | [Actual Linux run 36703370870](https://github.com/himangga01/wisdom-super-observer/actions/runs/36703370870) passed: 230 Python/15 FE/26 HTTPS browser tests, real PostgreSQL migrations and Valkey persistence/empty-volume smoke; actual digests recorded | T05 real worker delivery/recovery, S3 compatibility and deployment checks remain distinct gates |
 | W00 atomic parity ledger | Static 77-case seed and desktop API preflight implemented; false-positive paths closed | 31 focused tests passed; checker 77/77 rows, zero errors; headless Chrome/Edge API probe 2/2 | Trusted W24 run registry and comparator; runtime reachability, Android/iOS/media/permission checks, support matrix sign-off; no `MATCHED` rows and `release_ready=false` |
 | W01 TVT bridge feasibility | Static handoff, frozen 199-operation manifest and declaration inventories implemented | 10 schema tests passed; 77 cases / 199 candidate operations; 281 request classes and 299 native declarations inventoried | Vendor rights, runtime fixtures and pilot; all six remote G-P1 families `BLOCKED` |
-| T05–T05A and W02–W25 service features | Pending | None | Prerequisite contracts, infrastructure and family-specific gates |
+| T05 durable jobs | Database-owned requests, outbox/inbox, restricted dispatcher/worker, fencing, cancellation, external uncertainty, status/items API and job-bound secret primitives implemented; task and milestone integration/fix reviews approved | Root integrated Python 449/449, zero skips; subsequent configuration fix verified by 89 targeted cases; no remaining Critical/Important review findings | Ten real Linux process/broker recovery cases must pass. Generic credential handlers fail CAPABILITY_UNSUPPORTED until the owning executor exists; no production IMPORT/REGISTRATION handler |
+| T05A and W02–W25 service features | Pending | None | Private storage prerequisite and family-specific gates |
 
 ## Latest integrated verification — 2026-09-30
 
 `pwsh -NoProfile -File scripts/verify.ps1 -WithPostgres -WithBrowser -WithAuthBrowser`
-exited 0: Python 230 passed, no skips or warnings; Ruff and strict mypy passed;
+exited 0: Python 449 passed, no skips or warnings; Ruff and strict mypy (26 source files) passed;
 frontend typecheck/lint, 15 unit tests and production build passed. The exact
-10-file contract export set matched the committed inputs and a second export.
+15-file contract export set matched the reviewed inputs and a second export.
 The evidence checker validated 77/77 rows with zero errors. Desktop Chrome/Edge
 API preflight passed 2/2; the separate HTTPS authentication/browser suite passed
 26/26. A temporary skipped PostgreSQL integration probe made the verifier exit
@@ -43,7 +44,7 @@ The [provided design reference](../design/2026-09-30-dashboard-reference.md)
 is applied to the login, store and connection screens. Browser screenshots use
 fixture data; they are visual previews, not customer or camera evidence.
 
-The independent wave integration review approved this feature-branch milestone
+The previous T04 wave integration review approved that feature-branch milestone
 with no Critical/Important findings. Fixture key length, role casing, user UUID
 and logout status are now aligned with the real backend; touched JSX is formatted.
 Nonblocking follow-ups remain: use one captured SQL timestamp at the session
@@ -51,11 +52,23 @@ expiry boundary; bound expected_generation to PostgreSQL bigint; preserve the
 detail route after refresh/delete; reduce avoidable browser-tool warning noise.
 These do not close production or APK release gates.
 
+T05 task and scoped fix reviews approved the backend, additive role helper and
+Linux fixture source with zero remaining findings. Actual lock-wait regressions
+now recheck job/capability expiry after locks; external writes with no reconciler
+cannot submit. Fixture safety tests preserve owned listener/process checks and
+explicit duplicate/orphan ACK observations. The milestone integration review
+found and closed explicit-broker/ambient-Celery configuration and dispatch-generation
+documentation issues. The subsequent scoped fix passed 89 offline configuration
+tests, including 88 new cases, without repeating the earlier full PostgreSQL run.
+Both findings are addressed with no remaining Critical/Important issues. The first
+actual ten-case Linux recovery run remains pending; these targeted results are
+not a new full-suite or process-recovery result.
+
 ## Local development
 
 1. Use Node.js 24, pnpm 11 and Python 3.12. Install `uv` if absent.
 2. Run `python -m uv sync --all-packages --group dev` and `pnpm install --frozen-lockfile`.
-3. For actual PostgreSQL integration, follow [local PostgreSQL setup](../engineering/local-postgres.md), migrate through `0002_connections`, then run `Provision`. No Docker installation is needed for this gate.
+3. For actual PostgreSQL integration, follow [local PostgreSQL setup](../engineering/local-postgres.md), migrate through `0003_jobs`, then run `Provision`. No Docker installation is needed for this gate.
 4. Run `pwsh -NoProfile -File scripts/verify.ps1 -WithPostgres -WithBrowser -WithAuthBrowser` for the verified local gate. `-WithAuthBrowser` starts an isolated HTTPS signed-issuer/API fixture and the real Next interface; it does not configure a production identity provider or seed production users.
 5. When Docker is available, run `docker compose -f infra/compose.yaml --profile test up -d`, then the explicitly selected integration checks. The current Windows host has no Docker CLI, so these services have not been exercised.
 6. Copy `.env.example` to ignored `.env` only after replacing placeholders appropriate to the environment. Never use real TVT, Tyco or device secrets in local fixtures.
@@ -72,5 +85,8 @@ W01 family gates are documented.
 Connection lifecycle configuration and worker trust boundaries are documented
 in [connection secrets](../engineering/connection-secrets.md). The CI gate uses
 its own [disposable Linux runtime](../engineering/linux-ci.md), never the Windows
-development database. Explicit PostgreSQL selection requires all six role URLs;
+development database. Explicit PostgreSQL selection requires all eight role URLs;
 partial environment configuration fails instead of falling back to local state.
+
+The [durable jobs runbook](../engineering/durable-jobs.md) records the separate
+dispatcher/job role boundaries, broker configuration and pending Linux acceptance.

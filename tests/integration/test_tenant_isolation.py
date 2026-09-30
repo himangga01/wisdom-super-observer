@@ -703,7 +703,14 @@ def test_runtime_roles_do_not_own_grant_tables_or_functions(live_db) -> None:
             table.relname for table in tables
         }
         assert all(
-            t.owner == "wso_migrator" and t.relrowsecurity and t.relforcerowsecurity
+            t.owner
+            == (
+                "wso_dispatch_owner"
+                if t.relname == "dispatch_ready"
+                else "wso_migrator"
+            )
+            and t.relrowsecurity
+            and t.relforcerowsecurity
             for t in tables
         )
 

@@ -1,0 +1,172 @@
+{
+  "$defs": {
+    "JsonValue": {},
+    "StoreScope": {
+      "additionalProperties": false,
+      "properties": {
+        "scope_kind": {
+          "const": "STORE",
+          "default": "STORE",
+          "title": "Scope Kind",
+          "type": "string"
+        },
+        "store_id": {
+          "format": "uuid",
+          "title": "Store Id",
+          "type": "string"
+        },
+        "tenant_id": {
+          "format": "uuid",
+          "title": "Tenant Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tenant_id",
+        "store_id"
+      ],
+      "title": "StoreScope",
+      "type": "object"
+    },
+    "TenantScope": {
+      "additionalProperties": false,
+      "properties": {
+        "scope_kind": {
+          "const": "TENANT",
+          "default": "TENANT",
+          "title": "Scope Kind",
+          "type": "string"
+        },
+        "tenant_id": {
+          "format": "uuid",
+          "title": "Tenant Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tenant_id"
+      ],
+      "title": "TenantScope",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "attempts": {
+      "maximum": 9223372036854775807,
+      "minimum": 0,
+      "title": "Attempts",
+      "type": "integer"
+    },
+    "cancel_requested_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Cancel Requested At"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "failure_code": {
+      "anyOf": [
+        {
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Failure Code"
+    },
+    "heartbeat_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Heartbeat At"
+    },
+    "id": {
+      "format": "uuid",
+      "title": "Id",
+      "type": "string"
+    },
+    "kind": {
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Kind",
+      "type": "string"
+    },
+    "result": {
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "title": "Result",
+      "type": "object"
+    },
+    "scope": {
+      "discriminator": {
+        "mapping": {
+          "STORE": "#/$defs/StoreScope",
+          "TENANT": "#/$defs/TenantScope"
+        },
+        "propertyName": "scope_kind"
+      },
+      "oneOf": [
+        {
+          "$ref": "#/$defs/TenantScope"
+        },
+        {
+          "$ref": "#/$defs/StoreScope"
+        }
+      ],
+      "title": "Scope"
+    },
+    "state": {
+      "enum": [
+        "QUEUED",
+        "RUNNING",
+        "SUCCEEDED",
+        "PARTIAL",
+        "FAILED",
+        "NEEDS_USER_INPUT",
+        "CANCELLED"
+      ],
+      "title": "State",
+      "type": "string"
+    },
+    "updated_at": {
+      "format": "date-time",
+      "title": "Updated At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "state",
+    "id",
+    "scope",
+    "kind",
+    "attempts",
+    "created_at",
+    "updated_at"
+  ],
+  "title": "JobView",
+  "type": "object"
+}

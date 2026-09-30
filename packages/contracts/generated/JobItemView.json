@@ -1,0 +1,54 @@
+{
+  "$defs": {
+    "JsonValue": {}
+  },
+  "additionalProperties": false,
+  "properties": {
+    "failure_code": {
+      "anyOf": [
+        {
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Failure Code"
+    },
+    "item_key": {
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Item Key",
+      "type": "string"
+    },
+    "result": {
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "title": "Result",
+      "type": "object"
+    },
+    "state": {
+      "enum": [
+        "QUEUED",
+        "RUNNING",
+        "SUCCEEDED",
+        "PARTIAL",
+        "FAILED",
+        "NEEDS_USER_INPUT",
+        "CANCELLED"
+      ],
+      "title": "State",
+      "type": "string"
+    }
+  },
+  "required": [
+    "state",
+    "item_key"
+  ],
+  "title": "JobItemView",
+  "type": "object"
+}

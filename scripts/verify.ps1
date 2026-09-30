@@ -2,7 +2,8 @@ param(
     [switch]$WithContainers,
     [switch]$WithBrowser,
     [switch]$WithPostgres,
-    [switch]$WithAuthBrowser
+    [switch]$WithAuthBrowser,
+    [switch]$WithJobBroker
 )
 
 $ErrorActionPreference = 'Stop'
@@ -23,6 +24,9 @@ function Invoke-Checked {
 }
 
 try {
+    if ($WithJobBroker -and (-not $WithPostgres -or -not $IsLinux -or $env:CI -ne 'true')) {
+        throw 'Real job recovery requires the explicit Linux CI PostgreSQL gate.'
+    }
     $syncArgs = @('-m', 'uv', 'sync', '--all-packages', '--group', 'dev')
     $uvRun = @('-m', 'uv', 'run')
     if ($env:CI -eq 'true') {
@@ -31,9 +35,9 @@ try {
     }
     Invoke-Checked python $syncArgs
     Invoke-Checked pnpm @('install', '--frozen-lockfile')
-    $pytestArgs = $uvRun + @('pytest', '-m', 'not live', '-q')
+    $pytestArgs = $uvRun + @('pytest', '-m', 'not live', '--ignore=tests/jobs_recovery', '-q')
     if ($WithPostgres) {
-        $roles = @('ADMIN', 'APP', 'IDENTITY', 'MIGRATOR', 'SESSION', 'WORKER')
+        $roles = @('ADMIN', 'APP', 'IDENTITY', 'MIGRATOR', 'SESSION', 'WORKER', 'DISPATCH', 'JOB')
         $provided = @($roles | Where-Object {
             -not [string]::IsNullOrWhiteSpace(
                 [Environment]::GetEnvironmentVariable("WSO_TEST_${_}_DATABASE_URL")
@@ -46,7 +50,7 @@ try {
             }
             . $loader
         } elseif ($provided.Count -ne $roles.Count) {
-            throw 'Explicit PostgreSQL configuration requires all six role URLs.'
+            throw 'Explicit PostgreSQL configuration requires all eight role URLs.'
         }
         foreach ($role in $roles) {
             $url = [Environment]::GetEnvironmentVariable("WSO_TEST_${role}_DATABASE_URL")
@@ -69,6 +73,14 @@ try {
             throw 'A selected PostgreSQL integration test was skipped; its gate is unverified.'
         }
     }
+    if ($WithJobBroker) {
+        $recoveryPath = Join-Path $resultDir 'pytest-jobs-recovery.xml'
+        Invoke-Checked python ($uvRun + @(
+            'pytest', 'tests/jobs_recovery', '-m', 'jobs_recovery', '-q',
+            "--junitxml=$recoveryPath"
+        ))
+        Invoke-Checked python ($uvRun + @('scripts/check_job_recovery_results.py', $recoveryPath))
+    }
     Invoke-Checked python ($uvRun + @('ruff', 'check', 'services', 'packages', 'tests', 'scripts', 'infra/migrations'))
     Invoke-Checked python ($uvRun + @('mypy', 'services/api/src', 'packages/contracts/src', 'packages/core/src'))
     Invoke-Checked pnpm @('-r', 'typecheck')
@@ -81,8 +93,10 @@ try {
         throw 'Checked-in contract exports are missing.'
     }
     $expectedExports = @(
-        'EventEnvelope.json', 'IncidentSummary.json', 'JobScope.json',
+        'DispatchReference.json', 'EventEnvelope.json', 'ImportJobPayload.json',
+        'IncidentSummary.json', 'JobItemView.json', 'JobScope.json', 'JobView.json',
         'Money.json', 'ProductCandidate.json', 'SignedMoney.json',
+        'RegistrationJobPayload.json',
         'StoreScope.json', 'TenantScope.json', 'VariantOption.json', 'openapi.json'
     )
     $actualExports = @(Get-ChildItem -LiteralPath $generated -File -Recurse |

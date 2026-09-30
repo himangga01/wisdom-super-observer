@@ -17,6 +17,7 @@ from uuid import UUID
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from sqlalchemy import create_engine, text
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session, sessionmaker
 
 
@@ -113,14 +114,21 @@ class WorkerSecretStore:
             raise SecretRejected()
 
     def with_secret(self, handle: str) -> WorkerLease:
+        from wso_core.worker import JOB_STEP_ACTIVE
+
+        if JOB_STEP_ACTIVE.get():
+            raise SecretRejected()
         token = random_secrets.token_hex(32)
         # Redemption commits before any caller work: caller rollback cannot replay.
         with self._factory.begin() as db:
             self._check_role(db)
-            accepted: bool = db.execute(
-                text("SELECT public.wso_redeem_connection_handle(:handle,:lease)"),
-                {"handle": handle, "lease": token},
-            ).scalar_one()
+            try:
+                accepted: bool = db.execute(
+                    text("SELECT public.wso_redeem_connection_handle(:handle,:lease)"),
+                    {"handle": handle, "lease": token},
+                ).scalar_one()
+            except DBAPIError:
+                raise SecretRejected() from None
         if not accepted:
             raise SecretRejected()
         return WorkerLease(self, token)
@@ -136,12 +144,19 @@ class WorkerLease:
         Trusted callbacks must not retain credentials. Every use revalidates;
         lifecycle mutations wait for an already-authorized use to finish.
         """
+        from wso_core.worker import JOB_STEP_ACTIVE
+
+        if JOB_STEP_ACTIVE.get():
+            raise SecretRejected()
         with self._store._factory.begin() as db:
             self._store._check_role(db)
-            row = db.execute(
-                text("SELECT * FROM public.wso_use_connection_lease(:lease)"),
-                {"lease": self._token},
-            ).first()
+            try:
+                row = db.execute(
+                    text("SELECT * FROM public.wso_use_connection_lease(:lease)"),
+                    {"lease": self._token},
+                ).first()
+            except DBAPIError:
+                raise SecretRejected() from None
             if row is None:
                 raise SecretRejected()
             value = self._store._cipher.open(

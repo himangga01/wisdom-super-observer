@@ -48,7 +48,13 @@ class StoreList(BaseModel):
 def require_tenant(
     action: str, tenant_id: UUID, *, service: AuthService, principal: WebSession
 ) -> Iterator[TenantScope]:
-    if action not in {"stores:read", "connections:read", "connections:write"}:
+    if action not in {
+        "stores:read",
+        "connections:read",
+        "connections:write",
+        "jobs:read",
+        "jobs:cancel",
+    }:
         raise HTTPException(status_code=403)
     try:
         with service.identity(principal) as lookup:
@@ -69,7 +75,7 @@ def require_tenant(
 
 
 def require_store(action: str, store_id: UUID, *, tenant: TenantScope) -> StoreScope:
-    if action != "stores:read":
+    if action not in {"stores:read", "jobs:read", "jobs:cancel"}:
         raise HTTPException(status_code=403)
     for store in StoreRepository(tenant.session).list_visible(tenant.user_id):
         if store.id == store_id:

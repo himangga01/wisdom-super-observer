@@ -29,6 +29,8 @@ ROLES = {
     "MIGRATOR": "wso_migrator",
     "SESSION": "wso_web_session",
     "WORKER": "wso_connection_worker",
+    "DISPATCH": "wso_dispatcher",
+    "JOB": "wso_job_worker",
 }
 
 
@@ -243,7 +245,7 @@ def main() -> None:
             if connection.execute("SELECT current_user").fetchone()[0] != role:
                 raise ValueError("restricted CI role login failed")
     export_environment(url, passwords, output)
-    print("Disposable PostgreSQL 17.11: head applied; five restricted role logins OK.")
+    print("Disposable PostgreSQL 17.11: head applied; seven restricted role logins OK.")
 
 
 if __name__ == "__main__":

@@ -7,6 +7,13 @@ from typing import Any
 
 from pydantic import TypeAdapter
 from wso_api.main import create_app
+from wso_contracts.jobs import (
+    DispatchReference,
+    ImportJobPayload,
+    JobItemView,
+    JobView,
+    RegistrationJobPayload,
+)
 from wso_contracts.models import (
     EventEnvelope,
     IncidentSummary,
@@ -20,10 +27,15 @@ from wso_contracts.models import (
 )
 
 MODELS = (
+    DispatchReference,
     EventEnvelope,
+    ImportJobPayload,
     IncidentSummary,
+    JobItemView,
+    JobView,
     Money,
     ProductCandidate,
+    RegistrationJobPayload,
     SignedMoney,
     StoreScope,
     TenantScope,

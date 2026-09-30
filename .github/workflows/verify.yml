@@ -22,6 +22,9 @@ jobs:
       WSO_CI_DISPOSABLE_POSTGRES: '1'
       WSO_TEST_PYTHON: ${{ github.workspace }}/.venv/bin/python
       NEXT_TELEMETRY_DISABLED: '1'
+      WSO_TEST_RECOVERY_DATABASE_NAME: wso_ci_test
+      WSO_TEST_RECOVERY_DATABASE_OWNER: postgres
+      WSO_TEST_VALKEY_IMAGE: valkey/valkey@sha256:48332870af354a799964c0012ae1194a0bf2bf894eb508f945810596dc2d8d11
     steps:
       - name: Check out reviewed source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -98,9 +101,9 @@ jobs:
           .venv/bin/python scripts/dev/provision-ci-postgres.py
           unset POSTGRES_PASSWORD WSO_CI_ADMIN_DATABASE_URL
           task_ready=true
-      - name: Foundation, auth, connection and HTTPS browser checks
+      - name: Foundation, real job recovery and HTTPS browser checks
         shell: pwsh
-        run: ./scripts/verify.ps1 -WithPostgres -WithAuthBrowser
+        run: ./scripts/verify.ps1 -WithPostgres -WithAuthBrowser -WithJobBroker
       - name: Real Valkey 9.1.2 persistence fixture smoke
         shell: bash
         run: bash scripts/dev/valkey-smoke.sh

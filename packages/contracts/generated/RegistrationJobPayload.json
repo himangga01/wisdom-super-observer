@@ -1,0 +1,27 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "connection_id": {
+      "format": "uuid",
+      "title": "Connection Id",
+      "type": "string"
+    },
+    "registration_id": {
+      "format": "uuid",
+      "title": "Registration Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "registration_id",
+    "connection_id"
+  ],
+  "title": "RegistrationJobPayload",
+  "type": "object"
+}

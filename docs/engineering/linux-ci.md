@@ -7,9 +7,9 @@ dispatch. The job has a 30 minute deadline and cancels an older run for the same
 branch or pull request. Its repository token has read-only contents permission;
 checkout does not persist credentials. Every action is pinned to a full commit.
 
-This workflow's first successful remote run is still required before claiming
-Linux verification. Local parser tests or Windows PostgreSQL tests cannot prove
-the Docker services, Ubuntu browser dependencies or Linux process behavior.
+The foundation's first successful remote run is recorded below. The newly
+selected T05 worker recovery gate requires its own actual successful run;
+Windows PostgreSQL tests cannot prove Linux process or broker behavior.
 
 ## Runtime and checks
 
@@ -22,14 +22,17 @@ the Docker services, Ubuntu browser dependencies or Linux process behavior.
 | PostgreSQL | Official `postgres:17.11`, pulled and run by immutable digest |
 | Valkey | Official `valkey/valkey:9.1.2-alpine3.24`, pulled and run by digest |
 | Browser | Playwright's official Chrome installation for the auth `chrome` channel |
-| Main gate | `pwsh ./scripts/verify.ps1 -WithPostgres -WithAuthBrowser` |
+| Main gate | `pwsh ./scripts/verify.ps1 -WithPostgres -WithAuthBrowser -WithJobBroker` |
+| Job transport | Celery 5.6.3 / Kombu 5.6.2 / Redis client 6.4.0, immutable Python lock |
 | Broker fixture smoke | `bash scripts/dev/valkey-smoke.sh` |
 
 The main gate runs the full non-live Python suite, rejects skipped selected
 PostgreSQL integration cases, checks Python types/lint, frontend types/lint/tests
 and production build, verifies deterministic checked-in contracts, and runs the
-HTTPS auth browser suite. Test counts grow with implementation; use the observed
-run's counts. This job provides its own six PostgreSQL URLs and bypasses the
+HTTPS auth browser suite. WithJobBroker additionally selects the ten mandatory
+real recovery cases and checks their actual JUnit nodes for zero skips, failures
+or errors. Test counts grow with implementation; use the observed run's counts.
+This job provides its own eight PostgreSQL URLs and bypasses the
 Windows runtime loader. `WSO_TEST_PYTHON` points the HTTPS fixture at
 `.venv/bin/python`. The local TVT Chrome/Edge preflight remains a separate gate;
 this job does not assume Edge is installed.
@@ -57,11 +60,11 @@ databases. Existing data, schema, roles, query-based host redirects, a real loca
 fixture URL, a shared container, or a mismatched endpoint cause refusal.
 
 The helper applies Alembic `head`; migrations create the roles. It requires all
-five roles to exist and validates that they have no superuser, createdb,
+seven restricted LOGIN roles to exist and validates that they have no superuser, createdb,
 createrole, replication, bypass-RLS, inherit, or role-membership privileges.
 It assigns distinct random passwords, grants the migrator database schema
 creation rights required by migration fixtures, tests each restricted login,
-and exports `WSO_TEST_{ADMIN,APP,IDENTITY,MIGRATOR,SESSION,WORKER}_DATABASE_URL`.
+and exports `WSO_TEST_{ADMIN,APP,IDENTITY,MIGRATOR,SESSION,WORKER,DISPATCH,JOB}_DATABASE_URL`.
 It never creates missing roles itself and never alters the Windows cluster.
 
 Passwords and complete URLs are masked before environment export. SQL driver
@@ -85,14 +88,19 @@ and ignored `.superpowers/verification/valkey-runtime.txt`. AOF `always` is a
 deterministic test choice; it does not establish production performance or
 external-write semantics.
 
-T05 remains open. The current smoke does not run Celery workers, publish through
+The separate smoke does not run Celery workers, publish through
 Kombu, kill dispatcher/worker processes, fence stale leases, verify tenant/actor
-scope at delivery, or reconcile DB requests after broker data loss. After T05
-adds the locked Celery Redis dependencies, restricted dispatcher roles and real
-worker fixtures, extend this Linux gate with those actual recovery tests. The
-selected broker gate must fail on missing runtime/tests, zero collection,
-failures, or any skip. Use the separately owned empty broker fixture to prove
-reconciliation instead of assuming AOF guarantees delivery.
+scope at delivery, or reconcile DB requests after broker data loss.
+
+The T05 recovery suite uses actual prefork Celery subprocesses and Kombu over
+separately owned Valkey containers/volumes, with the recorded 9.1.2 digest.
+It selects producer/dispatcher/worker crash boundaries, committed-effect replay,
+AOF restart, empty-broker reconstruction, external uncertainty/reconciliation,
+and queue isolation. Its PostgreSQL fixture requires the exact CI database,
+administrator identity and owned container mapping. Missing Linux/runtime,
+missing mandatory tests, zero collection or any skip/failure/error fail the
+selected gate. See [durable jobs](durable-jobs.md) for the authority and outcome
+boundaries. Actual T05 recovery acceptance remains pending until recorded here.
 
 ## First recorded Linux run — 2026-09-30
 

@@ -55,6 +55,8 @@ ROLES = {
     'MIGRATOR': 'wso_migrator',
     'SESSION': 'wso_web_session',
     'WORKER': 'wso_connection_worker',
+    'DISPATCH': 'wso_dispatcher',
+    'JOB': 'wso_job_worker',
 }
 
 
@@ -74,13 +76,16 @@ def load() -> dict:
     if not STATE.is_file():
         raise RuntimeError('Runtime is not initialized; run Setup first')
     state = json.loads(STATE.read_text(encoding='utf-8'))
-    # Existing clusters predate the connection worker. Add only its missing
-    # credential; keep the saved endpoint, cluster metadata and all old secrets.
-    worker = ROLES['WORKER']
-    if worker not in state['passwords']:
-        state['passwords'][worker] = secrets.token_urlsafe(36)
-        write_loader(state)
-    elif 'WSO_TEST_WORKER_DATABASE_URL' not in state.get('urls', {}):
+    # Extend older clusters without rotating saved secrets, URLs or metadata.
+    changed = False
+    for key in ('WORKER', 'DISPATCH', 'JOB'):
+        role = ROLES[key]
+        if role not in state['passwords']:
+            state['passwords'][role] = secrets.token_urlsafe(36)
+            changed = True
+        if f'WSO_TEST_{key}_DATABASE_URL' not in state.get('urls', {}):
+            changed = True
+    if changed:
         write_loader(state)
     return state
 
@@ -212,12 +217,12 @@ def start(state: dict) -> None:
 
 
 def write_loader(state: dict) -> None:
-    state.setdefault('urls', {}).update({
-        f'WSO_TEST_{key}_DATABASE_URL': (
+    urls = state.setdefault('urls', {})
+    for key, role in ROLES.items():
+        urls.setdefault(f'WSO_TEST_{key}_DATABASE_URL', (
             f'postgresql+psycopg://{role}:{quote(state["passwords"][role], safe="")}'
             f'@127.0.0.1:{state["port"]}/{state["database"]}'
-        ) for key, role in ROLES.items()
-    })
+        ))
     STATE.write_text(json.dumps(state, indent=2), encoding='utf-8')
     RUNTIME.joinpath('env.ps1').write_text(
         "$runtimeCredentials = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'credentials.json') -Raw | ConvertFrom-Json\n"
@@ -227,6 +232,32 @@ def write_loader(state: dict) -> None:
         "Remove-Variable runtimeCredentials, entry -ErrorAction SilentlyContinue\n",
         encoding='utf-8',
     )
+
+
+def existing_application_roles(connection) -> list[str]:
+    applied = connection.execute('SELECT version_num FROM alembic_version').fetchall()
+    if len(applied) != 1:
+        raise RuntimeError('Expected a single applied migration revision')
+    jobs_required = applied[0][0] not in (
+        '0001_tenants', '0001b_tenant_grants', '0001c_auth_sessions', '0002_connections',
+    )
+    roles = []
+    for role in list(ROLES.values())[1:]:
+        exists = connection.execute(
+            'SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = %s)', (role,),
+        ).fetchone()[0]
+        if exists:
+            roles.append(role)
+            continue
+        if role in ('wso_web_session', 'wso_connection_worker'):
+            continue
+        if role in ('wso_dispatcher', 'wso_job_worker'):
+            # Before 0003 these roles are optional. After it (or a later head),
+            # absence indicates a damaged migration and must fail closed.
+            if not jobs_required:
+                continue
+        raise RuntimeError(f'Migration-created role missing: {role}')
+    return roles
 
 
 def provision(state: dict, bootstrap: bool = False) -> None:
@@ -250,14 +281,7 @@ def provision(state: dict, bootstrap: bool = False) -> None:
             command.upgrade(config, '0001_tenants')
     provisioned = []
     with connect(state) as connection:
-        for role in list(ROLES.values())[1:]:
-            exists = connection.execute(
-                'SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = %s)', (role,),
-            ).fetchone()[0]
-            if not exists:
-                if role in ('wso_web_session', 'wso_connection_worker'):
-                    continue
-                raise RuntimeError(f'Migration-created role missing: {role}')
+        for role in existing_application_roles(connection):
             # Utility statements cannot use server placeholders. psycopg's
             # composable Identifier/Literal safely quote both identifier and secret.
             connection.execute(sql.SQL('ALTER ROLE {} PASSWORD {}').format(
@@ -280,13 +304,16 @@ def status(state: dict) -> None:
         if not row[0].startswith('PostgreSQL 17.') or row[1] != '127.0.0.1':
             raise RuntimeError('Runtime version or loopback binding validation failed')
         print(f'{row[0]} | listen={row[1]} | port={row[2]}')
-    for role in state.get('provisioned_roles', []):
+        # Catalog existence is authoritative even if the saved provisioned list
+        # predates a new migration. Optional roles may be absent before upgrade.
+        existing_roles = existing_application_roles(connection)
+    for role in existing_roles:
         with connect(state, role) as connection:
             row = connection.execute(
                 'SELECT current_user, rolsuper, rolcreatedb, rolcreaterole, rolreplication, rolbypassrls, rolinherit, rolcanlogin '
                 'FROM pg_roles WHERE rolname = current_user'
             ).fetchone()
-            if any(row[1:7]) or (role == 'wso_connection_worker' and not row[7]):
+            if any(row[1:7]) or not row[7]:
                 raise RuntimeError(f'Unsafe runtime role: {role}')
             if role in ('wso_app', 'wso_identity_bootstrap'):
                 memberships = connection.execute(
@@ -295,7 +322,7 @@ def status(state: dict) -> None:
                 ).fetchone()[0]
                 if memberships:
                     raise RuntimeError(f'Unexpected runtime role membership: {role}')
-            if role == 'wso_connection_worker':
+            if role in ('wso_connection_worker', 'wso_dispatcher', 'wso_job_worker'):
                 memberships = connection.execute(
                     'SELECT count(*) FROM pg_auth_members '
                     'WHERE member = (SELECT oid FROM pg_roles WHERE rolname = %s) '

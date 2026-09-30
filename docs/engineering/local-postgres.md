@@ -36,6 +36,38 @@ The dot-sourced loader sets these variables in the current PowerShell process:
 | `WSO_TEST_MIGRATOR_DATABASE_URL` | `wso_migrator` |
 | `WSO_TEST_SESSION_DATABASE_URL` | `wso_web_session` |
 | `WSO_TEST_WORKER_DATABASE_URL` | `wso_connection_worker` |
+| `WSO_TEST_DISPATCH_DATABASE_URL` | `wso_dispatcher` |
+| `WSO_TEST_JOB_DATABASE_URL` | `wso_job_worker` |
+
+The dispatch and job URLs are reserved for `0003_jobs`. Before that
+migration, `Setup` and `Provision` can run while their roles are absent. After
+the migration creates `wso_dispatcher` and `wso_job_worker`, run `Provision`
+to apply their saved passwords. The migration also creates the `NOLOGIN`
+owners `wso_dispatch_owner` and `wso_job_owner`; these owners receive no runtime
+credentials. The runtime creates neither those owners nor the LOGIN roles.
+After `0003_jobs` or a later revision is applied, `Provision` and `Status` fail
+if either new LOGIN role is missing, so a damaged migration cannot appear ready.
+Both actions first require exactly one applied Alembic version row, including
+when all roles already exist. An empty or multiple-row version table fails
+before role discovery or application password assignment. A single known
+pre-job revision (`0001_tenants`, `0001b_tenant_grants`, `0001c_auth_sessions`
+or `0002_connections`) permits absent dispatcher/job roles. A single
+`0003_jobs` or any other later head requires both roles; unknown single heads
+are treated conservatively as requiring them.
+
+Loading a runtime with the original six credentials adds only missing dispatcher
+and job worker passwords and URLs to the same private files. Existing passwords,
+URLs (including connection options), endpoint, database and cluster metadata are
+preserved. Repeated loads retain both added passwords. Older runtimes also retain
+the existing upgrade path for a missing connection worker credential.
+
+`Status` authenticates every currently existing application role, including roles
+created since the saved provisioned-role list was written. It checks `LOGIN`,
+`NOINHERIT`, `NOSUPERUSER`, `NOCREATEDB`, `NOCREATEROLE`, `NOREPLICATION` and
+`NOBYPASSRLS`. Dispatcher, job worker and connection worker roles must have no
+memberships as either member or granted role. The administrator authenticates to
+validate the server version and loopback binding. Absent application, identity
+or migrator roles remain an error.
 
 The session URL is reserved for the auth migration; the worker URL is reserved
 for `0002_connections`. `Setup` can run before either optional role exists.
