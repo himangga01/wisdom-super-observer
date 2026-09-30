@@ -14,7 +14,7 @@ This ledger tracks executable service work. The separate [parity ledger](../inte
 | W00 atomic parity ledger | Static 77-case seed and desktop API preflight implemented; false-positive paths closed | 31 focused tests passed; checker 77/77 rows, zero errors; headless Chrome/Edge API probe 2/2 | Trusted W24 run registry and comparator; runtime reachability, Android/iOS/media/permission checks, support matrix sign-off; no `MATCHED` rows and `release_ready=false` |
 | W01 TVT bridge feasibility | Static handoff, frozen 199-operation manifest and declaration inventories implemented | 10 schema tests passed; 77 cases / 199 candidate operations; 281 request classes and 299 native declarations inventoried | Vendor rights, runtime fixtures and pilot; all six remote G-P1 families `BLOCKED` |
 | T05 durable jobs | Database-owned requests, outbox/inbox, restricted dispatcher/worker, fencing, cancellation, external uncertainty, status/items API and job-bound secret primitives implemented; task and milestone integration/fix reviews approved | [Actual Linux run 36716200713](https://github.com/himangga01/wisdom-super-observer/actions/runs/36716200713): 537 Python cases and all ten required real process/broker recovery cases, zero skips; no remaining Critical/Important review findings | Generic credential handlers fail CAPABILITY_UNSUPPORTED until the owning executor exists; no production IMPORT/REGISTRATION handler. Deployment and vendor effects remain pending |
-| T05A private assets | In progress; MinIO v2 fixture source, strict consumers and optional public-proof source received scoped approval | [Latest integrated foundation run](../engineering/linux-ci.md#latest-integrated-linux-foundation-run) passed; [latest provider attempt](../engineering/linux-ci.md#sixth-sealed-private-asset-baseline-probe-control-route-setup-failed) stopped during setup | Actual provider privacy/IAM and HTTP preflight, complete fourteen-case GREEN acceptance, actual relay connectivity, and whole APK parity |
+| T05A private assets | In progress; MinIO v2 fixture source, strict consumers, optional public-proof source and diagnostic-only amendment received scoped approval | [Latest integrated foundation run](../engineering/linux-ci.md#latest-integrated-linux-foundation-run) passed; [latest provider attempt](../engineering/linux-ci.md#seventh-sealed-private-asset-baseline-attempt-inert-put-effect-unclassified) stopped during setup with effects component unknown | Actual provider privacy/IAM and HTTP preflight, complete fourteen-case GREEN acceptance, push and one actual cold retry, actual relay connectivity, and whole APK parity |
 | W02–W25 service features | Pending | None | Private storage prerequisite and family-specific gates |
 
 ## Previous integrated verification — 2026-09-30
@@ -103,23 +103,31 @@ must prove actual provider and authentication preflight before the missing route
 assertion. No S3/lifecycle acceptance or APK parity is claimed at this stage.
 
 The [latest integrated Linux foundation run](../engineering/linux-ci.md#latest-integrated-linux-foundation-run)
-at `f79c83e` passed 1375 ordinary Python cases and ten actual Celery/Valkey
-recovery cases, with zero skips, plus frontend/browser gates. This run predates
-and excludes the later v2 control-profile and optional public-proof source
-changes. Those v2 source and strict-consumer deltas each received independent
-scoped approval with zero findings; the producer passed 251 focused cases and
-the root rerun passed 251, while the consumer preserves the original 77-case
-surface. The optional public-proof change also received scoped approval with
-zero findings and passed 82 focused cases plus a fresh root rerun. These focused
-source checks do not establish provider acceptance. The prior
-[integrated run](../engineering/linux-ci.md#previous-integrated-linux-foundation-run)
+at `406f47e` passed 1512 ordinary Python cases with zero skips in 128.54 seconds
+and ten actual Celery/Valkey recovery cases with zero skips in 246.10 seconds,
+plus frontend/browser gates. Ruff/mypy 40, frontend typecheck/lint/build and 15
+unit cases, twenty canonical exports twice, ledger checker 77/77, HTTPS Chrome
+26/42.2 seconds, Valkey smoke and owned PostgreSQL cleanup passed. This run
+covers reviewed v2 control-profile and optional public-proof changes, but
+predates and excludes the component-diagnostic amendment. The previous
+[foundation run](../engineering/linux-ci.md#previous-integrated-linux-foundation-run)
+at `f79c83e` passed 1375 ordinary Python cases and ten actual recovery cases,
+zero skips, and predates/excludes the v2/public-proof source changes. The earlier
+[integrated run](../engineering/linux-ci.md#earlier-integrated-linux-foundation-run)
 at `0deeb79` passed 1200 ordinary cases and ten actual recovery cases, zero
 skips, and included isolated `0003a_assets` migration/nine-role integration in
 the ordinary pytest invocation; no per-case count is recorded. The prior
 [foundation run](../engineering/linux-ci.md#previous-recorded-foundation-run)
 at `e3865df` passed 855 ordinary cases and ten actual recovery cases.
 
-Six separate private-asset probes have failed during setup, not at HTTP:
+The v2 producer and strict-consumer changes each received independent scoped
+approval with zero findings; the producer passed 251 focused cases and the root
+rerun passed 251, while the consumer preserves the original 77-case surface.
+The optional public-proof change also received scoped approval with zero
+findings and passed 82 focused cases plus a fresh root rerun. These focused
+source checks do not establish provider acceptance.
+
+The first six private-asset probes failed during setup, before authenticated asset HTTP:
 SeaweedFS lacked public-access-block support; the required ACL/grant refusal was
 not proven; one MinIO volume check did not preserve its observed metadata; a later
 run captured UID/GID `65532:65532` with mode `0755`; and the fifth passed the
@@ -129,7 +137,23 @@ reached relay S3 control preflight, then a shared-gateway administrative
 bucket-route mutation returned HTTP 400 / `MalformedXML`; the first ownership
 PUT is source inference, not a captured operation. Dependencies, PostgreSQL and
 cleanup succeeded, but this setup result is neither IAM denial nor provider
-acceptance, completed HTTP preflight, or genuine missing-route RED. Strict RED
+acceptance, completed HTTP preflight, or genuine missing-route RED. The seventh
+[sealed baseline attempt](../engineering/linux-ci.md#seventh-sealed-private-asset-baseline-attempt-inert-put-effect-unclassified)
+reported a gateway `put_object` variant-1 HTTP 200 accepted inert candidate,
+then an effects-bundle failure with target/component unrecorded. It ended with
+one setup error in 21.59 seconds; no receipt or privacy proof was accepted.
+Source order places the attempt at scheduled public-matrix entry 26, which does
+not verify 25 prior bundles, all 24 controls, or all 63 effects. A diagnostic-
+only two-file amendment received independent scoped approval with zero
+Critical/Important/Minor findings. The author’s final 306-case run passed in
+1.80 seconds; the root’s fresh 306 passed in 1.73 seconds; Ruff/format 4 and
+configured mypy 40 passed. Review confirmed only seven declared methods changed;
+relay, safety, checker and workflow hashes stayed unchanged. The actual failed
+component/cause remains unknown. Exact two-path staging, private 18-value guard
+and no-drift checks passed; diagnostic source commit
+`3bcf178a9eb93d296658a11a2cedf03e833e02f3` is local. Push and one actual cold
+retry remain root-pending. No behavior fix or provider
+acceptance is inferred. Strict RED
 receipts were rejected. Pinned [Moby v28.0.4 source](https://github.com/moby/moby/blob/v28.0.4/daemon/network.go#L860)
 explains why port publication is skipped for an Internal network, but the
 observed port shape is unknown. A fixture-only opaque TCP relay design was

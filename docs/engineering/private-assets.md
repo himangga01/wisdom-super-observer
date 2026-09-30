@@ -186,9 +186,11 @@ behavior.
 
 The sixth sealed baseline attempt, [run 36765314359](linux-ci.md#sixth-sealed-private-asset-baseline-probe-control-route-setup-failed), reached relay S3 control preflight but stopped when the shared-gateway administrative bucket-route mutation returned 400 / `MalformedXML`. This did not establish IAM denial or provider compatibility. The first ownership PUT is a source inference; the run did not capture the operation trace. The two ordinary CreateBucket checks and remaining control/effects checks were not accepted as complete; authenticated HTTP/CSRF preflight and genuine missing-route RED were not reached. This attempt predates the independently reviewed v2 source changes above.
 
+The seventh [attempt](linux-ci.md#seventh-sealed-private-asset-baseline-attempt-inert-put-effect-unclassified) reported one setup error in 21.59 seconds after a typed gateway `put_object` variant-1 response of HTTP 200 / accepted inert candidate; the subsequent effects bundle failed, but its target and component were not retained. This is neither privacy acceptance nor an accepted receipt. Source order places it at the 26th scheduled public-matrix entry, but no prior 25 independent receipts, full 24-control profile, or 63-effect matrix verification can be inferred. A diagnostic-only two-file source amendment received independent scoped approval with no Critical/Important/Minor findings. The author’s final 306-case selection passed in 1.80 seconds and root’s fresh 306-case selection passed in 1.73 seconds; Ruff/format of four files and configured mypy 40 passed. The review confirmed only seven declared methods changed; relay, safety, checker and workflow hashes are unchanged. These diagnostics preserve assertions and only identify a bounded failure stage; the component and cause remain unknown. Exact two-path staging, private 18-value guard, and no-drift checks passed; diagnostic source commit `3bcf178a9eb93d296658a11a2cedf03e833e02f3` is local. Push and one actual cold retry remain root-pending. No behavior fix or provider acceptance is claimed.
+
 ### Integrated product Linux evidence and remaining T05A gates
 
-The prior [integrated Linux run](linux-ci.md#previous-integrated-linux-foundation-run) at product HEAD `0deeb79024fccf6bb7e6e3157aceadd39674da77` passed 1200 ordinary Python cases and ten actual Celery/Valkey recovery cases, both with zero skips. Its ordinary pytest invocation included the isolated `0003a_assets` migration and nine-role integration; the published evidence is aggregate only. The newer [foundation run](linux-ci.md#latest-integrated-linux-foundation-run) at `f79c83e` passed 1375 ordinary Python cases and ten actual recovery cases, both with zero skips, but predates and excludes the v2 control-profile and optional public-proof source changes. Neither aggregate establishes actual provider privacy/IAM, authenticated baseline RED, or full fourteen-case acceptance.
+The prior [integrated Linux run](linux-ci.md#earlier-integrated-linux-foundation-run) at product HEAD `0deeb79024fccf6bb7e6e3157aceadd39674da77` passed 1200 ordinary Python cases and ten actual Celery/Valkey recovery cases, both with zero skips. Its ordinary pytest invocation included the isolated `0003a_assets` migration and nine-role integration; the published evidence is aggregate only. The next [foundation run](linux-ci.md#previous-integrated-linux-foundation-run) at `f79c83e` passed 1375 ordinary Python cases and ten actual recovery cases, both with zero skips, but predates and excludes v2 control-profile and optional public-proof changes. The latest [foundation run](linux-ci.md#latest-integrated-linux-foundation-run) at `406f47e` passed 1512 ordinary Python cases and ten actual recovery cases, both with zero skips, and covers those reviewed v2/public-proof changes. None of these aggregate receipts establishes actual provider privacy/IAM, authenticated baseline RED, or full fourteen-case acceptance; the `406f47e` receipt also predates and excludes the component-diagnostic amendment.
 
 A later two-file receipt-safety correction passed 247 scoped cases
 and received an independent review with zero Critical or Important findings. It
@@ -241,6 +243,13 @@ migration round trip has one passing execution. The `0deeb79` foundation receipt
 predates the relay deadline fix; the newer `f79c83e` receipt predates and excludes
 the v2 control-profile and optional public-proof source changes. Neither
 foundation aggregate substitutes for provider and lifecycle acceptance. The
-fourteen-case design review still has zero Critical, three Important and one
-Minor unresolved findings; correction work remains in ignored review materials.
-No full fourteen-case GREEN result exists.
+original fourteen-case design review was zero Critical / three Important / one
+Minor. Fix 1’s scoped review was zero Critical / three Important / zero Minor;
+it closed original I2 and M1, while I1 and I3 were partial and the
+`CREATE_MULTIPART`/`UPLOAD_PART` selector mismatch remained. Original-author
+design fix 2 then received scoped Astra review approval with zero Critical /
+Important / Minor findings and all three Important findings addressed; original
+job/alias closure is retained. This is design review only, not source or actual
+provider/full-lifecycle acceptance. Root accepts the fixture-only broker-factory
+direction and six conditional future paths only behind genuine RED-gated source
+work. No full fourteen-case GREEN result exists.
