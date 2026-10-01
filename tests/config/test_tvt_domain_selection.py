@@ -150,17 +150,57 @@ def test_foundation_excludes_only_dormant_domain_modules(gate, switches):
     calls = pytest_calls(result)
     assert len(calls) == 1
     args = calls[0]["arguments"]
-    assert {arg for arg in args if arg.startswith("--ignore=")} == {
+    ignores = {arg for arg in args if arg.startswith("--ignore=")}
+    core_ignores = {
         "--ignore=tests/jobs_recovery",
         "--ignore=tests/integration/test_private_assets.py",
         f"--ignore={SCOPE}",
         f"--ignore={CREDENTIALS}",
     }
+    registered_opt_in = {
+        "--ignore=tests/integration/test_tvt_startup.py",
+        "--ignore=tests/integration/test_tvt_sessions.py",
+    }
+    assert ignores - registered_opt_in == core_ignores, (
+        "unregistered foundation ignores"
+    )
     assert args[args.index("pytest") + 1 : args.index("pytest") + 3] == [
         "-m",
         "not live",
     ]
     assert result["restored"] == "1"
+
+
+@pytest.mark.parametrize("sessions", [False, True])
+def test_foundation_accepts_only_registered_opt_in_extensions(gate, tmp_path, sessions):
+    script = tmp_path / "scripts/verify.ps1"
+    source = script.read_text(encoding="utf-8")
+    startup = "'--ignore=tests/integration/test_tvt_startup.py',"
+    session = "'--ignore=tests/integration/test_tvt_sessions.py',"
+    assert source.count(startup) == 1
+    source = source.replace(session, "")
+    if sessions:
+        source = source.replace(startup, f"{startup} {session}")
+    assert source.count(session) == int(sessions)
+    script.write_text(source, encoding="utf-8")
+    test_foundation_excludes_only_dormant_domain_modules(gate, ())
+
+
+@pytest.mark.parametrize(
+    "ignore", ["tests/integration/test_tvt_unregistered.py", "tests/unrelated"]
+)
+def test_foundation_rejects_unregistered_ignore_in_copied_script(
+    gate, tmp_path, ignore
+):
+    script = tmp_path / "scripts/verify.ps1"
+    source = script.read_text(encoding="utf-8")
+    anchor = "'--ignore=tests/jobs_recovery',"
+    assert source.count(anchor) == 1
+    script.write_text(
+        source.replace(anchor, f"{anchor} '--ignore={ignore}',"), encoding="utf-8"
+    )
+    with pytest.raises(AssertionError, match="unregistered foundation ignores"):
+        test_foundation_excludes_only_dormant_domain_modules(gate, ())
 
 
 def test_domain_requires_postgres_before_any_dependency_invocation(gate):

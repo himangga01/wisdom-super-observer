@@ -366,8 +366,8 @@ def test_idle_close_failure_preserves_prior_or_pending_fatal_origin(
                 def __exit__(self, *_):
                     lock.release()
 
-                def acquire(self, blocking=True):
-                    return lock.acquire(blocking=blocking)
+                def acquire(self, blocking=True, timeout=-1):
+                    return lock.acquire(blocking=blocking, timeout=timeout)
 
                 def release(self):
                     lock.release()
@@ -1686,16 +1686,33 @@ def test_unsettled_workers_share_one_cleanup_cutoff(tmp_path, monkeypatch):
 
         def join(self, timeout):
             calls.append(timeout)
+            now[0] += timeout
 
-    relay.threads = {Unsettled(), Unsettled(), Unsettled()}
+    workers = {Unsettled(), Unsettled(), Unsettled()}
+    relay.threads = workers
     monkeypatch.setattr(relay, "CLEANUP_SECONDS", 0.03)
-    now = iter([1000.0, 1000.02, 1000.04, 1000.06])
-    monkeypatch.setattr(asset_minio.time, "monotonic", lambda: next(now))
+    # Reads do not consume time; only modeled cleanup operations advance it.
+    now = [1000.0]
+    monkeypatch.setattr(asset_minio.time, "monotonic", lambda: now[0])
+    cancel = relay.commands.cancel
+    deadlines = []
+
+    def cancel_after_elapsed(deadline):
+        deadlines.append(deadline)
+        cancel(deadline)
+        now[0] += 0.02
+
+    monkeypatch.setattr(relay.commands, "cancel", cancel_after_elapsed)
     with pytest.raises(RuntimeError, match="cleanup unsettled"):
         relay.close()
+    assert deadlines == [pytest.approx(1000.03)]
     assert calls[0] == pytest.approx(0.01)
     assert calls[1:] == [0, 0]
-    assert len(relay.threads) == 3 and relay.state == "STOPPING"
+    assert sum(calls) == pytest.approx(0.01)
+    assert sum(calls) <= relay.CLEANUP_SECONDS
+    assert now[0] == pytest.approx(1000.03)
+    assert relay.threads == workers and len(workers) == 3
+    assert relay.state == "STOPPING"
 
 
 def test_late_socket_control_return_cannot_start_backend_connect(tmp_path, monkeypatch):
@@ -2677,17 +2694,58 @@ def test_cleanup_original_reserve_survives_repeated_refusal(
     now = [0.0]
     monkeypatch.setattr(asset_provider.time, "monotonic", lambda: now[0])
     provider = AssetProvider(tmp_path)
-    monkeypatch.setattr(
-        provider.commands, "assert_settled", Mock(side_effect=RuntimeError("unsettled"))
-    )
-    with pytest.raises(RuntimeError, match="target retained"):
-        provider.close()
-    assert provider.cleanup_cutoff == 180
-    now[0] = 100
-    with pytest.raises(RuntimeError, match="target retained"):
-        provider.close()
-    assert provider.cleanup_cutoff == 180
-    assert capsys.readouterr().out.count("WSO_ASSET_PROVIDER_CLOSE_DIAGNOSTIC=") == 2
+    provider.created = [("network", "retained-target")]
+    provider.work = tmp_path / "retained-private"
+    provider.work.mkdir()
+    marker = provider.work / "marker"
+    marker.write_text("retained", encoding="utf-8")
+    client = Mock()
+    provider.clients = {"one": client}
+    provider.receipt = {"previous": "proof"}
+    inspect, docker = Mock(), Mock()
+    monkeypatch.setattr(provider, "inspect", inspect)
+    monkeypatch.setattr(provider, "docker", docker)
+    assert_settled = Mock(side_effect=RuntimeError("unsettled"))
+    monkeypatch.setattr(provider.commands, "assert_settled", assert_settled)
+    expected_relay = {
+        "available": False,
+        "state": "UNKNOWN",
+        "failed": None,
+        "connections": None,
+        "sockets": None,
+        "workers": None,
+        "first_stage": "UNKNOWN",
+        "first_kind": "UNKNOWN",
+    }
+    for attempt, elapsed in enumerate((0, 100), start=1):
+        now[0] = elapsed
+        with pytest.raises(
+            RuntimeError, match="owned command cleanup unsettled; target retained"
+        ):
+            provider.close()
+        assert provider.cleanup_cutoff == 180
+        assert assert_settled.call_count == attempt
+        captured = capsys.readouterr()
+        assert captured.err == ""
+        lines = captured.out.splitlines()
+        assert len(lines) == 2
+        prefix = "WSO_ASSET_PROVIDER_CLOSE_DIAGNOSTIC="
+        for line, category in zip(
+            lines, ("LOCAL_QUIESCED_TARGET_RETAINED", "RELAY_UNSETTLED"), strict=True
+        ):
+            assert line.startswith(prefix) and len(line) < 512
+            assert json.loads(line[len(prefix) :]) == {
+                "schema": 1,
+                "categories": [category],
+                "relay": expected_relay,
+            }
+        assert provider.created == [("network", "retained-target")]
+        assert provider.clients == {"one": client}
+        assert provider.work == marker.parent and marker.read_text() == "retained"
+        assert provider.receipt is None
+        client.close.assert_not_called()
+        inspect.assert_not_called()
+        docker.assert_not_called()
 
 
 @pytest.mark.parametrize("case", ["late_success", "insufficient_next_admission"])

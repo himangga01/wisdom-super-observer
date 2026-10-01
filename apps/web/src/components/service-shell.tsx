@@ -20,8 +20,8 @@ function Navigation({
       </a>
       <a
         href="/stores"
-        className={`wso-nav-item ${signedIn && active !== "connections" ? "wso-nav-active" : ""}`}
-        aria-current={signedIn && active !== "connections" ? "page" : undefined}
+        className={`wso-nav-item ${signedIn && !active ? "wso-nav-active" : ""}`}
+        aria-current={signedIn && !active ? "page" : undefined}
       >
         <span aria-hidden="true">▦</span> 내 매장
       </a>
@@ -32,6 +32,11 @@ function Navigation({
           aria-current={active === "connections" ? "page" : undefined}
         >
           <span aria-hidden="true">⇄</span> 연결 관리
+        </a>
+      )}
+      {signedIn && connectionTenant && (
+        <a href={`/tvt?tenant_id=${encodeURIComponent(connectionTenant)}`} className={`wso-nav-item ${active === "tvt" ? "wso-nav-active" : ""}`} aria-current={active === "tvt" ? "page" : undefined}>
+          <span aria-hidden="true">◉</span> SuperLivePlus
         </a>
       )}
     </nav>
@@ -45,7 +50,7 @@ export function ServiceShell({
 }: {
   children: ReactNode;
   csrf?: string;
-  active?: "connections";
+  active?: "connections" | "tvt";
   connectionTenant?: string;
 }) {
   const signedIn = csrf !== undefined;
@@ -90,7 +95,9 @@ export function ServiceShell({
               ⌂
             </span>
             <span className="text-sm font-medium">
-              {active === "connections"
+              {active === "tvt"
+                ? "SuperLivePlus"
+                : active === "connections"
                 ? "계정 및 기기 / 연결 관리"
                 : signedIn
                   ? "매장 관리 / 내 매장"

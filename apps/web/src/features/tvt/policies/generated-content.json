@@ -1,0 +1,2733 @@
+{
+  "schema_version": 1,
+  "app_version": "1.18.1",
+  "source_apk_sha256": "f57ff98226fcc7a0ec3587b077d5538facb57cc5b713a0938d1ee02b0f72f281",
+  "derivation": "visible-body-structured-v1",
+  "documents": [
+    {
+      "locale": "en",
+      "kind": "terms",
+      "source_reference": "agreement/ServiceTerms_en.html",
+      "source_sha256": "7973f409b90d62127488bf496de299dc537c32832b1c27b9d37f020ce2525544",
+      "source_bytes": 158863,
+      "content_sha256": "45a2b1fa028c6abad17bdc02fe1cf24ab3bde10a46aa6fc716d5411d5e50c35f",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "Service Agreement"
+        },
+        {
+          "type": "paragraph",
+          "text": "Release/Effective Date: July 28, 2021"
+        },
+        {
+          "type": "paragraph",
+          "text": "【Signing Reminder】"
+        },
+        {
+          "type": "paragraph",
+          "text": "Thank you for using Shenzhen TVT Digital Technology Co., Ltd.products and services!"
+        },
+        {
+          "type": "paragraph",
+          "text": "Before using the products and services provided by Shenzhen TVT Digital Technology Co., Ltd.,"
+        },
+        {
+          "type": "paragraph",
+          "text": "Please do read and abide by this \"Service Agreement\" (\"Agreement\") and \"Privacy Statement\"."
+        },
+        {
+          "type": "paragraph",
+          "text": "Please be sure to read carefully and fully understand the content of each clause, especially the clauses involving your major rights and interests, including clauses exempting or restrictingShenzhen TVT Digital Technology Co., Ltd. liability, clauses restricting user rights, the agreement on dispute methods and judicial interpretation clauses, as well as agreements or rules for opening or using a certain service. The foregoing clauses/agreement may be bolded, underlined, as to remind you to pay more attention to."
+        },
+        {
+          "type": "paragraph",
+          "text": "This agreement is valid after you have filled in the information according to the relevant page prompts, read and agreed to this agreement, and completed all registration or activation procedures, Or when you are actually using the services provided by Shenzhen TVT Digital Technology Co., Ltd. in any way permitted by Shenzhen TVT Digital Technology Co., Ltd."
+        },
+        {
+          "type": "paragraph",
+          "text": "It means that you have fully read, understood and accepted all the contents of this agreement. This agreement is legally binding on you and Shenzhen TVT Digital Technology Co., Ltd."
+        },
+        {
+          "type": "paragraph",
+          "text": "If you have any questions about any content of this agreement, please do contact our customer service for help at any time, and we will try our best to explain to you. You shall not claim that this agreement is invalid, you shall not request to cancel this agreement based on you have not read the content of this agreement or have not obtained answers to your inquiries."
+        },
+        {
+          "type": "paragraph",
+          "text": "Under this agreement, we presume that you are a legal entity in the Mainland of the People’s Republic of China with full capacity for civil rights and capacity for the civil conduct you are engaged in, and you are not a trade restriction, sanction or other law imposed by any country, international organization or region , Objects restricted by rules (\"Restricted Objects\")."
+        },
+        {
+          "type": "paragraph",
+          "text": "If you do not meet the aforementioned situation, please suspend the follow-up operation and seek a solution in the following ways:"
+        },
+        {
+          "type": "paragraph",
+          "text": "If you are not a user in Mainland China, please use the website or software set up byShenzhen TVT Digital Technology Co., Ltd. to learn about the service instructions provided Shenzhen TVT Digital Technology Co., Ltd. and sign relevant agreements;"
+        },
+        {
+          "type": "paragraph",
+          "text": "If you do not have full civil capacity due to factors such as age, please inform your guardian, and read and use the foregoing agreement and use our services under the guidance of your guardian;"
+        },
+        {
+          "type": "paragraph",
+          "text": "If you are a restricted person, please initiate an application for the use of Shenzhen TVT Digital Technology Co., Ltd. services after the relevant restriction is cancelled."
+        },
+        {
+          "type": "paragraph",
+          "text": "If you are not the aforementioned eligible person (or without the consent of the guardian) but continue to sign this agreement, span> has the right to refuse or terminate the provision of services to you, and if you cancel your account, you (and your guardian) must bear the relevant losses yourself."
+        },
+        {
+          "type": "paragraph",
+          "text": "【Agreement Text】"
+        },
+        {
+          "type": "heading",
+          "level": 2,
+          "text": "1. The scope of the agreement"
+        },
+        {
+          "type": "paragraph",
+          "text": "This agreement is an agreement between the user and Shenzhen TVT Digital Technology Co., Ltd. regarding its use of the services provided by Shenzhen TVT Digital Technology Co., Ltd. (hereinafter referred to as the \"service\"). The \"Shenzhen TVT Digital Technology Co., Ltd.\" refers toShenzhen TVT Digital Technology Co., Ltd. or its affiliates, also referred to as \"we\" in this agreement; The \"User\" refers to a legal entity that complies with the premise of use under this agreement and uses the services provided by Shenzhen TVT Digital Technology Co., Ltd. in accordance with this agreement. It is also referred to as \"you\" in this agreement."
+        },
+        {
+          "type": "paragraph",
+          "text": "1.2 The content of this agreement also includes the \"Privacy Statement\" and the separate agreements and business rules that you need to follow when using certain specific services (hereinafter collectively referred to as \"single agreement\"). Once the above content is published and effective, it is an integral part of this agreement, and your acceptance of any part shall be deemed as your acceptance of this agreement in its entirety."
+        },
+        {
+          "type": "paragraph",
+          "text": "1.3 In view of the needs of software service optimization, upgrades, etc. from time to time, you understand and agree that we will adjust or update this agreement from time to time according to the needs of business operations, and announce or notify you in site announcements, site letters, emails or other written methods; Relevant adjustments or updates will take effect from the date specified in the relevant announcement or notice (if not otherwise specified, the announcement or notice will take effect 7 days later). If you do not accept the relevant adjustment or update, you should immediately stop using all services and inform us in writing; we will deal with the termination of this agreement with you in accordance with the content before the update."
+        },
+        {
+          "type": "paragraph",
+          "text": "1.4 The service of Shenzhen TVT Digital Technology Co., Ltd. under this agreement is based on the \"Shenzhen TVT Digital Technology Co., Ltd.\" brand series of security monitoring equipment (hereinafter referred to as \"equipment\") as the core."
+        },
+        {
+          "type": "paragraph",
+          "text": "Shenzhen TVT Digital Technology Co., Ltd. provide you with The collective name of the services,"
+        },
+        {
+          "type": "paragraph",
+          "text": "through its own distribution and after-sales service system, and Shenzhen TVT Digital Technology Co., Ltd. website, client and other systems, software (hereinafter collectively referred to as the \"software\") . Including but not limited to: \"Shenzhen TVT Digital Technology Co., Ltd.\" series products and peripheral products online transactions and after-sales service (hereinafter referred to as \"mall services\"). Internet software technical services related to the networked operation of our equipment (hereinafter referred to as \"cloud services\"), open components with video capabilities as the core and SaaS application services (hereinafter referred to as \"open platform services\"), etc. We will continue to enrich the use of terminals and the forms of service. Unless otherwise stated to the contrary, this agreement is also automatically applicable."
+        },
+        {
+          "type": "heading",
+          "level": 2,
+          "text": "2. Account registration and management of Shenzhen TVT Digital Technology Co., Ltd."
+        },
+        {
+          "type": "paragraph",
+          "text": "2.1 Our account is a digital identifier for using the service, and its ownership belongs to Shenzhen TVT Digital Technology Co., Ltd. After the user completes the registration/activation process, we will authorize them to use the corresponding account to log in to the software and use our services in accordance with this agreement. Unless we obtain additional written permission from us, the right to use the account only belongs to the person who initially applied for registration/user, and such rights are indivisible, non-transferable, non-sublicensable or permitted to be used by others in any way."
+        },
+        {
+          "type": "paragraph",
+          "text": "2.2 You can apply for a registered account through each of our software for free. You must fill in the relevant registration information (including your legally owned and real-named mobile phone number, etc.) as prompted on the registration page, and set your own password. In addition, you can also use your third-party account to authorize to log in to our software or use our services. You understand and agree that Shenzhen TVT Digital Technology Co., Ltd. will obtain your necessary information from the third party for this purpose, and When necessary, use this as registration information to generate a unique account and establish a binding relationship with your third-party account (subject to your actual authorization)."
+        },
+        {
+          "type": "paragraph",
+          "text": "2.3 You should understand and agree that the account registration information you provide (including the information you provide directly to us and what we obtain from a third party based on your authorization) It is the only evidence to determine the connection between you and Shenzhen TVT Digital Technology Co., Ltd. account and your identity. You must take care of all activities under your account and password and their consequences (including but not limited to signing various agreements online) , Ordering products or opening services, disclosing information, etc.). To this end, you must register truthfully in accordance with relevant laws and regulations and this agreement, use our account correctly, and properly keep and maintain relevant information in a timely manner (including Shenzhen TVT Digital Technology Co., Ltd. account, password, registration information and related information). Authorization code, verification code, dynamic password, etc.)."
+        },
+        {
+          "type": "paragraph",
+          "text": "If you replace, suspend or terminate the use of the above information and/or related equipment, or experience loss, leakage or theft, necessary measures shall be taken in time and inform us to reduce possible losses; you understand and agree that, except for effective judicial decisions, we cannot bear any responsibility for this, and you must bear the relevant losses yourself."
+        },
+        {
+          "type": "paragraph",
+          "text": "2.4 You guarantee that your registration information does not contain any false, wrong, illegal or inappropriate information, and you will strictly abide by relevant laws and regulations, this agreement and other individual agreements when registering and using your account."
+        },
+        {
+          "type": "paragraph",
+          "text": "Otherwise, we have the right to refuse your registration, or restrict, suspend or terminate your right to use your account with a notice deadline for correction, suspension of use, cancellation of registration and other measures; We will also report to the competent government department or disclose it to the public in accordance with the law in the case of fraudulent use of affiliated institutions or registered accounts of social celebrities. you are responsible for the loss that may be caused to you due to the foregoing restrictions, suspension or termination, reporting or disclosure (including but not limited to communication interruption, user information, emails and virtual property and related data, value-added services, products or services, etc.)"
+        },
+        {
+          "type": "paragraph",
+          "text": "2.5 You understand and agree that if you have not logged in for more than 12 consecutive months after registering for an account in Shenzhen TVT Digital Technology Co., Ltd. , we have the right to reclaim the account for the purpose of optimizing management and other purposes."
+        },
+        {
+          "type": "paragraph",
+          "text": "2.6 You should be aware and understand that if your account is cancelled or withdrawn, we will handle the content and information related to the account by itself, including but not limited to deletion, and you should bear the loss or responsibility for failure to back up in time."
+        },
+        {
+          "type": "heading",
+          "level": 2,
+          "text": "3. Services by Shenzhen TVT Digital Technology Co., Ltd."
+        },
+        {
+          "type": "paragraph",
+          "text": "3.1 You know and understand that different services may be provided to you by different legal entities, through different systems or software, and may also exhibit different contents or forms according to the type of account you use, and the network environment, etc.; In addition, we may also set some service usage conditions and/or rules, such as service fees, based on operation or service quality assurance needs."
+        },
+        {
+          "type": "paragraph",
+          "text": "Therefore, we hereby remind you that you should carefully read the specific introduction and usage rules of each service before using it, and carefully judge whether to order or use it. The aforementioned rules of use will be notified to you in the form of this agreement, individual agreement or system description. If there is a conflict of similar terms between a single agreement and this agreement, the single agreement shall prevail within the bounds of the single agreement."
+        },
+        {
+          "type": "paragraph",
+          "text": "3.2 For Shenzhen TVT Digital Technology Co., Ltd. software, we give you a non-transferable and non-exclusive license. You can only use these software and services for the purpose of accessing or using the services; In addition, you must obtain the software from the channels officially announced by Shenzhen TVT Digital Technology Co., Ltd. , and ensure that it is installed correctly and updated in time according to the prompt steps. Otherwise, we cannot guarantee that the relevant software can be used normally, and will not bear any responsibility for the losses caused to you beyond the stipulations of the law."
+        },
+        {
+          "type": "paragraph",
+          "text": "3.3 You should be aware and understand that using the service will consume your terminal equipment processor and bandwidth and other resources, and may incur data traffic, phone calls and other costs. For this, you need to prepare relevant terminal equipment (such as computers, mobile terminals, and necessary network access equipment, etc.) and bear the required expenses (such as telephone fees, Internet access fees, etc.) by yourself,"
+        },
+        {
+          "type": "paragraph",
+          "text": "3.4 Under certain services, we may entrust third-party partners to be responsible for certain specific implementation tasks, such as door-to-door services, third-party calls, etc. We promise to properly supervise and manage our partners, but you should know and agree that when we are unable to provide you with agreed services due to third-party reasons, we can claim exemption from liability within the scope permitted by law, or require such third parties to directly bear related responsibilities to you. Once the third party has fulfilled it, our related responsibilities or obligations will also be terminated."
+        },
+        {
+          "type": "paragraph",
+          "text": "3.5 Service change, suspension, interruption or termination"
+        },
+        {
+          "type": "paragraph",
+          "text": "3.5.1 Shenzhen TVT Digital Technology Co., Ltd. is always changing and improving its services. In view of the particularity of e-commerce activities and network services and to ensure the security of service operations, you understand and agree that we may upgrade or adjust various services at any time, which may lead to changes in some functions and effects, and the unavailability of the old service system, etc. , or you may need to perform separate operations on related browser plug-ins, mobile client software, terminal device software, etc. Related upgrades or adjustments will be released in the form of new service versions, system updates, etc., and you should operate in time according to the prompts to avoid unnecessary losses due to the inability to continue to use the service or the unstable service."
+        },
+        {
+          "type": "paragraph",
+          "text": "3.5.2You understand and agree that we may regularly or irregularly overhaul or maintain the platform or related equipment that supports its services, or replace related cooperative third parties, and this may cause a certain period of service interruption. Regarding these interruptions, we will make an announcement as soon as possible on the website, software or service-related pages of Shenzhen TVT Digital Technology Co., Ltd., or notify you in advance by e-mail, SMS, etc.; except for our unilateral reasons We will not be held responsible for your losses due to deliberate or negligence, and the service period will not be extended (if any)."
+        },
+        {
+          "type": "paragraph",
+          "text": "3.5.3 In view of the particularity of network services, you agree that we can terminate some or all of the services at any time. We will promptly notify you via e-mail, SMS, etc. after terminating some or all of the services, however, we will not be liable for such termination except in the case of your loss caused by our unilateral reason or negligence. In addition, you can also actively terminate this service by canceling your account."
+        },
+        {
+          "type": "paragraph",
+          "text": "3.6 Advertisement"
+        },
+        {
+          "type": "paragraph",
+          "text": "In order to provide you with a timely and comprehensive understanding of the various services of Shenzhen TVT Digital Technology Co., Ltd., you agree that we can send, display advertisements or other other ways to you via SMS, email, or electronic information, either by ourselves or by entrusting a third party. Information (including commercial and non-commercial information) (hereinafter referred to as \"advertisement\"). We promise to carry out advertising business in accordance with the requirements of relevant laws and regulations. At the same time, we remind you to carefully judge the authenticity and reliability of advertisements. Unless clearly stipulated by law, we will not be responsible for the consequences of your actions as a result of this advertisement."
+        },
+        {
+          "type": "paragraph",
+          "text": "3.7 Data back-up"
+        },
+        {
+          "type": "paragraph",
+          "text": "You are responsible for backing up the data stored in this service. If your service is terminated, unless otherwise provided by laws and regulations, we will permanently delete your data from the server and cannot provide or return the data to you."
+        },
+        {
+          "type": "paragraph",
+          "text": "3.8 Third party service"
+        },
+        {
+          "type": "paragraph",
+          "text": "For the convenience of users, we may access third-party websites or services under certain software. You know and understand that unless we specifically say that these websites or services are not provided to you by us, you should make your own judgment on their safety and availability, and bear the relevant risks and responsibilities yourself."
+        },
+        {
+          "type": "heading",
+          "level": 2,
+          "text": "4. Single service usage rules"
+        },
+        {
+          "type": "paragraph",
+          "text": "4.1 Shenzhen TVT Digital Technology Co., Ltd. Cloud Service"
+        },
+        {
+          "type": "paragraph",
+          "text": "4.1.1 Under the cloud service of Shenzhen TVT Digital Technology Co., Ltd., users can add devices to their Shenzhen TVT Digital Technology Co., Ltd. account through our client (or other Shenzhen TVT Digital Technology Co., Ltd. Company-supported equipment), and perform remote operations on the added equipment, including preview, playback, video, and screenshots of the video taken by the equipment, basic services such as real-time intercom through our client and equipment-side personnel, as well as our cloud storage and other value-added services based on specific demand scenarios; among them, some services may only be applied to a specific number or model of equipment, and our actual instructions shall prevail."
+        },
+        {
+          "type": "paragraph",
+          "text": "4.1.2Most value-added services will be provided in the form of pre-paid fees. and after the purchase is successful, return or exchange or replacement of the corresponding account is not supported. In addition to necessary bandwidth and other resources, some value-added services may also have certain requirements for your client settings, communication conditions, etc."
+        },
+        {
+          "type": "paragraph",
+          "text": "We will remind you of the above charging standards and conditions of use through a single agreement or service introduction, ordering instructions, etc. You should read it carefully and order carefully."
+        },
+        {
+          "type": "paragraph",
+          "text": "4.1.3 The cloud service of Shenzhen TVT Digital Technology Co., Ltd. is only for legal, legitimate, and non-commercial destinations. You should ensure that you do not use this service for any illegal, infringing or profit-making activities, and independently and completely assume full responsibility for the behavior of ordering and using this service."
+        },
+        {
+          "type": "paragraph",
+          "text": "4.1.4 In view of the characteristics of the open environment of the Internet, and the equipment itself can be exposed to public places, we especially remind you to pay attention to the safe use of open or public environments, including but not limited to:"
+        },
+        {
+          "type": "paragraph",
+          "text": "（1）Equipment sharing: Certain individual services of Shenzhen TVT Digital Technology Co., Ltd. cloud services allow you to share device video viewing and device control permissions with others. To protect your legitimate rights and interests, we recommend that you only open sharing to users who really have common management needs, such as family members, and carefully control the scope and time of opening;"
+        },
+        {
+          "type": "paragraph",
+          "text": "（2）Live video preview or video screen analysis:"
+        },
+        {
+          "type": "paragraph",
+          "text": "You should be aware that using this feature in an open space may expose you to other people's information content. To keep the public environment in order and avoid unnecessary interference with others, we recommend that you carefully monitor the installation environment of your equipment and enable features only when necessary."
+        },
+        {
+          "type": "paragraph",
+          "text": "At the same time, you should understand and agree that we do not and cannot control how you use it, and that you are responsible for the loss or liability of the use of the features."
+        },
+        {
+          "type": "paragraph",
+          "text": "4.1.5 In addition, you understand and agree that although our cloud services can make you more timely and more convenient to understand the monitoring equipment information and management equipment. However, Shenzhen TVT Digital Technology Co., Ltd. (and the third party commissioned by Shenzhen TVT Digital Technology Co., Ltd., if any) are not on your equipment site. It is not possible to prevent or prevent the triggering event of the message reminder, and it may also cause false alarms due to technical identification or judgement errors;"
+        },
+        {
+          "type": "paragraph",
+          "text": "therefore, you should still handle related matters properly and carefully pay attention to your personal and property safety."
+        },
+        {
+          "type": "paragraph",
+          "text": "4.2 Open platform service"
+        },
+        {
+          "type": "paragraph",
+          "text": "4.2.1 Through an open platform, Shenzhen TVT Digital Technology Co., Ltd. share its powerful video services, intelligent analysis and other technical capabilities with external partners. Users can enhance and extend the services and capabilities of their own applications by accessing our open platform."
+        },
+        {
+          "type": "paragraph",
+          "text": "4.2.2 In order to use the open platform service, you need to submit your subject qualification, application introduction and other service docking information, and pay the corresponding service fee. We will remind you of the above docking requirements, charging standards, etc. through a single agreement or service introduction and ordering instructions. You should read it carefully and order carefully."
+        },
+        {
+          "type": "paragraph",
+          "text": "4.2.3 You should understand and agree that under the open platform service, we only provide you with various access or technical support services as a neutral platform service provider. Then open platform service is the provider of your application, nor does it make any express or implied guarantee for the legality and validity of your application, you are responsible for all qualifications, licenses, costs, and expenses required for application release, operation, etc., and bear related responsibilities."
+        },
+        {
+          "type": "heading",
+          "level": 2,
+          "text": "5. Behavior specification"
+        },
+        {
+          "type": "paragraph",
+          "text": "5.1 You agree to abide by the \"seven bottom lines\" of laws and regulations, the socialist system, national interests, citizens' legitimate interests, public order, social morality and information authenticity, etc. Do not use our account or website, software and services to make, copy, publish, or disseminate any content that violates laws and regulations, or infringes the legitimate rights and interests of other users or third parties, including but not limited to:"
+        },
+        {
+          "type": "paragraph",
+          "text": "5.1.1 Publish, transmit, disseminate, and store content that violates national laws and regulations:"
+        },
+        {
+          "type": "paragraph",
+          "text": "(1) Violating the basic principles established by the Constitution;"
+        },
+        {
+          "type": "paragraph",
+          "text": "(2) Endangering national security, leaking state secrets, subverting state power, and undermining national unity;"
+        },
+        {
+          "type": "paragraph",
+          "text": "(3) Damage to national honor and interests;"
+        },
+        {
+          "type": "paragraph",
+          "text": "(4) Inciting ethnic hatred, ethnic discrimination, and undermining ethnic unity;"
+        },
+        {
+          "type": "paragraph",
+          "text": "(5) Undermining the state's religious policies and promoting cults and feudal superstitions;"
+        },
+        {
+          "type": "paragraph",
+          "text": "(6) Spreading rumors, disturbing social order, and undermining social stability;"
+        },
+        {
+          "type": "paragraph",
+          "text": "(7) Spreading obscenity, pornography, gambling, violence, terror or instigating crime;"
+        },
+        {
+          "type": "paragraph",
+          "text": "(8) Insulting or slandering others, infringing on the lawful rights and interests of others;"
+        },
+        {
+          "type": "paragraph",
+          "text": "(9) Inciting illegal assemblies, associations, processions, demonstrations, gathering crowds to disrupt social order;"
+        },
+        {
+          "type": "paragraph",
+          "text": "(10) Activities in the name of illegal civil organizations;"
+        },
+        {
+          "type": "paragraph",
+          "text": "(11) Contains other content prohibited by laws and administrative regulations;"
+        },
+        {
+          "type": "paragraph",
+          "text": "5.1.2 Publish, transmit, disseminate, and store content that infringes others' legal rights such as reputation rights, portrait rights, intellectual property rights, and trade secrets;"
+        },
+        {
+          "type": "paragraph",
+          "text": "5.1.3 Involving the privacy, personal information or data of others;"
+        },
+        {
+          "type": "paragraph",
+          "text": "5.1.4 Publish, transmit, disseminate harassment, advertising information, excessive marketing information and spam or contain any sexual or sexual hints;"
+        },
+        {
+          "type": "paragraph",
+          "text": "5.1.5 Other information that violates laws, regulations, policies, public order and good customs, social ethics, or interferes with the normal operation of Shenzhen TVT Digital Technology Co., Ltd. and infringes on the legitimate rights and interests of other users or third parties;"
+        },
+        {
+          "type": "paragraph",
+          "text": "5.2 You agree to use the website, software and services in accordance with this agreement, individual agreements, system rules, etc., that you will not engage in any acts that damage the service system or infringe upon the legal rights of Shenzhen TVT Digital Technology Co., Ltd., including but not limited to:"
+        },
+        {
+          "type": "paragraph",
+          "text": "5.2.1 Log in or use our website, software and services through third-party compatible software or systems that are not developed, authorized or approved by Shenzhen TVT Digital Technology Co., Ltd., Use plug-ins that are not developed, authorized or certified by Shenzhen TVT Digital Technology Co., Ltd. for our website, software and services;"
+        },
+        {
+          "type": "paragraph",
+          "text": "5.2.2 Delete all copyright information and content on the software and other copies of Shenzhen TVT Digital Technology Co., Ltd.;"
+        },
+        {
+          "type": "paragraph",
+          "text": "5.2.3 Reverse engineering, reverse assembly and reverse compilation of Shenzhen TVT Digital Technology Co., Ltd. software;"
+        },
+        {
+          "type": "paragraph",
+          "text": "5.2.4 Without our written consent, conducting unauthorized implementation of Shenzhen TVT Digital Technology Co., Ltd. website and software-related information includes but not limited to the following acts: renting, lending, copying, modifying, linking, reprinting, compiling, publishing, publishing, establishing mirror sites. Unauthorized use of Shenzhen TVT Digital Technology Co., Ltd. website and software to develop related derivative products, works, services, plug-ins, plug-ins, compatibility, interconnection, etc.;"
+        },
+        {
+          "type": "paragraph",
+          "text": "5.2.5 Obtain information or services related to the website and software of Shenzhen TVT Digital Technology Co., Ltd. by creating false identities, misleading, deceiving, etc.;"
+        },
+        {
+          "type": "paragraph",
+          "text": "5.2.6 Conduct any behavior that endangers our website and software or uses the website and software of Shenzhen TVT Digital Technology Co., Ltd. to endanger computer network security."
+        },
+        {
+          "type": "paragraph",
+          "text": "Including but not limited to:"
+        },
+        {
+          "type": "paragraph",
+          "text": "Use unauthorized website and software related data of Shenzhen TVT Digital Technology Co., Ltd. or enter unauthorized website and software server/account of Shenzhen TVT Digital Technology Co., Ltd.; Unauthorized access to the public computer network or the computer system of others to delete, or modify information; Increase the storage information of the website and software of Shenzhen TVT Digital Technology Co., Ltd.; Without permission, attempt to probe, scan, or test the software system of Shenzhen TVT Digital Technology Co., Ltd. or use the website and software of Shenzhen TVT Digital Technology Co., Ltd. to detect, scan, or test network weaknesses or implement other violations of network security behavior; Attempt to interfere or disrupt the normal operation of the software system or website, use the Shenzhen TVT Digital Technology Co., Ltd. website and software to deliberately spread malicious programs or viruses, and other acts that disrupt and interfere with normal network information services."
+        },
+        {
+          "type": "paragraph",
+          "text": "5.2.7 Other use of the website, software and other services provided by Shenzhen TVT Digital Technology Co., Ltd. in any illegal way, for any illegal purpose, or in any way inconsistent with this agreement."
+        },
+        {
+          "type": "paragraph",
+          "text": "5.3 You fully understand and agree that you are responsible for all actions under your registered Shenzhen TVT Digital Technology Co., Ltd. account, including any content you publish and any consequences arising therefrom. At the same time, you should understand and agree that we cannot control your use, but we have the right to refuse to provide services for illegal or infringing use.Therefore, if we find or receive complaints, reports, etc., that your use of our services does not comply with laws and regulations or does not comply with this agreement,"
+        },
+        {
+          "type": "paragraph",
+          "text": "We have the right to independently determine your behavior and applicable rules, and deal with them accordingly, including warnings, refusal to publish, deleting information, restricting functions, suspending updates, suspending services, terminating services until closing the account, we have the right to report to relevant regulatory authorities or state agencies, request compensation for losses, etc., and keep relevant records;"
+        },
+        {
+          "type": "paragraph",
+          "text": "If your aforementioned actions cause any third party to file a claim, you must also bear full responsibility. In addition, you should be aware and understand that in addition to the information provided by the complaining and reporting party, our system records may also serve as relevant evidence of your violation of the law or this agreement."
+        },
+        {
+          "type": "paragraph",
+          "text": "5.4 If you find that other users have violated the law or this agreement, such as uploading and publishing illegal and infringing content while using the services of Shenzhen TVT Digital Technology Co., Ltd. , you can contact us directly, and we will verify and deal with it as soon as possible."
+        },
+        {
+          "type": "heading",
+          "level": 2,
+          "text": "6. User information protection"
+        },
+        {
+          "type": "paragraph",
+          "text": "6.1 Protecting user information security is a basic policy of Shenzhen TVT Digital Technology Co., Ltd. If you are an individual user, we will collect, store, use, disclose and protect your personal information in accordance with the \"Privacy Statement\", and protect your rights to access, correct, delete, and cancel your personal information. If you are a corporate user, we will protect your trade secrets in accordance with the law and will not provide them to the public without your consent."
+        },
+        {
+          "type": "paragraph",
+          "text": "6.2 Shenzhen TVT Digital Technology Co., Ltd. attaches great importance to the protection of personal information of minors. We remind once again that if you are a minor under the age of 18, you must sign this agreement, use the service or provide us with personal information with the consent of your guardian; If your guardian does not agree with you to perform the foregoing operations, please stop using our services immediately and notify us in time so that we can take corresponding measures. If you are the guardian of a minor and believe that your guardian has used our services or provided us with a personal information account without consent, please also inform us in time, and we will close your account or delete information according to your requirements."
+        },
+        {
+          "type": "heading",
+          "level": 2,
+          "text": "7. Intellectual property and content, trademark ownership"
+        },
+        {
+          "type": "paragraph",
+          "text": "7.1Shenzhen TVT Digital Technology Co., Ltd. respects intellectual property rights and pays attention to protecting the rights enjoyed by users. In the process of using our services, you may provide us with content through various methods such as uploading and publishing. In this case, you still enjoy the complete intellectual property rights of such content."
+        },
+        {
+          "type": "paragraph",
+          "text": "7.2 Content provided by Shenzhen TVT Digital Technology Co., Ltd. through website and software, including but not limited to: text, software, sound, photos, videos, graphics, etc. uploaded/provided by non-users. All these contents belong to us and related rights holders, and are protected by copyright, trademark, patent and other property ownership laws."
+        },
+        {
+          "type": "paragraph",
+          "text": "Therefore, you can only use these contents under the authorization of us and relevant rights holders, and you cannot copy or recreate these contents without authorization, or create derivative products related to the contents."
+        },
+        {
+          "type": "paragraph",
+          "text": "7.3 Shenzhen TVT Digital Technology Co., Ltd. and other logos of Shenzhen TVT Digital Technology Co., Ltd. are trademarks of Shenzhen TVT Digital Technology Co., Ltd. (hereinafter referred to as \"Shenzhen TVT Digital Technology Co., Ltd. logo\" \"). Without our prior written consent, you are not allowed to display or use the Shenzhen TVT Digital Technology Co., Ltd. logo in any way or perform other processing. Nor should you indicate to others that you have the right to display, use, or otherwise have the right to deal with Shenzhen TVT Digital Technology Co., Ltd. logo."
+        },
+        {
+          "type": "paragraph",
+          "text": "7.4 The intellectual property rights of the above and any other content contained in this service are protected by laws and regulations. No one may use or create related derivative works in any form without the written permission of Shenzhen TVT Digital Technology Co., Ltd., users or related rights holders,"
+        },
+        {
+          "type": "heading",
+          "level": 2,
+          "text": "8. Disclaimer"
+        },
+        {
+          "type": "paragraph",
+          "text": "8.1You understand and agree that the website and software of Shenzhen TVT Digital Technology Co., Ltd., like most websites and Internet software, may be affected by many factors."
+        },
+        {
+          "type": "paragraph",
+          "text": "Including but not limited to user reasons, network service quality, social environment, etc.; it may also be disturbed by various security issues,including but not limited to illegal use of user information by others to carry out actual harassment; other software downloaded and installed by users or other websites visited may contain viruses, Trojan horse programs or other malicious programs, which threaten your terminal device information and data security, and then affect the normal use of the website and software of Shenzhen TVT Digital Technology Co., Ltd. Wait."
+        },
+        {
+          "type": "paragraph",
+          "text": "Therefore, you should strengthen the awareness of information security and personal information protection, and pay attention to password protection to avoid losses."
+        },
+        {
+          "type": "paragraph",
+          "text": "8.2 Maintaining the website, software security and normal use is our joint responsibility and yours. We will reasonably and prudently take necessary technical measures to protect the security of your information and data in accordance with industry standards. However, you acknowledge and agree that we cannot provide a complete guarantee in this regard."
+        },
+        {
+          "type": "paragraph",
+          "text": "8.3The website or software of Shenzhen TVT Digital Technology Co., Ltd. may include products or services provided by third parties. When you use products or services provided by a third party, in addition to complying with the provisions of this agreement, you should also comply with the third party's user agreement. We and the third party shall each be responsible for any disputes that may arise within the scope stipulated and agreed by law."
+        },
+        {
+          "type": "paragraph",
+          "text": "8.4 You understand and agree that the use of the services of Shenzhen TVT Digital Technology Co., Ltd. or the acquisition of any information and content through the services of Shenzhen TVT Digital Technology Co., Ltd. is based on your independent judgment. The advice or guidance we may provide regarding the ordering or use of services will not replace your independent judgment at any time, nor should it be understood as our commitment or guarantee. You should bear all the risks caused by the aforementioned actions, including the risks arising from the reliance on the correctness, completeness or practicality of the content, etc.; we cannot and will not bear them unless there is an effective judicial decision. Any responsibility."
+        },
+        {
+          "type": "paragraph",
+          "text": "8.5 You agree that if force majeure causes the operation of the website or software of Shenzhen TVT Digital Technology Co., Ltd. to be interrupted or terminated, we shall not bear any responsibility. The force majeure referred to in this agreement includes: natural disasters, changes in laws and regulations or government orders, and specific reasons due to the characteristics of network services, such as failures of domestic and foreign basic telecommunications operators, computer or Internet-related technical defects, restrictions on Internet coverage, computer viruses , Hacker attacks and other factors, and other unforeseen, unavoidable and insurmountable objective circumstances within the legal scope."
+        },
+        {
+          "type": "heading",
+          "level": 2,
+          "text": "9. Third-party software or technology"
+        },
+        {
+          "type": "paragraph",
+          "text": "9.1 Shenzhen TVT Digital Technology Co., Ltd. website may use third-party technology, Shenzhen TVT Digital Technology Co., Ltd. software may also use third-party software or technology (including open source code and public domain code that Shenzhen TVT Digital Technology Co., Ltd. software may use, the same below), this use has been legally authorized."
+        },
+        {
+          "type": "paragraph",
+          "text": "9.2 The website or software of Shenzhen TVT Digital Technology Co., Ltd. incorporates third-party software or technology, we will, in accordance with relevant regulations or agreements, package relevant agreements or other documents, as well as possible attachments to this agreement, in a specific folder in the software installation package. We might display them through open source software pages, etc. They may be expressed in \"software license agreement\", \"licensing agreement\", \"open source code license\" or other forms. The aforementioned related agreements, other documents and web pages displayed in various forms are an integral part of this agreement and have the same legal effect as this agreement. You should comply with these requirements. Otherwise, you may face lawsuits, fines or other sanctions brought by the third party or state agency against you, and you shall bear the relevant legal responsibilities yourself."
+        },
+        {
+          "type": "paragraph",
+          "text": "9.3 Any dispute arising from third-party software or technology used by Shenzhen TVT Digital Technology Co., Ltd. website or software shall be resolved by the third party. Except for effective judicial decisions, we do not assume any responsibility. In addition, we do not provide customer service support for third-party software or technologies. If you need support, please contact the third party."
+        },
+        {
+          "type": "heading",
+          "level": 2,
+          "text": "10. Notification"
+        },
+        {
+          "type": "paragraph",
+          "text": "10.1 Shenzhen TVT Digital Technology Co., Ltd. may use one or more of web announcements, web prompts, e-mail addresses, mobile phone text messages, regular mail transmission, account station letters, etc., to send you about the use of the service Various rules, notices, tips and other types of information. Once such information is sent, it shall be deemed to have been delivered and shall be binding on you. If you do not accept it, you should immediately stop using the relevant service and inform us in writing."
+        },
+        {
+          "type": "paragraph",
+          "text": "10.2 If you have not received relevant rules, notices, tips and other information due to errors in the e-mail address, mobile phone number, mailing address and other information you provided, you agree to still be deemed to have received the relevant information and are bound by it, and all consequences And the responsibility is borne by you."
+        },
+        {
+          "type": "paragraph",
+          "text": "10.3 If you need to notify us of related matters under this agreement, please notify us in writing in accordance with the officially announced contact information, which is:"
+        },
+        {
+          "type": "paragraph",
+          "text": "Email: tsrc@tvt.net.cn"
+        },
+        {
+          "type": "paragraph",
+          "text": "Regular mail: 23 / F, block B4, building 9, Shenzhen Bay science and technology ecological park, Yuehai street, Nanshan District, Shenzhen City, Guangdong Province"
+        },
+        {
+          "type": "heading",
+          "level": 2,
+          "text": "11. Applicable law and dispute resolution"
+        },
+        {
+          "type": "paragraph",
+          "text": "11.1 This clause applies to the laws of the People's Republic of China, and excludes the application of all conflicting laws."
+        },
+        {
+          "type": "paragraph",
+          "text": "11.2 The place where this agreement was signed is Nanshan District, Shenzhen. In the event of a dispute, you and Shenzhen TVT Digital Technology Co., Ltd. agree to submit the dispute to the court with jurisdiction where this agreement is signed. If there is a conflict between a single agreement and this agreement on the content of the jurisdiction agreement, the single agreement shall prevail within the bounds of the single agreement."
+        },
+        {
+          "type": "heading",
+          "level": 2,
+          "text": "12. Others"
+        },
+        {
+          "type": "paragraph",
+          "text": "12.1 Shenzhen TVT Digital Technology Co., Ltd. failure to exercise, fail to exercise or not fully exercise the rights enjoyed by this agreement or in accordance with the law shall not be regarded as a waiver of this right, nor will it affect our future exercise of this right ."
+        },
+        {
+          "type": "paragraph",
+          "text": "12.2 If any clause in this agreement is completely or partially invalid or unenforceable for whatever reason, the remaining clauses of this agreement shall still be valid and binding, and both you and we shall try to get the original intention set by the clause accomplish."
+        },
+        {
+          "type": "paragraph",
+          "text": "12.3 The titles, abbreviations or definitions in this agreement are provided for convenience only and shall not be used as a basis for interpreting this agreement."
+        },
+        {
+          "type": "paragraph",
+          "text": "12.4 If you have any questions about this agreement, please contact the customer service center of Shenzhen TVT Digital Technology Co., Ltd., and we will give necessary explanation or help in time."
+        }
+      ]
+    },
+    {
+      "locale": "en",
+      "kind": "privacy",
+      "source_reference": "agreement/PrivacyStatement_en.html",
+      "source_sha256": "e2f542f723b332188db98d428a49b15d5430b4b3e2722338b2df8aed31882f1b",
+      "source_bytes": 47981,
+      "content_sha256": "3bfce22a08d8cfc44e4b5863a1988c6f39d4255f78bcfb9421d39d01d090079a",
+      "blocks": [
+        {
+          "type": "heading",
+          "level": 2,
+          "text": "SuperLive Plus Privacy Statement"
+        },
+        {
+          "type": "paragraph",
+          "text": "Issuance/Effective Date: March 26, 2026"
+        },
+        {
+          "type": "heading",
+          "level": 2,
+          "text": "Overview"
+        },
+        {
+          "type": "paragraph",
+          "text": "Thank you for trusting and using our product \"SuperLive Plus\"(hereinafter referred to as \"This Application\") . We fully respect your right to privacy, so we hereby formulate this application \"SuperLive Plus Privacy Statement\" (hereinafter referred to as \"this Statement\") to help you understand how we collect, use, disclose, protect, store, and transmit your personal data. Please read this Statement carefully. If you have any questions, please let us know."
+        },
+        {
+          "type": "paragraph",
+          "text": "Personal information refers to various information recorded electronically or by other means that can identify a natural person alone or in combination with other information. This Statement explains how we process your personal information, and the processing methods for specific products or services will be detailed in the corresponding privacy notices or supplementary statements."
+        },
+        {
+          "type": "paragraph",
+          "text": "This Statement will help you understand the following:"
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            [
+              {
+                "type": "paragraph",
+                "text": "How we collect and use your personal information"
+              }
+            ],
+            [
+              {
+                "type": "paragraph",
+                "text": "How we use Cookies and similar technologies"
+              }
+            ],
+            [
+              {
+                "type": "paragraph",
+                "text": "How we entrust the processing, share, transfer, and publicly disclose your personal information"
+              }
+            ],
+            [
+              {
+                "type": "paragraph",
+                "text": "How we protect your personal information"
+              }
+            ],
+            [
+              {
+                "type": "paragraph",
+                "text": "How you can manage your personal information"
+              }
+            ],
+            [
+              {
+                "type": "paragraph",
+                "text": "How we handle minors' personal information"
+              }
+            ],
+            [
+              {
+                "type": "paragraph",
+                "text": "Third-party links and their services"
+              }
+            ],
+            [
+              {
+                "type": "paragraph",
+                "text": "How your personal information is transferred globally"
+              }
+            ],
+            [
+              {
+                "type": "paragraph",
+                "text": "Providing you with other additional services"
+              }
+            ],
+            [
+              {
+                "type": "paragraph",
+                "text": "Image Push Encryption"
+              }
+            ],
+            [
+              {
+                "type": "paragraph",
+                "text": "Third-party products and services"
+              }
+            ]
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 2,
+          "text": "I. How We Collect and Use Your Personal Information"
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            [
+              {
+                "type": "paragraph",
+                "text": "Registration, login, and account management services"
+              }
+            ]
+          ]
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            [
+              {
+                "type": "paragraph",
+                "text": "(1) To provide registration and login services, we need you to provide an account (email address/phone number) and password to complete account creation and login authentication, ensuring that you can use our services normally."
+              }
+            ],
+            [
+              {
+                "type": "paragraph",
+                "text": "(2) For the convenience of account management, you can choose to provide avatar and username (nickname or real name) information according to your needs; we offer two common login methods: email and phone number. If you need both, you can choose to bind your email address and phone number; we also provide a more convenient login method, and you can choose to bind your account with third-party accounts (WeChat/Google/Facebook). Please note that this function is subject to your voluntary choice. If you do not use these functions or provide this information, it will not affect your normal use of this application."
+              }
+            ],
+            [
+              {
+                "type": "paragraph",
+                "text": "(3) When modifying or resetting your password, we need you to provide your user password, which is necessary information to realize this function. If you refuse to provide it, you will not be able to successfully modify or reset your password."
+              }
+            ]
+          ]
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            [
+              {
+                "type": "paragraph",
+                "text": "Device management services"
+              }
+            ]
+          ]
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            [
+              {
+                "type": "paragraph",
+                "text": "(1) To provide device management services, we will collect your device's SN number. The purpose is to allow you to modify the device name and manage device configurations for the device you select. Refusing to provide this information will prevent you from using the device management service normally."
+              }
+            ],
+            [
+              {
+                "type": "paragraph",
+                "text": "(2) This application provides multiple ways to add devices, including scanning a QR code to add a device, searching for a device in the local area network, and manually entering to add a device; when you use different methods to add a device, we will collect your device's SN number, device verification code, device password, device IP address, and mobile terminal WIFI information. The purpose is to add the device to your account for your management of the device. Refusing to provide this information will prevent you from using the device addition service normally. When you use the scan-to-add function, we need you to provide camera and storage/gallery permissions to complete the device addition."
+              }
+            ],
+            [
+              {
+                "type": "paragraph",
+                "text": "(3) When you need to share a device with other relevant persons, we will collect the relevant person's account (email/phone number). If you refuse to provide it, you will not be able to share it with others; however, this will not affect your normal use of other functions of this application."
+              }
+            ],
+            [
+              {
+                "type": "paragraph",
+                "text": "(4) To implement the cloud upgrade function, we will collect the device's SN number to identify the devices that need to be upgraded and ensure the security of your product. If you refuse to provide this information, you will not be able to use the cloud upgrade function, but it will not affect your normal use of other functions."
+              }
+            ]
+          ]
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            [
+              {
+                "type": "paragraph",
+                "text": "Cloud services"
+              }
+            ]
+          ]
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            [
+              {
+                "type": "paragraph",
+                "text": "(1) When you use cloud services, to ensure your normal use of our services, maintain the security of our service operations, and protect your account security, we will collect your mobile terminal device information, including device model, terminal application identifier, terminal identifier (Android_ID, ICCID, IDFA, OAID), operating system version number, IP address, application installation list/application list, version number of this application software, mobile terminal log information (service failure information, client failure information), smart IoT hardware device information (MAC address, device serial number, device model), and smart IoT hardware log information. Such information is basic information that must be collected to provide services."
+              }
+            ],
+            [
+              {
+                "type": "paragraph",
+                "text": "(2) If you use the cloud storage function, we will collect the audio and video data of the front-end network camera devices connected under this device and store them on the cloud storage server, and the audio and video data will be encrypted. Please note that this function is subject to your voluntary choice. If you do not use these functions or provide this information, it will not affect your normal use of other functions."
+              }
+            ]
+          ]
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            [
+              {
+                "type": "paragraph",
+                "text": "To implement the message push function, we will collect event notification information (such as the SN number of the alarm device, alarm pictures, personnel/vehicle identification information related to face database management and license plate database management, etc.) and store it on the cloud server, and the relevant personal information will be encrypted. If you refuse to provide this information, you will not be able to use the message push function, but it will not affect your normal use of other functions."
+              }
+            ]
+          ]
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            [
+              {
+                "type": "paragraph",
+                "text": "To improve your user experience, you can choose to enable the \"User Experience Program\". We will collect your mobile terminal device information (model, system version, APP version, APPID, number of CPU cores, operator number, current memory used by the APP, APP name, APP bundleID/package name, operating system language), account (email address/phone number), username (nickname or real name), and information about the relevant devices you manage (device SN number, device model, device name)."
+              }
+            ]
+          ]
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            [
+              {
+                "type": "paragraph",
+                "text": "Site services"
+              }
+            ]
+          ]
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            [
+              {
+                "type": "paragraph",
+                "text": "(1) To implement site management, we will collect the contact person's name, phone number, region, and detailed address related to the site. Refusing to provide this information will prevent you from using the site management service normally."
+              }
+            ],
+            [
+              {
+                "type": "paragraph",
+                "text": "(2) To implement authorizationservices and delivery management, we will collect the relevant person's account (phone number/email), region, and the SN number of the devices related to authorization/delivery. If you refuse to provide this information, you will not be able to use this function, but it will not affect your normal use of other functions."
+              }
+            ]
+          ]
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            [
+              {
+                "type": "paragraph",
+                "text": "We need to collect the orientation sensor of your mobile device for automatic switching between horizontal and vertical screens and fisheye VR scenes; we collect the light intensity sensor of your mobile device for the code scanning function and face addition light sensing. If you refuse to provide this information, you will not be able to use this function, but it will not affect your normal use of other functions."
+              }
+            ]
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "Please note:"
+        },
+        {
+          "type": "paragraph",
+          "text": "Our product services are diversified, and the types and scopes of personal information collected and used for different services will vary. We will only collect personal information corresponding to the service functions you purchase or use. If you do not use or purchase any of the above functions, we will never and cannot collect personal information related to that function."
+        },
+        {
+          "type": "heading",
+          "level": 2,
+          "text": "II. How We Use Cookies and Similar Technologies"
+        },
+        {
+          "type": "paragraph",
+          "text": "Devices, mobile applications, and Windows applications may use local storage technologies such as Cookies, pixel tags, and web beacons. We treat information collected through Cookies and similar technologies as non-personal information. However, if local laws regard IP addresses or similar identification marks as personal information, we will also treat such identification marks as personal information."
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            [
+              {
+                "type": "paragraph",
+                "text": "Cookies"
+              }
+            ]
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "A Cookie is a plain text file stored by a web server on a computer or mobile device. The content of a Cookie can only be retrieved or read by the server that created it. Each Cookie is unique to your web browser or mobile application. Cookies usually contain an identifier, site name, and some numbers and characters."
+        },
+        {
+          "type": "paragraph",
+          "text": "We sometimes store Cookies on computers or mobile devices. The purpose of enabling Cookies is to improve the user experience, including:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            [
+              {
+                "type": "paragraph",
+                "text": "(1) Login and authentication. When you log in to a website using your account, with the help of Cookies, you can jump directly from one page of the website to another without re-logging in on each page;"
+              }
+            ],
+            [
+              {
+                "type": "paragraph",
+                "text": "(2) Storing your preferences and settings. The website can use Cookies to save settings, such as the language of the computer or mobile device, font size, shopping cart, and other browsing preferences;"
+              }
+            ],
+            [
+              {
+                "type": "paragraph",
+                "text": "(3) Interest-based advertising. We use Cookies to collect information about your online activities and discover your interests, and provide you with advertisements that are most relevant to you."
+              }
+            ],
+            [
+              {
+                "type": "paragraph",
+                "text": "(4) Statistical analysis. With the help of Cookies, we can collect information about your use of our websites and other applications, such as recording a user's single visit (using session Cookies) or multiple visits (using persistent Cookies)."
+              }
+            ]
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "We will not use Cookies for any purposes other than those described in this Statement. You can manage or delete Cookies according to your preferences. For details, please see AboutCookies.org . You can clear all Cookies stored on your computer, and most web browsers have functions to block Cookies."
+        },
+        {
+          "type": "paragraph",
+          "text": "If you clear Cookies, you will need to change user settings yourself each time you visit our website. Please also note that some of our services may must use Cookies, and disabling Cookies may affect your use of all or part of the functions of these services."
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            [
+              {
+                "type": "paragraph",
+                "text": "Web beacons/pixel tags"
+              }
+            ]
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "In addition to Cookies, we and some third parties will use web beacons and pixel tags on websites. A web beacon is usually an electronic image embedded in a website or email, which can be used to identify Cookies on your device when you view a web page or email. Pixel tags allow us to send emails in a format you can read and enable us to know whether the email has been opened."
+        },
+        {
+          "type": "paragraph",
+          "text": "We and some third parties use such technologies for various purposes, including analyzing service usage (in conjunction with Cookies) and providing content and advertisements that better meet your needs. For example, emails we send to you may contain click URLs linked to website content. If you click the link, we will track the click to help us understand your preferences and improve customer service. If you do not want your activities to be tracked in this way, you can unsubscribe from our mailing list at any time."
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            [
+              {
+                "type": "paragraph",
+                "text": "Other local storage"
+              }
+            ]
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "We and some third parties may use other local storage technologies in some services, such as local shared objects (also known as \"Flash Cookies\") and HTML5 local storage. These technologies are similar to the aforementioned Cookies. They are also stored on your device and can be used to record certain information about your activities and preferences. However, these technologies may use different devices from standard Cookies, so you may not be able to control them using standard browser tools and settings. For instructions on disabling or deleting information contained in Flash Cookies, please click here."
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            [
+              {
+                "type": "paragraph",
+                "text": "Do Not Track"
+              }
+            ]
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "Many web browsers have a Do Not Track function, which can send Do Not Track requests to websites. Currently, major internet standards organizations have not established relevant policies to regulate how websites should respond to such requests. If your browser enables Do Not Track, all our websites will respect your choice."
+        },
+        {
+          "type": "heading",
+          "level": 2,
+          "text": "III. How We Entrust the Processing, Share, Transfer, and Publicly Disclose Your Personal Information"
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            [
+              {
+                "type": "paragraph",
+                "text": "Entrusted processing"
+              }
+            ]
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "In some cases, we will entrust other companies to process your personal information on our behalf. For example, companies that process hotlines, send emails, and provide technical support on our behalf. These companies can only use your personal information to provide services to you on our behalf."
+        },
+        {
+          "type": "paragraph",
+          "text": "We will sign strict confidentiality agreements or personal information processing clauses with the entrusted parties, requiring them to process personal information in accordance with this Statement and take relevant confidentiality and security measures."
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            [
+              {
+                "type": "paragraph",
+                "text": "Sharing"
+              }
+            ]
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "Sharing refers to the process in which we provide personal information to other personal information controllers, and both parties have independent control over the personal information. We will not share your personal information with external parties except in the following cases:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            [
+              {
+                "type": "paragraph",
+                "text": "(1) Sharing with explicit consent: After obtaining your explicit consent, we will share the information within the scope of your authorization with the third party you specify;"
+              }
+            ],
+            [
+              {
+                "type": "paragraph",
+                "text": "(2) Sharing under legal circumstances: We may share your personal information in accordance with legal provisions, litigation dispute resolution needs, or at the request of administrative or judicial authorities in accordance with the law;"
+              }
+            ],
+            [
+              {
+                "type": "paragraph",
+                "text": "(3) Sharing with our affiliates: Your information may be shared with our affiliates. We will only share your information within our affiliates for specific, clear, and legal purposes, and will only share the information necessary to provide services. For example, when registering an account, we need to verify the global uniqueness of the account to be registered."
+              }
+            ],
+            [
+              {
+                "type": "paragraph",
+                "text": "(4) Sharing with business partners: We may share your order information, account information, device information, and location information with partners and other third parties to ensure the smooth provision of services to you. However, we will only share your personal information for legal, legitimate, necessary, specific, and clear purposes, and will only share the personal information necessary to provide services. Our partners include:"
+              }
+            ],
+            [
+              {
+                "type": "paragraph",
+                "text": "① Third-party sellers and third-party developers: Some of our services are directly provided to you by third parties, and we must share transaction-related information with third parties to meet your needs to purchase goods or services from them. For example, when you purchase goods from other developers in the app market, we must share your necessary information with the developers to complete the transaction."
+              }
+            ],
+            [
+              {
+                "type": "paragraph",
+                "text": "② Suppliers of goods or technical services. We may share your personal information with third parties that support our functions, including third parties that provide us with goods, infrastructure technical services, logistics and distribution services, payment services, and data processing services. The purpose of our sharing this information is to realize the functions of the services. For example, we must share your order information with logistics service providers to arrange delivery; or we need to share your order number and order amount with third-party payment institutions to enable them to confirm your payment instructions and complete the payment."
+              }
+            ]
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "Under 3-4 above, we will sign strict confidentiality agreements with companies, organizations, and individuals with whom we share personal information, requiring them to process personal information in accordance with this Statement and take relevant confidentiality and security measures."
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            [
+              {
+                "type": "paragraph",
+                "text": "Transfer"
+              }
+            ]
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "Transfer refers to the process of transferring the control of personal information from us to another personal information controller. We will not transfer your personal information to any company, organization, or individual except in the following cases:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            [
+              {
+                "type": "paragraph",
+                "text": "(1) Transfer with explicit consent: After obtaining your explicit consent, we will transfer your personal information to other parties;"
+              }
+            ],
+            [
+              {
+                "type": "paragraph",
+                "text": "(2) In the case ofa merger, acquisition, or bankruptcy liquidation, if personal information transfer is involved, we will require the new company or organization that holds your personal information to continue to be bound by this Statement. Otherwise, we will require the company or organization to re-request your authorization and consent."
+              }
+            ]
+          ]
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            [
+              {
+                "type": "paragraph",
+                "text": "Public disclosure"
+              }
+            ]
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "We will only publicly disclose your personal information in the following cases:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            [
+              {
+                "type": "paragraph",
+                "text": "(1) After obtaining your explicit consent;"
+              }
+            ],
+            [
+              {
+                "type": "paragraph",
+                "text": "(2) Public disclosure based on legal or reasonable grounds: We may publicly disclose your information when required by law, legal procedures, litigation, or public and government authorities;"
+              }
+            ]
+          ]
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            [
+              {
+                "type": "paragraph",
+                "text": "Exceptions to obtaining authorization and consent in advance for sharing, transferring, and publicly disclosing personal information"
+              }
+            ]
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "In the following circumstances, sharing, transferring, or publicly disclosing your personal information does not require your prior authorization and consent:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            [
+              {
+                "type": "paragraph",
+                "text": "(1) Related to national security and national defense security;"
+              }
+            ],
+            [
+              {
+                "type": "paragraph",
+                "text": "(2) Related to public security, public health, and major public interests;"
+              }
+            ],
+            [
+              {
+                "type": "paragraph",
+                "text": "(3) Related to criminal investigation, prosecution, trial, and execution of judgments;"
+              }
+            ],
+            [
+              {
+                "type": "paragraph",
+                "text": "(4) For the protection of your or other individuals' major legitimate rights and interests,such as life and property, but it is difficult to obtain the person's consent;"
+              }
+            ],
+            [
+              {
+                "type": "paragraph",
+                "text": "(5) Personal information that you have publicly disclosed to the public;"
+              }
+            ],
+            [
+              {
+                "type": "paragraph",
+                "text": "(6) Collecting personal information from legally publicly disclosed information, such as legal news reports, government information disclosure, and other channels."
+              }
+            ]
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "According to legal provisions, sharing or transferring anonymized personal information, and ensuring that the data recipient cannot restore or re-identify the personal information subject, is not considered as external sharing, transfer, or public disclosure of personal information. The storage and processing of such data will not require additional notification to you and obtaining your consent."
+        },
+        {
+          "type": "heading",
+          "level": 2,
+          "text": "IV. How We Protect Your Personal Information"
+        },
+        {
+          "type": "paragraph",
+          "text": "We attach great importance to the security of personal information and take industry-standard practices to protect your personal information from unauthorized access, disclosure, use, modification, damage, or loss. To this end, we have specially taken the following measures:"
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            [
+              {
+                "type": "paragraph",
+                "text": "We take all reasonably feasible measures to ensure the minimization of personal information collection and do not collect personal information irrelevant to the purpose. We will only retain your personal information for the period necessary to achieve the purposes stated in this Statement, unless an extension of the retention period is required or permitted by law;"
+              }
+            ],
+            [
+              {
+                "type": "paragraph",
+                "text": "We will use encryption technology to ensure the confidentiality of data transmission and storage. We will use trusted protection mechanisms to prevent malicious attacks on data and servers storing data;"
+              }
+            ],
+            [
+              {
+                "type": "paragraph",
+                "text": "We will deploy access control mechanisms to ensure that only authorized personnel can access personal information; and according to business needs and personnel levels, control the number of authorized personnel and implement hierarchical permission management for authorized personnel; access to personal data will be logged, and regularly audited by administrators."
+              }
+            ],
+            [
+              {
+                "type": "paragraph",
+                "text": "We will strictly select business partners and service providers and implement requirements for personal information protection in business contracts, audits, assessments, and other activities."
+              }
+            ],
+            [
+              {
+                "type": "paragraph",
+                "text": "We will hold security and privacy protection training courses, tests, and publicity activities to enhance employees' awareness of the importance of protecting personal information."
+              }
+            ]
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "In short, we will do our best to protect your personal information. However, no measure is impenetrable, and no product or service, website, data transmission, computer system, or network connection is absolutely secure."
+        },
+        {
+          "type": "paragraph",
+          "text": "To cope with possible risks such as personal information leakage, damage, and loss, we have formulated a number of systems and control measures, clarified the classification and grading standards for security incidents and vulnerabilities and corresponding processing procedures, and established special security notification and security early warning pages. We have also established a special emergency response team for security incidents. In accordance with the requirements of security incident disposal specifications, we activate security plans for different security incidents, stop losses, analyze, locate, formulate remedial measures, and collaborate with relevant departments to trace back and crack down."
+        },
+        {
+          "type": "paragraph",
+          "text": "If a personal information security incident unfortunately occurs, we will inform you in accordance with legal requirements: the basic situation of the security incident and possible impacts, the disposal measures we have taken or will take, suggestions for you to independently prevent and reduce risks, and remedial measures for you. We will inform you of the relevant situation of the incident by email, SMS, push notification, etc. If it is difficult to inform each personal information subject one by one, we will issue an announcement in a reasonable and effective manner. At the same time, we will report the disposal of personal information security incidents in accordance with the requirements of regulatory authorities."
+        },
+        {
+          "type": "heading",
+          "level": 2,
+          "text": "V. How You Can Manage Your Personal Information"
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            [
+              {
+                "type": "paragraph",
+                "text": "Access, rectification, deletion"
+              }
+            ]
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "In many countries or regions where we provide products and services, the legislation in some countries or regions stipulates that personal information subjects have the right to access, rectify, and delete relevant personal information retained by us. In the aforementioned countries or regions, personal information subjects or their agents can request us to access, rectify, and delete relevant personal information retained by us (hereinafter collectively referred to as \"requests\")."
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            [
+              {
+                "type": "paragraph",
+                "text": "(1) Methods and channels for making requests"
+              },
+              {
+                "type": "paragraph",
+                "text": "Requests for personal information subjects must be made in writing. Even if the requester does not specify the legal basis for the request, the request is still valid. Generally speaking, oral access requests are invalid. If the legislation of some countries also recognizes the validity of oral requests, we will comply with such provisions."
+              },
+              {
+                "type": "paragraph",
+                "text": "If a personal information subject makes a relevant request through other channels such as hotlines, service emails, online customer service, or service stores, we will guide the personal information subject to make a formal request through the aforementioned channels to facilitate communication and feedback on the processing progress and results. We have established special channels for personal information subject requests to protect the legitimate interests of personal information subjects and ensure our normal operations, preventing the abuse or misuse of the right to request personal information."
+              }
+            ]
+          ]
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            [
+              {
+                "type": "paragraph",
+                "text": "(2) Validity of requests"
+              },
+              {
+                "type": "paragraph",
+                "text": "Most laws require personal information subjects to follow specific requirements when making requests. This Statement requires personal information subjects to do the following:"
+              }
+            ]
+          ]
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            [
+              {
+                "type": "paragraph",
+                "text": "① Provide sufficient information to us to verify their identity (to ensure that the person making the request is the personal information subject himself or his authorized person)"
+              }
+            ],
+            [
+              {
+                "type": "paragraph",
+                "text": "② The content of the request is specific and executable."
+              }
+            ]
+          ]
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            [
+              {
+                "type": "paragraph",
+                "text": "(3) Processing time limit for requests"
+              },
+              {
+                "type": "paragraph",
+                "text": "We will make every effort to ensure a response within one month of the submission of a personal information subject's access request. Considering the complexity and quantity of requests, this period may be extended by another two months if necessary. In case of delayed information provision, we will notify the personal information subject of the relevant situation and the reason for the delay. If the time limit set in this paragraph conflicts with local legal provisions, the local legal provisions shall prevail."
+              }
+            ]
+          ]
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            [
+              {
+                "type": "paragraph",
+                "text": "(4) Results of requests"
+              },
+              {
+                "type": "paragraph",
+                "text": "After a personal information subject's request is made, the following results may occur:"
+              }
+            ]
+          ]
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            [
+              {
+                "type": "paragraph",
+                "text": "① Request rejected"
+              },
+              {
+                "type": "paragraph",
+                "text": "In some cases, the personal information subject's request will be rejected, including but not limited to:"
+              },
+              {
+                "type": "list",
+                "ordered": true,
+                "items": [
+                  [
+                    {
+                      "type": "paragraph",
+                      "text": "When local laws do not grant the personal information subject the relevant rights;"
+                    }
+                  ],
+                  [
+                    {
+                      "type": "paragraph",
+                      "text": "When the identity of the person making the request cannot be verified;"
+                    }
+                  ],
+                  [
+                    {
+                      "type": "paragraph",
+                      "text": "When the requirements put forward by the personal information subject cannot be verified, are beyond the scope, especially in the case of repeated requests;"
+                    }
+                  ],
+                  [
+                    {
+                      "type": "paragraph",
+                      "text": "When the information involved is related to the compensation we need to make or obtain in a dispute, and disclosing the information is likely to damage our interests;"
+                    }
+                  ],
+                  [
+                    {
+                      "type": "paragraph",
+                      "text": "When the retained information is only for statistical and research purposes, and the publication of statistical and research results will not disclose personal identity;"
+                    }
+                  ],
+                  [
+                    {
+                      "type": "paragraph",
+                      "text": "Other situations stipulated by law."
+                    }
+                  ]
+                ]
+              }
+            ]
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "If we reject a personal information subject's access request, we will formally explain the reasons to the requester."
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            [
+              {
+                "type": "paragraph",
+                "text": "② Request successful"
+              },
+              {
+                "type": "paragraph",
+                "text": "When the situations in “①” do not occur, we will satisfy the personal information subject's request. To increase the possibility of a successful request, please provide as detailed information as possible when making the request, such as the type and specific content of the request, information about the information holder (such as the name of our service you use), and the time range of information generation or processing (the smaller the time range, the greater the possibility of success)."
+              }
+            ]
+          ]
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            [
+              {
+                "type": "paragraph",
+                "text": "(5) Special statements"
+              }
+            ],
+            [
+              {
+                "type": "paragraph",
+                "text": "① No one has the right to access other people's personal information unless they are authorized persons or guardians."
+              }
+            ],
+            [
+              {
+                "type": "paragraph",
+                "text": "② Most legal provisions clearly stipulate the circumstances under which organizations may not provide data to personal information subjects. These circumstances include situations where providing data would undermine the ability to combat terrorism, the personal information subject has applied multiple times, or obtaining and providing information would consume disproportionate resources."
+              }
+            ],
+            [
+              {
+                "type": "paragraph",
+                "text": "③ In principle, we will not provide the following information:"
+              },
+              {
+                "type": "list",
+                "ordered": true,
+                "items": [
+                  [
+                    {
+                      "type": "paragraph",
+                      "text": "Information about other people - the data that the personal information subject's access request wants to obtain may involve people other than the personal information subject. We will not provide such information unless the involved person consents."
+                    }
+                  ],
+                  [
+                    {
+                      "type": "paragraph",
+                      "text": "Repeated applications - the requester makes the same or similar requests for the same personal information subject, the data has not changed in the past period, and we have already provided the data. In this case, we will usually not provide another copy of the data. In addition, we are not obligated to provide information that has been made public."
+                    }
+                  ],
+                  [
+                    {
+                      "type": "paragraph",
+                      "text": "Views given in confidence - if the information about the personal information subject is a view given in confidence, we are not obligated to provide such information."
+                    }
+                  ],
+                  [
+                    {
+                      "type": "paragraph",
+                      "text": "Special documents - any special information we retain will not be disclosed in response to a personal information subject's access request. Generally, special information includes any confidential documents (such as direct communication between clients and their lawyers) and information for obtaining or giving corresponding legal opinions (whether involved in litigation itself or court proceedings)."
+                    }
+                  ]
+                ]
+              }
+            ]
+          ]
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            [
+              {
+                "type": "paragraph",
+                "text": "Withdrawing consent"
+              }
+            ]
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "You can change the scope of your authorization for us to continue collecting personal information or withdraw your authorization by deleting information, turning off device functions, setting privacy in our terminal devices or Apps, etc. In our account-related services, you can also withdraw all authorizations for us to continue collecting your personal information through account-related services by canceling your account."
+        },
+        {
+          "type": "paragraph",
+          "text": "Please understand that each business function requires some basic personal information to be completed. When you withdraw your consent or authorization, we will not be able to continue to provide you with the services corresponding to the withdrawn consent or authorization, nor will we process your corresponding personal information. However, your decision to withdraw consent or authorization will not affect the personal information processing carried out based on your authorization before."
+        },
+        {
+          "type": "paragraph",
+          "text": "How to withdraw consent in specific services will be published by us in special privacy notices or supplementary statements."
+        },
+        {
+          "type": "heading",
+          "level": 2,
+          "text": "VI. How We Handle Minors' Personal Information"
+        },
+        {
+          "type": "paragraph",
+          "text": "Our personal and household devices are mainly for adults, but for minors using the devices and services, we are well aware of the importance of taking additional precautions to protect their privacy and security. We regard anyone under the age of 18 (or the age specified by local laws) as a minor."
+        },
+        {
+          "type": "paragraph",
+          "text": "For minors' personal information collected with the guardian's consent, we will only use or disclose it when permitted by law, explicitly agreed by the guardian, or necessary to protect the minor. If at any time the guardian needs to access, modify, or delete personal information related to the ward, please contact us in the manner described in \"4. How we protect your personal information\"."
+        },
+        {
+          "type": "paragraph",
+          "text": "If we find that we have collected minors' personal information without first obtaining verifiable guardian consent, we will try to delete the relevant content as soon as possible."
+        },
+        {
+          "type": "heading",
+          "level": 2,
+          "text": "VII. Third-Party Links and Their Services"
+        },
+        {
+          "type": "paragraph",
+          "text": "Our applications and product services may contain links to third-party websites. Our products and services may also use or provide services from third parties, such as third-party Apps listed in our app market."
+        },
+        {
+          "type": "paragraph",
+          "text": "All links to third-party websites and services are provided only for the convenience of users. We have no control over such third parties, cannot provide any express or implied guarantees for the linked content, and such links are not considered as our recommendation or authorization of the linked content; we also cannot control the privacy or data protection policies of third parties, and such third parties are not bound by this Statement."
+        },
+        {
+          "type": "paragraph",
+          "text": "You need to independently judge your interaction with such links. Before submitting personal information to a third party, please read and refer to the privacy policies of these third parties, and we shall not be liable for this."
+        },
+        {
+          "type": "heading",
+          "level": 2,
+          "text": "VIII. How Your Personal Information Is Transferred Globally"
+        },
+        {
+          "type": "paragraph",
+          "text": "We provide services through global resources and servers. This means that your personal information may be transferred to other jurisdictions outside the country/region where you use our services, or accessed from these jurisdictions. Such jurisdictions may have different data protection laws or even no relevant laws. In such cases, we will ensure that your data is adequately and equally protected as required by all applicable laws and regulations. For example, we will request your consent to the cross-border transfer of personal information or implement security measures such as data anonymization before cross-border transfer."
+        },
+        {
+          "type": "paragraph",
+          "text": "Major changes referred to in this policy include, but are not limited to:"
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            [
+              {
+                "type": "paragraph",
+                "text": "Major changes in our service model. Such as the purpose of processing personal information, the type of personal information processed, the way of using personal information, etc.;"
+              }
+            ],
+            [
+              {
+                "type": "paragraph",
+                "text": "Major changes in our ownership structure, organizational structure, etc. Such as changes in ownership caused by business adjustments, bankruptcy and mergers, etc.;"
+              }
+            ],
+            [
+              {
+                "type": "paragraph",
+                "text": "Major changes in the main objects of personal information sharing, transfer, or public disclosure;"
+              }
+            ],
+            [
+              {
+                "type": "paragraph",
+                "text": "Major changes in your rights in participating in personal information processing and the way of exercising them;"
+              }
+            ],
+            [
+              {
+                "type": "paragraph",
+                "text": "Changes in the responsible department, contact information, and complaint channels for personal information security;"
+              }
+            ],
+            [
+              {
+                "type": "paragraph",
+                "text": "When the personal information security impact assessment report indicates high risks."
+              }
+            ]
+          ]
+        },
+        {
+          "type": "heading",
+          "level": 2,
+          "text": "IX. Providing You with Other Additional Services"
+        },
+        {
+          "type": "paragraph",
+          "text": "To provide you with more convenient, high-quality, and personalized products and/or services and to strive to improve your experience, we will collect your device model, operating system, unique device identifier, operation log, MAC address, and application list information. We may collect and use your personal information in the following additional services provided to you. If you do not provide this information, it will not affect your use of basic services such as browsing, searching, and purchasing on our platform, but you may not be able to obtain the user experience brought by these additional services. These additional services include:"
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            [
+              {
+                "type": "paragraph",
+                "text": "Additional services based on the camera: You can use this function after enabling the camera permission. We access your camera to enable you to use the camera to take images and photos for users to directly shoot and upload videos and pictures to participate in UGC-related functions, display corresponding content on our platform, participate in authorized activities in specific scenarios, and other scenarios you clearly know."
+              }
+            ],
+            [
+              {
+                "type": "paragraph",
+                "text": "Additional services for accessing and uploading pictures/videos from the album (picture library/video library): You can use this function to upload your photos/pictures/videos and locally cached audio and video files after enabling the album permission, facilitating you to change avatars, post and share comments, save activity sharing QR codes, or prove the problems you encounter when communicating with customer service."
+              }
+            ],
+            [
+              {
+                "type": "paragraph",
+                "text": "Access to App installation list: If you share, you need to access the App installation list to determine whether clients such as WeChat/QQ have been installed."
+              }
+            ],
+            [
+              {
+                "type": "paragraph",
+                "text": "MAC address: To ensure the security of your account and usage, you need to authorize us to read the device identifier of your machine."
+              }
+            ],
+            [
+              {
+                "type": "paragraph",
+                "text": "Additional services related to voice technology based on the microphone: You can realize the audio recording function after enabling the microphone permission; please note that even if you have agreed to enable the microphone permission, we will only obtain voice information through the microphone when you actively click the microphone icon in the client or record audio."
+              }
+            ],
+            [
+              {
+                "type": "paragraph",
+                "text": "Storage permission: You can save user configuration information after enabling the storage permission."
+              }
+            ],
+            [
+              {
+                "type": "paragraph",
+                "text": "Acquire and monitor gyroscope sensors, photosensitive sensors and other equipment sensors: when viewing the video, the sensor information of the user's mobile phone will be used (only collecting sensor data without personal information) to identify the user's actions and provide the user with video rotation, video brightness adjustment and other functions."
+              }
+            ]
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "You understand and agree that the above additional services may require you to enable the camera, album (picture library), microphone (voice), App installation list, and MAC address access permissions on your device to collect and use the information involved in these permissions. Please note that your enabling of any permission means that you authorize us to collect and use relevant personal information to provide you with the corresponding services. Once you disable any permission, it means that you cancel the authorization, and we will no longer continue to collect and use relevant personal information based on the corresponding permission, nor can we provide you with the services corresponding to that permission. However, your decision to disable the permission will not affect the information collection and use carried out based on your authorization before."
+        },
+        {
+          "type": "heading",
+          "level": 2,
+          "text": "X. Image Push Encryption"
+        },
+        {
+          "type": "paragraph",
+          "text": "To ensure the security and integrity of image data during transmission and storage, this image push service employs an encryption mechanism that complies with industry security standards. The specific encryption logic is as follows:"
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            [
+              {
+                "type": "paragraph",
+                "text": "Link Transmission Encryption Mechanism: Throughout the entire process of transmitting image data from the data source to the user client, a high-strength transmission encryption protocol is employed for real-time encryption. This effectively mitigates network security risks such as data eavesdropping, man-in-the-middle attacks, and data tampering."
+              }
+            ],
+            [
+              {
+                "type": "paragraph",
+                "text": "Object Encryption Storage Mechanism: After image data is uploaded to OSS, object-level encryption is automatically enabled to provide static encryption protection for stored image files. This mechanism is equipped with strict access authorization controls, fundamentally preventing storage security risks such as unauthorized access and data leaks, thereby ensuring the security of image data during the static storage phase."
+              }
+            ]
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "The aforementioned encryption mode has covered the core security requirements for image push, complies with industry security standards for data transmission in the field of security surveillance, and can provide reliable security assurance for the image push process."
+        },
+        {
+          "type": "paragraph",
+          "text": "When using the image push service, users are unable to configure encryption keys on their own to implement additional encryption protection for the pushed image data. If users have higher requirements for data encryption levels or cannot accept the potential risks associated with the current encryption mode, it is recommended to carefully evaluate whether to use this service. Once users choose to use this service, it shall be deemed that they have fully understood, acknowledged, and voluntarily accepted the aforementioned arrangements and any potential risks involved."
+        },
+        {
+          "type": "heading",
+          "level": 2,
+          "text": "XI. Third-party products and services"
+        },
+        {
+          "type": "paragraph",
+          "text": "In order to ensure the realization and stable operation of the relevant functions of this APP, we may access software development kits (SDKs) provided by third parties to achieve related purposes. Different versions of third-party SDKs will be different. The third-party SDK connected to the APP."
+        },
+        {
+          "type": "table",
+          "rows": [
+            [
+              [
+                {
+                  "type": "paragraph",
+                  "text": "The third-party Company Name"
+                }
+              ],
+              [
+                {
+                  "type": "paragraph",
+                  "text": "Product/Service"
+                }
+              ],
+              [
+                {
+                  "type": "paragraph",
+                  "text": "Purpose Of Usage"
+                }
+              ],
+              [
+                {
+                  "type": "paragraph",
+                  "text": "Scenes"
+                }
+              ],
+              [
+                {
+                  "type": "paragraph",
+                  "text": "Personal info/Permissions"
+                }
+              ],
+              [
+                {
+                  "type": "paragraph",
+                  "text": "How to share"
+                }
+              ]
+            ],
+            [
+              [
+                {
+                  "type": "paragraph",
+                  "text": "Tencent Technology (Shenzhen) Co., Ltd."
+                }
+              ],
+              [
+                {
+                  "type": "paragraph",
+                  "text": "WeChat third-party login SDK"
+                }
+              ],
+              [
+                {
+                  "type": "paragraph",
+                  "text": "You can log in to the app with your WeChat account"
+                }
+              ],
+              [
+                {
+                  "type": "paragraph",
+                  "text": "App login"
+                }
+              ],
+              [
+                {
+                  "type": "paragraph",
+                  "text": "https://support.weixin.qq.com/cgi-bin/mmsupportacctnodeweb-bin/pages/ONwPihxKd82RAkIJ"
+                }
+              ],
+              [
+                {
+                  "type": "paragraph",
+                  "text": "Background interface transfer"
+                }
+              ]
+            ],
+            [
+              [
+                {
+                  "type": "paragraph",
+                  "text": "Google"
+                }
+              ],
+              [
+                {
+                  "type": "paragraph",
+                  "text": "Firebase"
+                }
+              ],
+              [
+                {
+                  "type": "paragraph",
+                  "text": "Push Notification"
+                }
+              ],
+              [
+                {
+                  "type": "paragraph",
+                  "text": "User gets Push Notification"
+                }
+              ],
+              [
+                {
+                  "type": "paragraph",
+                  "text": "Device identification code (IMEI, android_id, ssid, IDFA, OPENUDID, GUID, SIM card information, IMSI), MAC address, device platform, device manufacturer, device brand, device application installation list; network information and location Related information: network status and changes of the device, location related information, ssid, video, task list, Wifi information"
+                }
+              ],
+              [
+                {
+                  "type": "paragraph",
+                  "text": "Background interface transfer"
+                }
+              ]
+            ]
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "Important note: Due to local legal and language differences, the local language version of the \"SuperLive Plus Privacy Statement\" may differ from this version. In case of any discrepancy, the local language version shall prevail."
+        }
+      ]
+    },
+    {
+      "locale": "zh-Hans",
+      "kind": "terms",
+      "source_reference": "agreement/ServiceTerms_zh-Hans.html",
+      "source_sha256": "9580039561c539e348a2a45f6682b54fe3f2681749817baceb3e99e6fc9f3965",
+      "source_bytes": 196817,
+      "content_sha256": "fab818c373ac0b5aefeda539f3be56c50f1ae60f18ad132f751f90c8afed8120",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "服务协议"
+        },
+        {
+          "type": "paragraph",
+          "text": "发布/生效日期：2021年7月28日"
+        },
+        {
+          "type": "heading",
+          "level": 1,
+          "text": "【签约提示】"
+        },
+        {
+          "type": "paragraph",
+          "text": "欢迎使用深圳市同为数码科技股份有限公司产品及服务！"
+        },
+        {
+          "type": "paragraph",
+          "text": "在使用深圳市同为数码科技股份有限公司产品及服务前，您应当阅读并遵守本《服务协议》（“本协议”）以及《隐私声明》。请您务必仔细阅读、充分理解各条款内容，特别是涉及您重大权益的条款，包括免除或者限制深圳市同为数码科技股份有限公司责任的条款、对用户权利进行限制的条款、约定争议解决方式和司法管辖的条款等，以及开通或使用某项服务的单独协议或规则。前述条款可能以加粗、加下划线等形式提示您重点注意。"
+        },
+        {
+          "type": "paragraph",
+          "text": "当您按照相关页面提示填写信息、阅读并同意本协议且完成全部注册或激活程序后，或您以任一深圳市同为数码科技股份有限公司允许的方式实际使用深圳市同为数码科技股份有限公司服务时，即表示您已充分阅读、理解并接受本协议的全部内容，本协议即对您及深圳市同为数码科技股份有限公司产生法律约束力。"
+        },
+        {
+          "type": "paragraph",
+          "text": "若您对本协议任何内容有疑问，可随时向我们的客服寻求帮助，我们会尽力为您解释；届时您不应以未阅读本协议的内容或者未获得我们对您问询的解答等理由，主张本协议无效，或要求撤销本协议。"
+        },
+        {
+          "type": "paragraph",
+          "text": "本协议下我们推定您为具备完全民事权利能力和与所从事的民事行为相适应的行为能力的中华人民共和国大陆地区法律实体，且并非任何国家、国际组织或者地域实施的贸易限制、制裁或其他法律、规则限制的对象（“受限对象”）。如果您不符合前述情形，请暂停后续操作，并可按以下方式寻求解决：（1）若您不是中国大陆地区用户，请通过深圳市同为数码科技股份有限公司于当地设立的网站或软件等了解各项深圳市同为数码科技股份有限公司服务使用说明及签署相关协议；（2）如果您因年龄等因素不具备完全民事行为能力，请告知您的监护人，并在您监护人的指导下阅读及前述本协议和使用我们的服务；（3）如果您是受限对象，请在相关限制情形消失或解除后再行发起深圳市同为数码科技股份有限公司服务使用申请。若您并非前述适格主体（或未取得监护人同意）但仍继续签署本协议的，深圳市同为数码科技股份有限公司有权在获知相关情况后拒绝或终止向您提供服务、并注销您的账户，您（及您的监护人）须自行承担相关损失。"
+        },
+        {
+          "type": "heading",
+          "level": 1,
+          "text": "【协议正文】"
+        },
+        {
+          "type": "heading",
+          "level": 2,
+          "text": "一、协议范围"
+        },
+        {
+          "type": "paragraph",
+          "text": "1.1本协议是用户与深圳市同为数码科技股份有限公司之间关于其使用深圳市同为数码科技股份有限公司服务（下称“服务”）所订立的协议。其中：“深圳市同为数码科技股份有限公司”是指深圳市同为数码科技股份有限公司或其关联公司，在本协议中也称“我们”；“用户”是指符合本协议下使用前提的、依照本协议使用深圳市同为数码科技股份有限公司服务的法律实体，在本协议中也称“您”。"
+        },
+        {
+          "type": "paragraph",
+          "text": "1.2本协议内容同时包括《隐私声明》，及您在使用某些特定服务时所需遵循的单独协议、业务规则等（以下统称为“单项协议”）。上述内容一经发布生效，即为本协议不可分割的组成部分，您对任一部分的接受，即视为您对本协议全部的接受。"
+        },
+        {
+          "type": "paragraph",
+          "text": "1.3鉴于软件服务不时优化、升级等的需要，您理解并同意，我们将根据业务运营需要不时调整或更新本协议，并以站内公告、站内信、电子邮件或其他书面方式公布或通知予您；相关调整或更新将自相关公告或通知载明之日起生效（若无特别注明，则为公告或通知7日后生效）。若您不接受相关调整或更新，应立即停止全部服务使用并书面告知我们；我们将依照更新前内容与您处理本协议终止相关事宜。"
+        },
+        {
+          "type": "paragraph",
+          "text": "1.4本协议项下的深圳市同为数码科技股份有限公司服务，是以“深圳市同为数码科技股份有限公司”品牌系列安防监控设备（下称“设备”）为核心的，由深圳市同为数码科技股份有限公司通过自有经销和售后服务体系、及深圳市同为数码科技股份有限公司网站、客户端等各类系统、软件（以下统称“软件”）向您提供的各项服务的统称，包括但不限于：“深圳市同为数码科技股份有限公司”系列产品及周边产品的在线交易及售后服务（下称“商城服务”），与我们设备联网操控相关的互联网软件技术服务（下称“云服务”），以视频能力为核心的开放组件及SaaS应用服务（下称“开放平台服务”）等等。我们会不断丰富服务的使用终端、提供形式等，除另有相反说明外，本协议亦自动适用。"
+        },
+        {
+          "type": "heading",
+          "level": 2,
+          "text": "二、深圳市同为数码科技股份有限公司账号注册与管理"
+        },
+        {
+          "type": "paragraph",
+          "text": "2.1我们的账号是使用服务的数字标识，其所有权属于深圳市同为数码科技股份有限公司。用户完成注册/激活程序后，我们将按照本协议授权其使用相应的账号登录软件、使用我们的服务。除非得到我们的另行书面许可，账号使用权仅归属于初始申请注册/使用人，且该等权利不可分割、不可转让、不可转授权或以任何方式许可他人使用。"
+        },
+        {
+          "type": "paragraph",
+          "text": "2.2您可通过各我们的软件免费申请注册账号。您须按照注册页面提示填写相关注册资料（包括您合法所有、已实名的手机号码等），并自行设定密码。此外，您也可使用您的第三方账号授权登陆我们的软件或使用我们的服务，您理解并同意深圳市同为数码科技股份有限公司将为此向该第三方调取您的必要信息，并在必要时以此作为注册资料生成唯一一个账号并与您的第三方账号建立绑定关系（以您实际授权为准）。"
+        },
+        {
+          "type": "paragraph",
+          "text": "2.3您应了解并同意，您提供的账号注册资料（包括您直接向我们提供的，以及我们根据您的授权自第三方调取的）是认定您与深圳市同为数码科技股份有限公司账号的关联性以及您的身份的唯一证据，您须自行对您账号和密码下的所有活动及其后果（包括但不限于在线签署各类协议、订购产品或开通服务、披露信息等）承担责任。为此，您须依照相关法律法规及本协议如实注册、正确使用我们的账号，并妥善保管、适时维护相关信息资料（包括深圳市同为数码科技股份有限公司账号、密码、注册资料及相关的授权码、验证码、动态口令等）。如您更换、暂停或终止使用上述信息和/或相关设备，或遭遇遗失、泄露或被盗事件，应及时采取必要措施并告知我们，以减少可能发生的损失；您理解并同意，除有生效的司法裁判外，我们无法就此承担任何责任，您须自行承担相关损失。"
+        },
+        {
+          "type": "paragraph",
+          "text": "2.4 您保证，您的注册资料中不含有任何虚假、错误、违法和不良信息，且在注册和使用账号时将严格遵守相关法律法规、本协议及其他单项协议之约定。否则，我们有权不予注册，或以通知限期改正、暂停使用、注销登记等措施限制、中止或终止您的账号使用权；对于冒用关联机构或社会名人注册账号等情形的，我们还将依法向政府主管部门进行报告或向社会公开。因前述限制、中止或终止、报告或公开等可能给您带来的损失（包括但不限于通信中断，用户资料、邮件和虚拟财产及相关数据、增值服务、产品或服务等的清空或无法使用等），均由您自行承担。"
+        },
+        {
+          "type": "paragraph",
+          "text": "2.5 您了解并同意，如您注册深圳市同为数码科技股份有限公司账号后连续超过12个月未登录，我们为优化管理等目的，有权回收该账号。"
+        },
+        {
+          "type": "paragraph",
+          "text": "2.6您应知晓并理解，如您的账号被注销或收回，我们将自行对账号相关内容及信息以包括但不限于删除等方式进行处理，您应自行承担未及时备份等的损失或责任。"
+        },
+        {
+          "type": "heading",
+          "level": 2,
+          "text": "三、深圳市同为数码科技股份有限公司服务"
+        },
+        {
+          "type": "paragraph",
+          "text": "3.1您知晓并理解，不同服务可能由不同的法律实体、通过不同的系统或软件向您提供，也可能根据您所使用的账户类型、网络环境等，表现出不同的内容或形式；此外，我们也可能基于运营或服务质量保障需要设定一些服务使用条件和/或规则，如服务费用等。因此，我们在此特别提醒，您应在使用前仔细阅读各项服务的具体介绍及使用规则，并审慎判断是否订购或使用。前述使用规则将会以本协议、单项协议或系统说明等方式告知予您。若单项协议与本协议存在同类条款的冲突，则在单项协议约束范围内应以单项协议为准。"
+        },
+        {
+          "type": "paragraph",
+          "text": "3.2对于深圳市同为数码科技股份有限公司软件，我们给予您一项不可转让及非排他性的许可。您仅可为访问或使用服务的目的使用这些软件及服务；此外，您须从深圳市同为数码科技股份有限公司官方公布的渠道获取软件，并确保依照提示步骤正确安装、及时更新。否则，我们无法保证相关软件能够正常使用，并对因此给您造成的损失不承担法律明确规定以外的任何责任。"
+        },
+        {
+          "type": "paragraph",
+          "text": "3.3您应知晓并理解，使用服务时将会耗用您的终端设备处理器和带宽等资源，并可能产生数据流量、通话等费用。为此，您需自行准备相关的终端设备（如电脑、移动终端和必要的网络接入设备等），并承担所需的费用（如电话费、上网费等）。"
+        },
+        {
+          "type": "paragraph",
+          "text": "3.4部分服务下，我们可能委托第三方合作伙伴负责一定的具体执行工作，如上门服务、第三方呼叫等。我们承诺将妥善进行合作伙伴监督管理，但您应知晓并同意，在因第三方原因造成我们无法向您提供符合约定的服务时，我们可在法律允许范围内主张免责，或要求该等第三方直接向您承担相关责任，第三方履行完毕的，我们的相关责任或义务亦宣告终止。"
+        },
+        {
+          "type": "paragraph",
+          "text": "3.5 服务变更、暂停、中断或终止"
+        },
+        {
+          "type": "paragraph",
+          "text": "3.5.1深圳市同为数码科技股份有限公司始终在不断变更和改进服务。鉴于电子商务活动和网络服务特殊性及为保障服务运营安全性等，您理解并同意，我们可能随时对各项服务进行升级或调整，可能导致部分功能效果发生变化、旧服务系统无法继续使用等，或需要您对相关浏览器插件、手机客户端软件、终端设备软件等单独进行操作。相关升级或调整将以服务新版本、系统更新等形式发布，您应根据提示及时操作，避免因无法继续使用服务或服务不稳定等造成不必要的损失。"
+        },
+        {
+          "type": "paragraph",
+          "text": "3.5.2您理解并同意，我们可能会定期或不定期地对支撑其服务的平台或相关的设备进行检修或者维护、或对相关合作第三方进行汰换，并可能因此造成一定时间的服务中断。就此等中断，我们将尽可能提前在深圳市同为数码科技股份有限公司网站、软件内或服务相关页面内进行公告，或通过电子邮件、短信息等方式提前通知您；但除因我们单方原因故意或过失导致您损失的情况外，我们不就此承担责任且服务期限不作延长（如有）。"
+        },
+        {
+          "type": "paragraph",
+          "text": "3.5.3鉴于网络服务的特殊性，您同意我们可随时终止部分或全部服务。我们将在终止部分或全部服务后及时通过电子邮件、短信息等方式通知您，但除因我们单方原因故意或过失导致您损失的情况外，我们不对该等终止承担责任。此外，您也可通过注销账号的方式主动终止本服务。"
+        },
+        {
+          "type": "paragraph",
+          "text": "3.6 广告"
+        },
+        {
+          "type": "paragraph",
+          "text": "为使您及时、全面了解深圳市同为数码科技股份有限公司的各项服务，您同意我们可以自行或委托第三方通过短信、电子邮件或电子信息等多种方式向您发送、展示广告或其他信息（包括商业与非商业信息）（下称“广告”）。我们承诺依照相关法律法规要求开展广告业务，同时，我们提醒您审慎判断广告的真实性和可靠性，除法律明确规定外，我们不会对您因该广告而实施的行为后果负责。"
+        },
+        {
+          "type": "paragraph",
+          "text": "3.7数据备份"
+        },
+        {
+          "type": "paragraph",
+          "text": "您有责任自行备份存储在本服务中的数据。如果您的服务被终止，除法律法规另有规定外，我们将从服务器上永久地删除您的数据,且无法向您提供或返还数据。"
+        },
+        {
+          "type": "paragraph",
+          "text": "3.8第三方服务"
+        },
+        {
+          "type": "paragraph",
+          "text": "出于便利用户等的考虑，我们可能会在部分软件下接入第三方网站或服务。您知晓并理解，除非我们特别说明，这些网站或服务并非我们向您提供，您应自行判断其安全性和可用性，并自行承担相关风险和责任。"
+        },
+        {
+          "type": "heading",
+          "level": 2,
+          "text": "四、单项服务使用规则"
+        },
+        {
+          "type": "paragraph",
+          "text": "4.1深圳市同为数码科技股份有限公司云服务"
+        },
+        {
+          "type": "paragraph",
+          "text": "4.1.1深圳市同为数码科技股份有限公司云服务下，用户可通过我们的客户端，在其深圳市同为数码科技股份有限公司账号中添加设备（或其他深圳市同为数码科技股份有限公司支持的设备），并对已添加的设备进行远程操作，包括对设备拍摄的视频进行预览、回放、录像、截图，通过我们的客户端与设备端的人员进行实时对讲等基础性服务，以及我们的云存储等基于特定需求场景的增值服务；其中，部分服务可能仅能在特定数量或型号的设备上应用，具体以我们的实际说明为准。"
+        },
+        {
+          "type": "paragraph",
+          "text": "4.1.2大部分增值服务将以预收费形式提供，且购买成功后不支持退换货或更换对应的账号。此外，除必要的带宽等资源外，某些增值服务还可能对您的客户端设置、通讯条件等有一定要求，我们将通过单项协议或服务介绍、订购须知等向您提示上述收费标准、使用条件，您应仔细阅读并谨慎订购。"
+        },
+        {
+          "type": "paragraph",
+          "text": "4.1.3深圳市同为数码科技股份有限公司云服务仅供合法、正当、非商业目的地使用。您应确保不利用本服务进行任何非法、侵权或营利活动，并独立地、完全地对订购及使用本服务的行为承担全部责任。"
+        },
+        {
+          "type": "paragraph",
+          "text": "4.1.4鉴于互联网开放环境特点，及设备本身可被暴露于公开场所，我们特别提醒您注意开放或公开环境的使用安全，具体包括但不限于："
+        },
+        {
+          "type": "paragraph",
+          "text": "（1）设备分享。深圳市同为数码科技股份有限公司云服务的某些单项服务可使您与他人共享设备视频查看、设备操控权限。为保障您的合法权益，我们建议仅向家人等确有共同管理需要的用户开放分享，并谨慎控制开放范围与时间；"
+        },
+        {
+          "type": "paragraph",
+          "text": "（2）实时视频预览或视频画面分析。您应了解，在开放场所使用此功能时可能会令您接触到他人信息内容。为保障公共环境秩序、避免对他人造成不必要的干扰，我们建议您谨慎注意监控设备安装环境，并仅在确有必要时启用相关功能。"
+        },
+        {
+          "type": "paragraph",
+          "text": "同时，您应了解并同意，我们不会、也无法控制您的使用方式，您应自行谨慎决定是否使用相关功能，并自行承担相关损失或责任。"
+        },
+        {
+          "type": "paragraph",
+          "text": "4.1.5此外，您了解并同意，虽然我们的云服务能使您更及时、更方便地了解监控设备信息及管理设备，但深圳市同为数码科技股份有限公司（及深圳市同为数码科技股份有限公司委托的第三方，如有）并不在您设备现场，无法预防或阻止消息提醒触发事件，也可能因技术识别或判断失误等产生误报；因此，您仍应自行、妥善处理相关事项，并谨慎注意自身人身与财产安全。"
+        },
+        {
+          "type": "paragraph",
+          "text": "4.2 开放平台服务"
+        },
+        {
+          "type": "paragraph",
+          "text": "4.2.1 深圳市同为数码科技股份有限公司通过开放平台与外部合作伙伴共享其强大的视频服务、智能分析等技术能力。用户可以通过接入我们的开放平台，增强、扩展其自有应用的服务和功能。"
+        },
+        {
+          "type": "paragraph",
+          "text": "4.2.2为使用开放平台服务，您需补充提交您的主体资质、应用介绍等服务对接信息，并支付相应服务费用。我们将通过单项协议或服务介绍、订购须知等向您提示上述对接要求、收费标准等，您应仔细阅读并谨慎订购。"
+        },
+        {
+          "type": "paragraph",
+          "text": "4.2.3 您应理解并同意，开放平台服务下我们仅以中立的平台服务提供者身份、向您提供各项接入或技术支持服务，并非您应用的提供方，亦不对您应用的合法性、有效性等做任何明示或暗示的担保，您应自行负责应用发布、运营等所需的全部资质、许可和成本、费用，并自行承担相关责任。"
+        },
+        {
+          "type": "heading",
+          "level": 2,
+          "text": "五、用户行为规范"
+        },
+        {
+          "type": "paragraph",
+          "text": "5.1 您同意遵守法律法规、社会主义制度、国家利益、公民合法利益、公共秩序、社会道德风尚和信息真实性等“七条底线”，不利用我们的账号或网站、软件及服务制作、复制、发布、传播任何违反法律法规、或侵犯其他用户或第三方合法权益的内容，包括但不限于："
+        },
+        {
+          "type": "paragraph",
+          "text": "5.1.1 发布、传送、传播、储存违反国家法律法规禁止的内容："
+        },
+        {
+          "type": "paragraph",
+          "text": "（1）违反宪法确定的基本原则的；"
+        },
+        {
+          "type": "paragraph",
+          "text": "（2）危害国家安全，泄露国家秘密，颠覆国家政权，破坏国家统一的；"
+        },
+        {
+          "type": "paragraph",
+          "text": "（3）损害国家荣誉和利益的；"
+        },
+        {
+          "type": "paragraph",
+          "text": "（4）煽动民族仇恨、民族歧视，破坏民族团结的；"
+        },
+        {
+          "type": "paragraph",
+          "text": "（5）破坏国家宗教政策，宣扬邪教和封建迷信的；"
+        },
+        {
+          "type": "paragraph",
+          "text": "（6）散布谣言，扰乱社会秩序，破坏社会稳定的；"
+        },
+        {
+          "type": "paragraph",
+          "text": "（7）散布淫秽、色情、赌博、暴力、恐怖或者教唆犯罪的；"
+        },
+        {
+          "type": "paragraph",
+          "text": "（8）侮辱或者诽谤他人，侵害他人合法权益的；"
+        },
+        {
+          "type": "paragraph",
+          "text": "（9）煽动非法集会、结社、游行、示威、聚众扰乱社会秩序；"
+        },
+        {
+          "type": "paragraph",
+          "text": "（10）以非法民间组织名义活动的；"
+        },
+        {
+          "type": "paragraph",
+          "text": "（11）含有法律、行政法规禁止的其他内容的；"
+        },
+        {
+          "type": "paragraph",
+          "text": "5.1.2 发布、传送、传播、储存侵害他人名誉权、肖像权、知识产权、商业秘密等合法权利的内容；"
+        },
+        {
+          "type": "paragraph",
+          "text": "5.1.3 涉及他人隐私、个人信息或资料的；"
+        },
+        {
+          "type": "paragraph",
+          "text": "5.1.4 发表、传送、传播骚扰、广告信息、过度营销信息及垃圾信息或含有任何性或性暗示的；"
+        },
+        {
+          "type": "paragraph",
+          "text": "5.1.5 其他违反法律法规、政策及公序良俗、社会公德或干扰深圳市同为数码科技股份有限公司正常运营和侵犯其他用户或第三方合法权益内容的信息；"
+        },
+        {
+          "type": "paragraph",
+          "text": "5.2您同意依照本协议及各单项协议、系统规则等使用网站、软件及服务，不会从事任何破坏服务系统、侵害深圳市同为数码科技股份有限公司合法权利的行为，包括但不限于："
+        },
+        {
+          "type": "paragraph",
+          "text": "5.2.1 通过非深圳市同为数码科技股份有限公司开发、授权或认可的第三方兼容软件、系统登录或使用我们的网站、软件及服务，针对我们的网站、软件及服务使用非深圳市同为数码科技股份有限公司开发、授权或认证的插件；"
+        },
+        {
+          "type": "paragraph",
+          "text": "5.2.2 删除深圳市同为数码科技股份有限公司软件及其他副本上所有关于版权的信息、内容；"
+        },
+        {
+          "type": "paragraph",
+          "text": "5.2.3 对深圳市同为数码科技股份有限公司软件进行反向工程、反向汇编、反向编译等；"
+        },
+        {
+          "type": "paragraph",
+          "text": "5.2.4 对于深圳市同为数码科技股份有限公司网站、软件相关信息等，未经我们书面同意，擅自实施包括但不限于下列行为：出租、出借、复制、修改、链接、转载、汇编、发表、出版，建立镜像站点、擅自借助深圳市同为数码科技股份有限公司网站和软件发展与之有关的衍生产品、作品、服务、插件、外挂、兼容、互联等；"
+        },
+        {
+          "type": "paragraph",
+          "text": "5.2.5 通过制造虚假身份、误导、欺骗等方式获得深圳市同为数码科技股份有限公司网站、软件相关信息或服务；"
+        },
+        {
+          "type": "paragraph",
+          "text": "5.2.6 进行任何危害我们的网站、软件或利用深圳市同为数码科技股份有限公司网站、软件危害计算机网络安全的行为，包括但不限于：使用未经许可的深圳市同为数码科技股份有限公司网站、软件相关数据或进入未经许可的深圳市同为数码科技股份有限公司网站、软件服务器/账号；未经允许进入公众计算机网络或者他人计算机系统删除、修改、增加深圳市同为数码科技股份有限公司网站、软件的存储信息；未经许可，企图探查、扫描、测试深圳市同为数码科技股份有限公司软件系统或利用深圳市同为数码科技股份有限公司网站、软件探查、扫描、测试网络的弱点或其它实施破坏网络安全的行为；企图干涉、破坏本软件系统或网站的正常运行，利用深圳市同为数码科技股份有限公司网站、软件故意传播恶意程序或病毒以及其他破坏干扰正常网络信息服务的行为。"
+        },
+        {
+          "type": "paragraph",
+          "text": "5.2.7 其他以任何不合法的方式、为任何不合法的目的、或以任何与本协议不一致的方式使用深圳市同为数码科技股份有限公司网站、软件和提供的其他服务。"
+        },
+        {
+          "type": "paragraph",
+          "text": "5.3您充分了解并同意，您须为自己注册的深圳市同为数码科技股份有限公司账号下的一切行为负责，包括您所发表的任何内容以及由此产生的任何后果。同时，您应了解并同意，我们无法对您的使用行为进行控制，但我们有权拒绝为非法或侵权使用行为提供服务，因此，如我们发现或收到您使用我们服务的行为不符合法律法规规定或不符合本协议的投诉、举报等，有权独立地对您的行为及适用的规则进行认定，并据此处理，包括警示、拒绝发布、删除信息、限制功能、暂停更新、中止服务、终止服务直至关闭账号、向有关监管部门或国家机关报告、要求您赔偿损失等，并保存相关记录；如您的前述行为导致任何第三方提出索赔要求，亦须由您自行承担全部责任。此外，您应知晓并理解，除投诉、举报方提供的资料外，我们的系统记录也可能作为您违反法律或本协议的相关证据。"
+        },
+        {
+          "type": "paragraph",
+          "text": "5.4如您在使用深圳市同为数码科技股份有限公司服务的过程中发现其它用户有上传、发布违法侵权内容等违反法律或本协议的行为，您可直接联系我们，我们会尽快核实处理。"
+        },
+        {
+          "type": "heading",
+          "level": 2,
+          "text": "六、用户信息保护"
+        },
+        {
+          "type": "paragraph",
+          "text": "6.1保护用户信息安全是深圳市同为数码科技股份有限公司的一项基本政策。如果您是个人用户，我们将按照《隐私声明》收集、存储、使用、披露和保护您的个人信息，并保障您对个人信息的访问、更正、删除、注销等各项权利。如果您是企业用户，我们将依法保护您的商业秘密，非经您同意不会对外提供。"
+        },
+        {
+          "type": "paragraph",
+          "text": "6.2 深圳市同为数码科技股份有限公司非常重视对未成年人个人信息的保护我们再次提醒，若您是18 周岁以下的未成年人，您须在取得监护人同意情况下签署本协议、使用服务或向我们提供个人信息；如您的监护人不同意您进行前述操作，请您立即停止使用我们的服务并及时通知我们，以便我们采取相应的措施。 若您是未成年人的监护人，并认为您的监护对象未经同意而使用了我们的服务或向我们提供了个人信息账号，也请及时告知我们，我们会根据您的要求进行账号关闭或信息删除等操作。"
+        },
+        {
+          "type": "heading",
+          "level": 2,
+          "text": "七、知识产权及内容、商标的所有权"
+        },
+        {
+          "type": "paragraph",
+          "text": "7.1深圳市同为数码科技股份有限公司尊重知识产权并注重保护用户享有的各项权利。在使用我们的服务过程中，您可能会通过上传、发布等各种方式向我们提供内容。在此情况下，您仍然享有此等内容的完整知识产权。"
+        },
+        {
+          "type": "paragraph",
+          "text": "7.2深圳市同为数码科技股份有限公司通过网站、软件提供的内容包括但不限于：非用户上传/提供的文字、软件、声音、相片、视频、图表等。所有这些内容均属于我们及相关权利人，并受版权、商标、专利和其它财产所有权法律的保护。所以，您只能在我们及相关权利人授权下才能使用这些内容，而不能擅自复制、再造这些内容、或创造与内容有关的派生产品。"
+        },
+        {
+          "type": "paragraph",
+          "text": "7.3深圳市同为数码科技股份有限公司以及深圳市同为数码科技股份有限公司的其他标志，均为深圳市同为数码科技股份有限公司之商标（以下简称“深圳市同为数码科技股份有限公司标识”）。未经我们事先书面同意，您不得将深圳市同为数码科技股份有限公司标识以任何方式展示或使用或作其他处理，也不得向他人表明您有权展示、使用、或其他有权处理深圳市同为数码科技股份有限公司标识的行为。"
+        },
+        {
+          "type": "paragraph",
+          "text": "7.4上述及其他任何本服务包含的内容的知识产权均受到法律法规保护，未经深圳市同为数码科技股份有限公司、用户或相关权利人书面许可，任何人不得以任何形式进行使用或创造相关衍生作品。"
+        },
+        {
+          "type": "heading",
+          "level": 2,
+          "text": "八、免责声明"
+        },
+        {
+          "type": "paragraph",
+          "text": "8.1您理解并同意，深圳市同为数码科技股份有限公司网站、软件同大多数网站、互联网软件一样，可能会受多种因素影响，包括但不限于用户原因、网络服务质量、社会环境等；也可能会受各种安全问题的侵扰，包括但不限于他人非法利用用户资料，进行现实中的骚扰；用户下载安装的其他软件或访问的其他网站中可能含有病毒、木马程序或其他恶意程序，威胁您的终端设备信息和数据安全，继而影响深圳市同为数码科技股份有限公司网站、软件的正常使用等。因此，您应加强信息安全及个人信息的保护意识，注意密码保护，以免遭受损失。"
+        },
+        {
+          "type": "paragraph",
+          "text": "8.2 维护网站、软件安全与正常使用是我们和您的共同责任，我们将按照行业标准合理审慎地采取必要技术措施保护您的信息和数据安全，但是您承认和同意我们并不能就此提供完全保证。"
+        },
+        {
+          "type": "paragraph",
+          "text": "8.3深圳市同为数码科技股份有限公司网站或软件可能包含第三方提供的产品或服务。您在使用第三方提供的产品或服务时，除遵守本协议约定外，还应遵守第三方的用户协议。我们和第三方对可能出现的纠纷在法律规定和约定的范围内各自承担责任。"
+        },
+        {
+          "type": "paragraph",
+          "text": "8.4您理解并同意，使用深圳市同为数码科技股份有限公司服务或者通过深圳市同为数码科技股份有限公司服务获取任何资料、内容的行为均出于您的独立判断，我们可能提供的关于服务订购或使用的咨询或指导意见在任何时候不会代替您的独立判断，也不应被理解为我们的承诺或保证。您应自行承担因前述行为而引起的所有风险，包括因对内容的正确性、完整性或实用性的依赖而产生的风险等；除有生效的司法裁判外，我们无法且不会对此承担任何责任。"
+        },
+        {
+          "type": "paragraph",
+          "text": "8.5您同意如发生不可抗力导致深圳市同为数码科技股份有限公司网站或软件的运行中断或终止时，我们无需承担任何责任。本协议所指不可抗力包括：天灾、法律法规或政府指令的变更，因网络服务特性而特有的原因，例如境内外基础电信运营商的故障、计算机或互联网相关技术缺陷、互联网覆盖范围限制、计算机病毒、黑客攻击等因素，及其他合法范围内的不能预见、不能避免并不能克服的客观情况。"
+        },
+        {
+          "type": "heading",
+          "level": 2,
+          "text": "九、第三方软件或技术"
+        },
+        {
+          "type": "paragraph",
+          "text": "9.1 深圳市同为数码科技股份有限公司网站可能会使用第三方技术，深圳市同为数码科技股份有限公司软件亦可能会使用第三方软件或技术（包括深圳市同为数码科技股份有限公司软件可能使用的开源代码和公共领域代码等，下同），这种使用已经获得合法授权。"
+        },
+        {
+          "type": "paragraph",
+          "text": "9.2 深圳市同为数码科技股份有限公司网站或软件如果使用了第三方的软件或技术，我们将按照相关法规或约定，对相关的协议或其他文件，可能通过本协议附件、在软件安装包特定文件夹中打包、或通过开源软件页面等形式进行展示，它们可能会以“软件使用许可协议”、“授权协议”、“开源代码许可证”或其他形式来表达。前述通过各种形式展现的相关协议、其他文件及网页，均是本协议不可分割的组成部分，与本协议具有同等的法律效力，您应当遵守这些要求。否则，您可能面临该第三方或者国家机关对您提起的诉讼、罚款或其他制裁措施，您应当自行承担相关法律责任。"
+        },
+        {
+          "type": "paragraph",
+          "text": "9.3 如因深圳市同为数码科技股份有限公司网站或软件使用的第三方软件或技术引发的任何纠纷，应由该第三方负责解决，除有生效的司法裁判外，我们不承担任何责任。此外，我们不对第三方软件或技术提供客服支持，若您需要获取支持，请与第三方联系。"
+        },
+        {
+          "type": "heading",
+          "level": 2,
+          "text": "十、通知"
+        },
+        {
+          "type": "paragraph",
+          "text": "10.1 深圳市同为数码科技股份有限公司可能会以网页公告、网页提示、电子邮箱、手机短信、常规的信件传送、账号站内信等方式中的一种或多种， 向您送达关于服务使用的各种规则、通知、提示等信息，该等信息一经发送即视为送达，对您产生约束力。若您不接受的，应立即停止使用相关服务，并以书面通知方式告知我们。"
+        },
+        {
+          "type": "paragraph",
+          "text": "10.2 若由于您提供的电子邮箱、手机号码、通讯地址等信息错误，导致您未收到相关规则、通知、提示等信息的，您同意仍然视为您已经收到相关信息并受其约束， 一切后果及责任由您自行承担。"
+        },
+        {
+          "type": "paragraph",
+          "text": "10.3 若您有本协议项下相关事项需要通知我们的，请按照对外正式公布的联系方式书面通知，即："
+        },
+        {
+          "type": "paragraph",
+          "text": "电子邮件：tsrc@tvt.net.cn"
+        },
+        {
+          "type": "paragraph",
+          "text": "常规信件：广东省深圳市南山区粤海街道深圳湾科技生态园9栋B4座23楼"
+        },
+        {
+          "type": "heading",
+          "level": 2,
+          "text": "十一、适用法律及纠纷解决"
+        },
+        {
+          "type": "paragraph",
+          "text": "11.1本条款适用中华人民共和国的法律，并且排除一切冲突法规定的适用。"
+        },
+        {
+          "type": "paragraph",
+          "text": "11.2本协议签订地为深圳市南山区。如出现纠纷，您和深圳市同为数码科技股份有限公司一致同意将纠纷交由本协议签订地有管辖权法院受理。若单项协议与本协议在管辖约定内容上存在冲突，则在单项协议约束范围内应以单项协议为准。"
+        },
+        {
+          "type": "heading",
+          "level": 2,
+          "text": "十二、其他"
+        },
+        {
+          "type": "paragraph",
+          "text": "12.1深圳市同为数码科技股份有限公司不行使、未能及时行使或者未充分行使本协议或者按照法律规定所享有的权利，不应被视为放弃该权利，也不影响我们在将来行使该权利。"
+        },
+        {
+          "type": "paragraph",
+          "text": "12.2如本协议中的任何条款无论因何种原因完全或部分无效或不具有执行力，本协议的其余条款仍应有效且具有约束力，您和我们均应尽力使该条款设定的本意得到实现。"
+        },
+        {
+          "type": "paragraph",
+          "text": "12.3本协议中的标题、简称或定义等仅为方便而设，不作为解释本协议的依据。"
+        },
+        {
+          "type": "paragraph",
+          "text": "12.4如您对本协议有任何疑问，请联系深圳市同为数码科技股份有限公司客服中心，我们会及时给予必要的解释或帮助。"
+        }
+      ]
+    },
+    {
+      "locale": "zh-Hans",
+      "kind": "privacy",
+      "source_reference": "agreement/PrivacyStatement_zh-Hans.html",
+      "source_sha256": "ff1a8d79ee2ee6b2b095129a0187a54f7e39c83f2b8e233b71988a72e513028d",
+      "source_bytes": 38500,
+      "content_sha256": "53cb4679931ab116cf64eff7973fc7697593c2088b44f23163f036554cbffd4a",
+      "blocks": [
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "SuperLive Plus隐私声明"
+        },
+        {
+          "type": "paragraph",
+          "text": "发布/生效日期：2026年3月26日"
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "概述"
+        },
+        {
+          "type": "paragraph",
+          "text": "感谢您信任并使用SuperLive Plus应用（以下简称为“本应用”）。我们充分尊重您的隐私权，所以特此制定本应用《SuperLive Plus隐私声明》（以下简称为“本声明”）以便您了解我们如何搜集、使用、披露、保护、存储及传输您的个人数据。请您仔细阅读本声明。如您有任何疑问，请告知我们。"
+        },
+        {
+          "type": "paragraph",
+          "text": "个人信息是指以电子或其他方式记录的，能够单独或与其他信息结合识别自然人身份的各种信息。本声明解释了我们如何处理您的个人信息，具体产品或服务的处理方式将在相应的隐私通知或补充声明中详细说明。"
+        },
+        {
+          "type": "paragraph",
+          "text": "本声明将帮助您了解以下内容：\n一、我们会如何收集和使用您的个人信息\n二、我们会如何使用Cookie和同类技术\n三、我们如何委托处理、共享、转让、公开披露您的个人信息\n四、我们会如何保护您的个人信息\n五、如何管理您的个人信息\n六、我们会如何处理未成年人的个人信息\n七、第三方链接及其服务\n八、 您的个人信息如何在全球范围转移\n九、 为您提供其他附加服务\n十、图片推送加密\n十一、第三方产品和服务"
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "一、我们会如何收集和使用您的个人信息"
+        },
+        {
+          "type": "paragraph",
+          "text": "1、注册、登录、账号管理服务"
+        },
+        {
+          "type": "paragraph",
+          "text": "1.1 为实现注册、登录服务，我们需要您提供账号（电子邮箱/手机号码）和密码，以完成账户创建和登录认证，确保您能正常使用我们的服务。"
+        },
+        {
+          "type": "paragraph",
+          "text": "1.2 为便于账号管理，您可以根据自身需求选择提供头像、用户名（昵称或真实姓名）信息；我们提供电子邮箱和手机号码两种常规登录方式，如果两种登录方式您都需要，您可以选择将电子邮箱和手机号码进行绑定；我们还提供了更加快捷的登录方式，您可以选择将你的账号和第三方账号（微信/Google/Facebook）进行绑定。提示您注意，该功能以您自愿选择为准，若您不使用这些功能或者提供这些信息，也不会影响您正常使用本app。"
+        },
+        {
+          "type": "paragraph",
+          "text": "1.3 在修改密码和重置密码时，我们需要您提供用户密码，这是实现本功能所必须的信息，若您拒绝提供，将无法成功修改或者重置密码。"
+        },
+        {
+          "type": "paragraph",
+          "text": "2、设备管理服务"
+        },
+        {
+          "type": "paragraph",
+          "text": "2.1 为实现设备管理服务，我们会收集您的设备SN号，目的是当您需对您选定的设备进行设备名称修改、设备配置管理操作，拒绝提供这些信息会使您无法正常使用设备管理服务。"
+        },
+        {
+          "type": "paragraph",
+          "text": "2.2 本应用程序提供多种方式添加设备，这包括扫描二维码添加设备、局域网搜索添加设备、手动输入添加设备三种方式；当您使用不同的方式添加设备时，我们会收集您的设备SN号、设备验证码、设备密码、设备IP地址、移动终端WIFI信息，目的是将设备添加在您的账号下，以便于您对设备的管理，拒绝提供这些信息会使您无法正常使用设备添加服务。在您使用扫一扫添加功能时，我们需要您提供相机/摄像头、存储/图库权限以完成设备的添加。"
+        },
+        {
+          "type": "paragraph",
+          "text": "2.3 当您需要将设备分享给其他相关人士时，我们会收集相关人士的账号（邮箱/手机号码），若您拒绝提供，将无法分享给其他人；但这不会影响您正常使用本app的其他功能。"
+        },
+        {
+          "type": "paragraph",
+          "text": "2.4 为实现云升级功能，我们会收集设备的SN号，以识别需要升级的设备，保障您的产品安全。若您拒绝提供这些信息，您将无法使用云升级功能，但这不会影响您正常使用其他功能。"
+        },
+        {
+          "type": "paragraph",
+          "text": "3、云服务"
+        },
+        {
+          "type": "paragraph",
+          "text": "3.1 当您使用云服务时，为保障您正常使用我们的服务，维护我们服务运行安全及保障您的账号安全，我们会收集您的移动终端设备信息，设备型号、终端应用标识、终端标识（Android_ID、ICCID、IDFA、OAID）、操作系统版本号、IP地址、应用安装列表/应用列表、本应用程序软件版本号}、移动终端日志信息（服务故障信息、客户端故障信息）、智能物联网硬件设备信息（MAC地址、设备序列号、设备型号）、智能物联网硬件日志信息，这类信息是为提供服务必须收集的基础信息。"
+        },
+        {
+          "type": "paragraph",
+          "text": "3.2 如您使用云存储功能时，我们会收集本设备下连接的前端网络摄像机设备的音视频数据并存储在云存储服务器上，音视频数据将进行加密处理。提示您注意，该功能以您自愿选择为准，若您不使用这些功能或者提供这些信息，也不会影响您正常使用其他功能。"
+        },
+        {
+          "type": "paragraph",
+          "text": "4、为实现消息推送功能，我们会收集事件通知的信息（如告警设备的SN号、告警图片、人脸库管理和车牌库管理相关的人员/车辆识别信息等）并存储在云服务器上，相关个人信息将进行加密处理。如您拒绝提供这些信息，您将无法使用消息推送功能，但这不会影响您正常使用其他功能。"
+        },
+        {
+          "type": "paragraph",
+          "text": "5、为提升您的使用体验，您可以选择开启“用户体验计划”，我们会收集您的移动终端设备信息（型号、系统版本、APP版本、APPID、CPU核心数、运营商编号、APP当前使用内存、APP名称、APP bundleID/包名、操作系统语言）、账号（电子邮箱/手机号码）、用户名（昵称或真实姓名）和您所管理的相关设备信息（设备SN号、设备型号、设备名称）。"
+        },
+        {
+          "type": "paragraph",
+          "text": "6、站点服务"
+        },
+        {
+          "type": "paragraph",
+          "text": "6.1 为实现站点管理，我们会收集与站点相关的联系人姓名、手机号码、所在地区以及详细地址，拒绝提供这些信息会使您无法正常使用站点管理服务。"
+        },
+        {
+          "type": "paragraph",
+          "text": "6.2 为实现托管服务和交付管理，我们会收集相关人士的账号（手机号码/邮箱）、所在地区和托管/交付相关设备的SN号，若您拒绝提供这些信息，您将无法使用该功能，但这不会影响您正常使用其他功能。"
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            [
+              {
+                "type": "paragraph",
+                "text": "我们需要收集您移动设备的方向传感器，用于横竖屏的自动切换以及鱼眼VR场景；收集您移动设备的光线强度传感器，用于扫码功能和人脸添加感光。若您拒绝提供这些信息，您将无法使用该功能，但这不会影响您正常使用其他功能。"
+              }
+            ]
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "请注意："
+        },
+        {
+          "type": "paragraph",
+          "text": "本产品的服务功能多样化，不同服务收集和使用的个人信息类型、范围也会有所差异。我们仅会收集与您购买或使用的服务功能所对应的个人信息。如果您没有使用或购买上述某项功能服务时，我们绝不会且也无法收集与该功能相关的个人信息。"
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "二、我们会如何使用 Cookie 和同类技术"
+        },
+        {
+          "type": "paragraph",
+          "text": "设备、移动应用软件、windows应用软件可能会使用Cookie、像素标签和网站信标等本地存储技术。我们将通过 Cookie 和同类技术收集的信息视为非个人信息。但如果当地法律将IP地址或类似识别标记视为个人信息，则我们亦将此等识别标记视为个人信息。"
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "（一）Cookie"
+        },
+        {
+          "type": "paragraph",
+          "text": "Cookie 是一种网络服务器存储在计算机或移动设备上的纯文本文件。Cookie 的内容只能由创建它的服务器检索或读取。每个 Cookie 对您的网络浏览器或移动应用程序都是唯一的。Cookie 通常包含标识符、站点名称以及一些号码和字符。\n我们有时会在计算机或移动设备上存储Cookie，启用 Cookie 的目的在于改善用户体验，包括：\n1.登录和验证。当您使用账号登录网站时，借助于Cookie，您可以直接从网站的一个页面跳转到另一个页面，而不必在每个页面上重新登录；\n2.存储您的偏好和设置。网站能够借助Cookie来保存设置，如计算机或移动设备的语言、字体大小、购物车和其他浏览偏好等；\n3.基于兴趣的广告。我们使用Cookie来收集有关您的在线活动的信息并发现您的兴趣所在，并向您提供与您相关度最高的广告。\n4.统计分析。借助于Cookie，我们可以收集您使用我们的网站和其他应用程序的信息，如记录用户的单次访问（使用会话Cookie）或多次访问（使用永久Cookie）。\n我们不会将Cookie用于本声明所述目的之外的任何用途。您可根据自己的偏好管理或删除Cookie。有关详情，请参见AboutCookies.org。您可以清除计算机上保存的所有Cookie，大部分网络浏览器都设有阻止Cookie的功能。\n如果您清除Cookie，则需要在每一次访问我们的网站时亲自更改用户设置。同时也请注意，我们的某些服务可能必须使用Cookie，禁用 Cookie可能会影响您使用这些服务的全部或部分功能。"
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "（二）网站信标/像素标签"
+        },
+        {
+          "type": "paragraph",
+          "text": "除Cookie外，我们及某些第三方还会在网站上使用网站信标和像素标签。网站信标通常是一种嵌入到网站或电子邮件中的电子图像，可用于在您查看网页或电子邮件时识别您设备上的Cookie。像素标签使我们可以以您可阅读的格式传送电子邮件，并使我们够获知电子邮件是否被打开。\n我们以及某些第三方将该类技术用于多种用途，包括分析服务使用情况（与Cookie配合使用）以及提供更符合您需求的内容及广告。例如，我们向您发送的电子邮件可能含有链接至网站内容的点击URL。如果您点击该链接，我们则会跟踪此次点击，帮助我们了解您的偏好并改善客户服务。如果您不希望自己的活动以这种方式被追踪，则可以随时从我们的寄信名单中退订。"
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "（三）其他本地存储"
+        },
+        {
+          "type": "paragraph",
+          "text": "我们以及某些第三方可能在某些服务中使用其他本地存储技术，例如本地共享对象（又称\"Flash Cookie\"）和HTML5本地存储。这些技术与上述的Cookie类似，它们同样存储在您的设备中，并且可用于记录有关您的活动和首选项的某些信息。但这些技术与标准Cookie所使用的设备可能不同，因此您可能无法使用标准浏览器工具和设置来控制它们。有关禁用或删除Flash Cookie中所含信息的说明，请单击此处。"
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "（四）Do Not Track（请勿追踪）"
+        },
+        {
+          "type": "paragraph",
+          "text": "很多网络浏览器均设有Do Not Track功能，该功能可向网站发布Do Not Track请求。目前，主要互联网标准组织尚未设立相关政策来规定网站应如何应对此类请求。如果您的浏览器启用了Do Not Track，那么我们的所有网站都会尊重您的选择。"
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "三、我们如何委托处理、共享、转让、公开披露您的个人信息"
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "（一）委托处理"
+        },
+        {
+          "type": "paragraph",
+          "text": "一些情况下，我们会委托其他公司代表我们处理您的个人信息。例如代表我们处理热线、发送电子邮件、提供技术支持的公司，这些公司只能将您的个人信息用于代表我们向您提供服务。\n我们会与被委托方签署严格的保密协议或个人信息处理条款，要求他们按照本声明以及采取相关的保密和安全措施来处理个人信息。"
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "（二）共享"
+        },
+        {
+          "type": "paragraph",
+          "text": "共享是指我们向其他个人信息控制者提供个人信息，且双方分别对个人信息拥有独立控制权的过程。我们不会对外共享您的个人信息，但以下情况除外：\n1.在获取明确同意情况下的共享：获得您的明确同意后，我们会向您指定的第三方共享您授权范围内的信息；\n2.在法定情形下的共享：我们可能会根据法律法规规定、诉讼争议解决需要，或按行政、司法机关依法提出的要求，对外共享您的个人信息；\n3.共享给我们的附属公司：您的信息可能会在我们的附属公司内共享。我们仅会出于特定、明确而合法的目的在我们的附属公司内共享您的信息，并且只会共享提供服务所必要的信息。例如，在注册账号时为了避免重复注册，我们需要对拟注册的账号进行全球唯一性校验。\n4.共享给业务合作伙伴：我们可能会向合作伙伴等第三方共享您的订单信息、账户信息、设备信息以及位置信息，以保障为您提供的服务顺利完成。但我们仅会出于合法、正当、必要、特定、明确的目的共享您的个人信息，并且只会共享提供服务所必要的个人信息。我们的合作伙伴包括：\n（1）第三方卖家和第三方开发者：某些我们的服务由第三方直接向您提供，我们须将交易相关信息共享给第三方来实现您向其购买商品或服务的需求。例如，您在应用市场内购买其他开发者的商品时，我们须与开发者共享必要的您的信息，交易才能完成。\n（2）商品或技术服务的供应商。我们可能会将您的个人信息共享给支持我们功能的第三方，包括为我们供货或提供基础设施技术服务、物流配送服务、支付服务、数据处理服务的第三方等。我们共享这些信息的目的是为实现服务的功能，比如我们必须与物流服务提供商共享您的订单信息以安排送货；或者我们需要将您的订单号和订单金额与第三方支付机构共享以实现其确认您的支付指令并完成支付等。\n在3-4下，我们会与共享个人信息的公司、组织和个人其签署严格的保密协议，要求他们按照本声明以及采取相关的保密和安全措施来处理个人信息。"
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "（三）转让"
+        },
+        {
+          "type": "paragraph",
+          "text": "转让，是指将个人信息控制权由我们向另一个个人信息控制者转移的过程。我们不会将您的个人信息转让给任何公司、组织和个人，但以下情况除外：\n1、在获取明确同意的情况下转让：获得您的明确同意后，我们会向其他方转让您的个人信息；\n2、在涉及合并、收购或破产清算时，如涉及到个人信息转让，我们会要求新的持有您个人信息的公司、组织继续受本声明的约束，否则我们将要求该公司、组织重新向您征求授权同意。"
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "（四）公开披露"
+        },
+        {
+          "type": "paragraph",
+          "text": "我们仅会在以下情况下，公开披露您的个人信息：\n1. 获得您的明确同意后；\n2.基于法律或合理依据的公开披露：在法律、法律程序、诉讼或公共和政府主管部门有要求的情况下，我们可能会公开披露您的信息；"
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "（五）共享、转让、公开披露个人信息时事先征得授权同意的例外"
+        },
+        {
+          "type": "paragraph",
+          "text": "以下情形中，共享、转让、公开披露您的个人信息无需事先征得您的授权同意：\n1、与国家安全、国防安全有关的；\n2、与公共安全、公共卫生、重大公共利益有关的；\n3、与犯罪侦查、起诉、审判和判决执行等有关的；\n4、出于维护您或其他个人的生命、财产等重大合法权益但又很难得到本人同意的；\n5、您自行向社会公众公开的个人信息；\n6、从合法公开披露的信息中收集个人信息的，如合法的新闻报道、政府信息公开等渠道。\n根据法律规定，共享、转让经去标识化处理的个人信息，且确保数据接收方无法复原并重新识别个人信息主体的，不属于个人信息的对外共享、转让及公开披露行为，对此类数据的保存及处理将无需另行向您通知并征得您的同意。"
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "四、我们会如何保护您的个人信息"
+        },
+        {
+          "type": "paragraph",
+          "text": "我们重视个人信息的安全，我们采取业内标准做法来保护您的个人信息，防止其遭到未经授权访问、披露、使用、修改、损坏或丢失。为此，我们特别采取了以下措施：\n（一）我们采取一切合理可行的措施，确保个人信息收集的最小化，未收集与达到目的无关的个人信息。我们只会在达成本声明所述目的所需的期限内保留您的个人信息，除非需要延长保留期或法律允许；\n（二）我们会使用加密技术确保数据传输和存储的机密性。我们会使用受信赖的保护机制防止数据和存储数据的服务器遭到恶意攻击；\n（三）我们会部署访问控制机制，确保只有授权人员才可访问个人信息；并且依照业务需要和人员层级，控制授权人员的数量并对授权人员做到分层级的权限管理；对个人数据的访问都会被记录日志，并由管理员定期审计。\n（四）我们会严格甄选业务合作伙伴和服务提供商，将在个人信息保护方面的要求落实到双方的商务合同或审计、考核等活动中。\n（五）我们会举办安全和隐私保护培训课程、测试与宣传活动，加强员工对于保护个人信息重要性的认识。\n总之，我们会尽力保护您的个人信息。尽管如此，任何措施都无法做到无懈可击，也没有任何产品与服务、网站、数据传输、计算机系统、网络连接是绝对安全的。\n为应对个人信息泄露、损毁和丢失等可能出现的风险，我们制定了多项制度与管控措施，明确了安全事件、安全漏洞的分类分级标准及相应的处理流程，建立了专门的安全通告和安全预警页面。我们也为安全事件建立了专门的应急响应团队，按照安全事件处置规范要求，针对不同安全事件启动安全预案，进行止损、分析、定位、制定补救措施、联合相关部门进行回溯和打击。\n若不幸发生个人信息安全事件，我们将按照法律法规的要求向您告知：安全事件的基本情况和可能的影响、我们已采取或将要采取的处置措施、您可自主防范和降低风险的建议、对您的补救措施等。我们将以邮件、短信、推送通知等方式告知您事件相关情况，难以逐一告知个人信息主体时，我们会采取合理、有效的方式发布公告。同时，我们还将按照监管部门要求，上报个人信息安全事件的处置情况。"
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "五、您如何管理您的个人信息"
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "（一）访问、纠正、删除"
+        },
+        {
+          "type": "paragraph",
+          "text": "在我们提供产品及服务的众多国家或地区中，部分国家或地区的立法规定了个人信息主体有权访问、纠正、删除我们所保留的相关个人信息等权利。在前述国家或地区，个人信息主体或者其代理人可以向我们提出访问、纠正、删除我们所保留的相关个人信息的请求（下文统称“请求”）。\n1.提出请求的方式与渠道\n个人信息主体请求必须以书面形式提出。即使请求人未说明请求所依据的法规，请求同样有效。一般来说，口头提出的访问请求是无效的，若一些国家的立法亦承认口头请求的有效性，我们将会遵循此类规定。\n如果个人信息主体通过热线、服务邮箱、在线客服、服务门店等其他渠道提出相关请求，我们会引导个人信息主体通过前述渠道提出正式诉求，以便于交流和反馈处理进度及结果。我们建立专门的个人信息主体请求渠道，旨在为保护个人信息主体的合法利益和保障我们的正常经营，防止个人信息请求权利被他人盗用或者滥用。\n2.请求的有效性\n大多数的法律要求个人信息主体提出请求的时候遵循特定的要求。本声明要求个人信息主体做到以下几点：\n（1）提供足够的信息给我们来验证他们的身份（以确保提出请求的人是个人信息主体本人或者其授权人） （2）请求内容具体，具有可执行性。\n3.请求的处理期限\n我们会竭尽全力确保在个人信息主体访问请求提出的一个月内做出回复，考虑到要求的复杂性和数量，在必要的时候，这一期限可能再延长两个月。对于延期提供信息的情况，我们将通知个人信息主体相关情形和延迟原因。如果本段所设定的时限与当地法律规定发生冲突，则以当地法律规定为准。\n4.请求的结果\n个人信息主体请求提出后，将可能出现以下几种结果：\n（1）请求被驳回\n在某些情况下，个人信息主体的请求将被驳回，包括但不限于：\na. 当地法律未赋予个人信息主体享有相关权利时；\nb. 提出请求的人的身份无法被验证时；\nc. 个人信息主体提出的要求无法验证、超出范围，尤其是重复提起要求的情形时；\nd. 如果涉及到的信息跟我们在纠纷中要做出的赔偿或者获得的补偿有关，披露信息很有可能会损害我们的利益时；\ne. 如果保留信息只是出于统计和研究的目的，而且统计和研究结果的公布不会披露个人身份时；\nf. 其他法律规定的情形。\n如果我们驳回了个人信息主体访问请求，将正式向请求人说明原因。\n（2）请求成功\n当（1）中的情形未发生时，我们会满足个人信息主体的请求。为了提升请求成功的可能性，请在提出请求时尽可能提供详细的信息，如请求的类别和具体内容、信息持有人的相关信息（如您所使用的我们服务名称）、信息生成或者处理的时间范围（时间范围越小，成功的可能性越大）等。\n5.特别声明\n（1）任何人均无权接触其他人的个人信息，除非是被授权人或者监护人。\n（2）大多数的法律规定都明确了组织可以不向个人信息主体提供数据的情况。这些情况包括以下几种：提供了数据会破坏打击恐怖主义的力量，个人信息主体已经重复申请了多次，或者获取和提供信息会耗费不相称的资源等。\n（3）原则上，我们不会提供以下信息：\na.关于其他人的信息——个人信息主体访问请求想要获取的数据可能会涉及到个人信息主体之外的其他人。 除非所涉及的个人同意，否则我们不会提供此类信息。\nb.重复申请——请求人提出的是针对同一个个人信息主体的相同或者类似请求，数据在过去一段时间内没有发生变化，而且我们已经提供了数据，这种情况下通常我们不会再提供数据的副本。此外，我们也没有义务来提供已经公诸于众的信息。\nc.保密下给出的观点——如果关于个人信息主体的信息是在保密下给出的观点，我们没有义务来提供这些信息。\nd.特殊文件——任何我们保留的特殊信息是不会在回复个人信息主体访问请求中予以公开的。一般而言，特殊信息包括任何保密文件（例如客户与其律师之间的直接沟通）以及为取得或给出相应法律意见的信息（不论是诉讼本身或法院诉讼的过程中所涉及到的信息）。"
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "（二）撤回同意"
+        },
+        {
+          "type": "paragraph",
+          "text": "您可以通过删除信息、关闭设备功能、在我们终端设备或App中进行隐私设置等方式改变您授权我们继续收集个人信息的范围或撤回您的授权。在我们账号相关业务中，您也可以通过注销账户的方式，撤回我们通过账号相关业务继续收集您个人信息的全部授权。\n请您理解，每个业务功能需要一些基本的个人信息才能得以完成，当您撤回同意或授权后，我们无法继续为您提供撤回同意或授权所对应的服务，也不再处理您相应的个人信息。但您撤回同意或授权的决定，不会影响此前基于您的授权而开展的个人信息处理。\n如何在具体的服务中撤回同意，由我们在专门的隐私通知或补充声明中发布。"
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "六、我们会如何处理未成年人的个人信息"
+        },
+        {
+          "type": "paragraph",
+          "text": "我们的个人及家用设备主要面向成人，但对于使用设备与服务的未成年人，我们很清楚采取额外预防措施保护其隐私和安全的重要性。我们将不满 18 周岁（或当地法律规定的年龄）的任何人均视为未成年人。\n对于经监护人同意而收集的未成年人个人信息，我们只会在法律允许、监护人明确同意或者保护未成年人所必要的情况下使用或披露。如果任何时候监护人需要访问、修改或删除与被监护人有关的个人信息，请按照“四、我们会如何保护您的个人信息”中介绍的方式与我们联系。\n如果我们发现自己在未事先获得可证实的监护人同意的情况下收集了未成年人的个人信息，则会设法尽快删除相关内容。"
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "七、第三方链接及其服务"
+        },
+        {
+          "type": "paragraph",
+          "text": "我们的应用软件、产品服务中可能含有第三方网站的链接。我们的产品和服务也可能使用或提供来自第三方的服务，如我们应用市场内上架的第三方App。\n所有含有第三方网站、提供服务的链接仅为方便用户而提供。我们对此类第三方无控制权，无法对链接内容提供任何明示和暗示的保证，此类链接也不视为我们对链接内容的推荐或授权；我们亦无法控制第三方的隐私或数据保护政策，此类第三方也不受到本声明的约束。\n您需自行独立判断您与此类链接的互动行为，在向第三方提交个人信息之前，请阅读并参考这些第三方的隐私政策，我们对此不承担任何责任。"
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "八、您的个人信息如何在全球范围转移"
+        },
+        {
+          "type": "paragraph",
+          "text": "我们通过遍布全球的资源和服务器提供服务。这意味着，您的个人信息可能会被转移到您使用我们的服务所在国家/地区境外的其他司法管辖区，或者受到来自这些司法管辖区的访问。此类司法管辖区可能设有不同的数据保护法，甚至未设立相关法律。在此类情况下，我们会确保您的数据得到所有适用法律和法规要求的充分且同等的保护。例如，我们会请求您对跨境转移个人信息的同意或者在跨境转移之前实施数据匿名等安全举措。\n本政策所指的重大变更包括但不限于：\n（一）我们的服务模式发生重大变化。如处理个人信息的目的、处理的个人信息类型、个人信息的使用方式等；\n（二）我们在所有权结构、组织架构等方面发生重大变化。如业务调整、破产并购等引起的所有者变更等；\n（三）个人信息共享、转让或公开披露的主要对象发生变化；\n（四）您参与个人信息处理方面的权利及其行使方式发生重大变化；\n（五）我们负责处理个人信息安全的责任部门、联络方式及投诉渠道发生变化时；\n（六）个人信息安全影响评估报告表明存在高风险时。"
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "九、为您提供其他附加服务"
+        },
+        {
+          "type": "paragraph",
+          "text": "为向您提供更便捷、更优质、个性化的产品及/或服务，努力提升您的体验，我们会收集您的设备型号、操作系统、唯一设备标识符、、操作日志、MAC地址、应用程序列表信息。我们在向您提供的以下附加服务中可能会收集和使用您的个人信息。如果您不提供这些信息，不会影响您使用我们平台的浏览、搜索、购买等基本服务，但您可能无法获得这些附加服务给您带来的用户体验。这些附加服务包括：\n（一） 基于相机/摄像头的附加服务：您可在开启相机/摄像头权限后使用该功能。我们访问您的相机是为了使您可以使用摄像头拍摄影像、照片，用于用户直接拍摄并上传视频、图片参与UGC相关功能，进行相应内容在我们平台的展示，以及特定场景下经您授权活动参与，以及其他您明确知悉的场景。\n（二）基于相册（图片库/视频库）的图片/视频访问及上传的附加服务：您可在开启相册权限后使用该功能上传您的照片/图片/视频以及本地缓存的视音频文件，便于您进行头像更换、发表和分享评论、保存活动分享二维码、或与客服沟通时证明您所遇到的问题。\n（三）访问App安装列表：如您分享，需要访问APP安装列表来判断是否已安装微信/QQ等客户端。\n（四）MAC地址：为保障您的账号与使用安全，您需要授权我们读取本机识别码\n（五）基于麦克风的语音技术相关附加服务：您可在开启麦克风权限后实现音频录制功能；请您知晓，即使您已同意开启麦克风权限，我们也仅会在您主动点击客户端内麦克风图标或录制音频时通过麦克风获取语音信息。\n（六）存储权限：您可在开启存储权限权限后实现保存用户配置信息。\n（七）获取、监听陀螺仪传感器，光敏传感器等设备传感器：预览视频时，会使用用户手机的传感器信息（单纯的传感器数据不属于个人信息），以识别用户的动作，为用户提供视频旋转，调节播放亮度等功能。\n您理解并同意，上述附加服务可能需要您在您的设备中开启您的摄像头（相机）、相册（图片库）、麦克风（语音）、App安装列表及MAC地址访问权限，以实现这些权限所涉及信息的收集和使用。请您注意，您开启任一权限即代表您授权我们可以收集和使用相关个人信息来为您提供对应服务，您一旦关闭任一权限即代表您取消了授权，我们将不再基于对应权限继续收集和使用相关个人信息，也无法为您提供该权限所对应的服务。但是，您关闭权限的决定不会影响此前基于您的授权所进行的信息收集及使用。"
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "十、图片推送加密"
+        },
+        {
+          "type": "paragraph",
+          "text": "为保障图片数据在传输和存储过程中的安全性与完整性，本图片推送服务采用符合行业安全标准的加密机制，具体加密逻辑如下：\n（一） 链路传输加密机制：图片数据在从数据源头推送至用户客户端的全程链路中，均启用高强度传输加密协议进行实时加密处理，从而有效抵御数据窃听、中间人攻击、数据篡改等网络安全风险。\n（二）对象加密存储机制：图片数据上传至 OSS 后，将自动启用对象级加密功能，对存储的图片文件进行静态加密保护，并配备严格的访问授权机制，从根源上防范未授权访问、数据泄露等存储安全风险，确保图片数据静态存储阶段的安全性。\n上述加密模式已覆盖图片推送的核心安全需求，符合安防监控领域数据传输的行业安全规范，能够为图片推送过程提供可靠的安全保障。\n用户在使用图片推送服务时，无法自行配置加密密钥以对推送的图片数据实施额外加密保护，如用户对数据加密层级存在更高要求，或无法接受现行加密模式下可能产生的相关风险，建议审慎评估是否使用本服务。用户一经选用本服务，即视为已充分知悉、理解并自愿接受前述安排及可能涉及的风险。"
+        },
+        {
+          "type": "heading",
+          "level": 3,
+          "text": "十一、第三方产品和服务"
+        },
+        {
+          "type": "paragraph",
+          "text": "为保障本APP相关功能的实现与稳定运行，我们可能会接入由第三方提供的软件开发包（SDK）以实现相关目的，不同版本的第三方 SDK 会有所不同，以下向您列示本APP所接入的第三方 SDK情况。"
+        },
+        {
+          "type": "table",
+          "rows": [
+            [
+              [
+                {
+                  "type": "paragraph",
+                  "text": "第三方公司名称"
+                }
+              ],
+              [
+                {
+                  "type": "paragraph",
+                  "text": "产 品/服务"
+                }
+              ],
+              [
+                {
+                  "type": "paragraph",
+                  "text": "使用目的"
+                }
+              ],
+              [
+                {
+                  "type": "paragraph",
+                  "text": "使用场景"
+                }
+              ],
+              [
+                {
+                  "type": "paragraph",
+                  "text": "涉及个人信息/权限"
+                }
+              ],
+              [
+                {
+                  "type": "paragraph",
+                  "text": "共享方式"
+                }
+              ]
+            ],
+            [
+              [
+                {
+                  "type": "paragraph",
+                  "text": "腾讯科技（深圳）有限公司"
+                }
+              ],
+              [
+                {
+                  "type": "paragraph",
+                  "text": "微信第三方登录SDK"
+                }
+              ],
+              [
+                {
+                  "type": "paragraph",
+                  "text": "可以使用微信账号登录app"
+                }
+              ],
+              [
+                {
+                  "type": "paragraph",
+                  "text": "app登录"
+                }
+              ],
+              [
+                {
+                  "type": "paragraph",
+                  "text": "https://support.weixin.qq.com/cgi-bin/mmsupportacctnodeweb-bin/pages/ONwPihxKd82RAkIJ"
+                }
+              ],
+              [
+                {
+                  "type": "paragraph",
+                  "text": "后台接口传输"
+                }
+              ]
+            ],
+            [
+              [
+                {
+                  "type": "paragraph",
+                  "text": "Google"
+                }
+              ],
+              [
+                {
+                  "type": "paragraph",
+                  "text": "Firebase"
+                }
+              ],
+              [
+                {
+                  "type": "paragraph",
+                  "text": "消息推送"
+                }
+              ],
+              [
+                {
+                  "type": "paragraph",
+                  "text": "用户获取推送消息"
+                }
+              ],
+              [
+                {
+                  "type": "paragraph",
+                  "text": "唯一设备识别码（IMEI,android_id,ssid,IDFA,OPENUDID, GUID,SIM卡信息,国际移动设备 识别码IMSI）、MAC地址、设备平台、设备厂商、设备品牌、设备应用安装列表；网络信息以及位置相关信息：设备的网络状态和变化，位置相关信息、ssid、 视频、任务列表、Wifi信息"
+                }
+              ],
+              [
+                {
+                  "type": "paragraph",
+                  "text": "后台接口传输"
+                }
+              ]
+            ]
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "重要提示：鉴于当地法律和语言差异，当地语言版本的《SuperLive Plus隐私声明》可能与本版本有所不同。如果出现任何差异，请以当地语言版本为准。"
+        }
+      ]
+    }
+  ]
+}

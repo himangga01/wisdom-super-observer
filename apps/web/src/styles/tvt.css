@@ -1,0 +1,15 @@
+@theme {
+  --color-tvt-error: #8C2424;
+  --color-tvt-focus: #226594;
+  --radius-tvt-card: 14px;
+  --radius-tvt-input: 8px;
+  --spacing-tvt-panel: 16px;
+}
+.tvt-shell { min-width: 0; }
+.tvt-panels { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 16px; }
+.tvt-input { display: block; width: 100%; min-height: 44px; border: 1px solid var(--wso-border); border-radius: 8px; padding: 10px 12px; background: white; }
+.tvt-error { border: 1px solid #E6B7B7; border-radius: 8px; padding: 16px; background: #FFF7F7; color: #8C2424; }
+.tvt-shell :where(input, select, button, a):focus-visible { outline: 2px solid #226594; outline-offset: 4px; }
+.tvt-shell :where(input, select, button):disabled { opacity: .65; cursor: not-allowed; }
+.tvt-shell a[aria-current="page"] { background: var(--wso-accent-soft); font-weight: 600; }
+@media (max-width: 767px) { .tvt-panels { grid-template-columns: minmax(0, 1fr); gap: 12px; } }

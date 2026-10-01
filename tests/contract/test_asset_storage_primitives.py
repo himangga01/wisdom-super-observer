@@ -179,7 +179,7 @@ def test_crypto_tamper_never_returns_plaintext(mode: str) -> None:
     elif mode == "header":
         raw = b"X" + raw[1:]
     elif mode == "nonce":
-        raw = raw[:8] + b"X" + raw[9:]
+        raw = raw[:8] + bytes([raw[8] ^ 1]) + raw[9:]
     elif mode == "truncated":
         raw = raw[:-1]
     elif mode == "extra":
@@ -200,6 +200,19 @@ def test_crypto_tamper_never_returns_plaintext(mode: str) -> None:
             manifest = replace(manifest, aad=replace(manifest.aad, **changes))
     with pytest.raises(AssetCryptoFailure):
         cipher.decrypt_verified(manifest, [raw], budget=IOBudget(time.monotonic() + 5))
+
+
+def test_crypto_nonce_tamper_rejects_original_x(monkeypatch) -> None:
+    from wso_core import asset_crypto
+
+    random_bytes = asset_crypto.os.urandom
+
+    def nonce_with_original_x(size):
+        value = random_bytes(size)
+        return b"X" + value[1:] if size == 12 else value
+
+    monkeypatch.setattr(asset_crypto.os, "urandom", nonce_with_original_x)
+    test_crypto_tamper_never_returns_plaintext("nonce")
 
 
 def test_declared_plaintext_constraints_before_completion() -> None:
