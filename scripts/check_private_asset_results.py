@@ -1,9 +1,17 @@
 """Require all fourteen actual private asset cases with zero skips or failures."""
 
 import argparse
+import json
 import re
 from pathlib import Path
 from xml.etree import ElementTree as ET
+
+if __package__:
+    from .asset_provider_receipt import parse_provider_receipt
+else:
+    from asset_provider_receipt import (  # type: ignore[import-not-found, no-redef]
+        parse_provider_receipt,
+    )
 
 REQUIRED_CASES = frozenset(
     {
@@ -101,15 +109,69 @@ def verify_results(path: Path) -> int:
     return len(observed)
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("junit", type=Path)
-    arguments = parser.parse_args()
+def verify_green(
+    junit: Path, provider_receipt: Path, *, pytest_exit: int
+) -> dict[str, object]:
+    """Require successful pytest, healthy exact14 JUnit, and canonical provider13."""
+    if type(pytest_exit) is not int or pytest_exit != 0:
+        raise ValueError("private asset pytest did not succeed")
+    count = verify_results(junit)
     try:
-        count = verify_results(arguments.junit)
+        with provider_receipt.open("rb") as stream:
+            payload = stream.read(16 * 1024 + 1)
+        provider = parse_provider_receipt(payload)
+    except (OSError, ValueError):
+        raise ValueError("provider receipt is invalid") from None
+    return {
+        "schema_version": 1,
+        "provider": provider,
+        "junit": {
+            "tests": count,
+            "failures": 0,
+            "errors": 0,
+            "skipped": 0,
+            "classname": CLASSNAME,
+            "names": sorted(REQUIRED_CASES),
+        },
+    }
+
+
+class _GateArgumentParser(argparse.ArgumentParser):
+    def error(self, message: str) -> None:
+        # argparse's normal errors echo arbitrary supplied arguments and paths.
+        self.exit(2, "Private asset gate failed: invalid command arguments.\n")
+
+
+def main() -> None:
+    parser = _GateArgumentParser(description=__doc__)
+    parser.add_argument("junit", type=Path)
+    parser.add_argument("--pytest-exit", type=int)
+    parser.add_argument("--provider-receipt", type=Path)
+    parser.add_argument("--emit-public-proof", action="store_true")
+    arguments = parser.parse_args()
+    combined = arguments.pytest_exit is not None
+    if combined != (arguments.provider_receipt is not None):
+        parser.error("combined mode requires pytest exit and provider receipt")
+    if arguments.emit_public_proof and not combined:
+        parser.error("public proof requires combined mode")
+    try:
+        if combined:
+            proof = verify_green(
+                arguments.junit,
+                arguments.provider_receipt,
+                pytest_exit=arguments.pytest_exit,
+            )
+            count = len(REQUIRED_CASES)
+        else:
+            count = verify_results(arguments.junit)
     except ValueError as error:
         parser.exit(1, f"Private asset gate failed: {error}.\n")
     print(f"Required Linux private asset cases passed: {count}; zero skips.")
+    if arguments.emit_public_proof:
+        print(
+            "WSO_PUBLIC_ASSET_GREEN_PROOF="
+            + json.dumps(proof, sort_keys=True, separators=(",", ":"))
+        )
 
 
 if __name__ == "__main__":

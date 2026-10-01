@@ -548,7 +548,7 @@ def _failure(error: Exception) -> AssetFailure:
             else 503
             if code in ("DEADLINE", "UNAVAILABLE")
             else 422,
-            "ASSET_" + code,
+            "ASSET_LIMIT" if code in ("PIXELS", "DIMENSIONS") else "ASSET_" + code,
         )
     if isinstance(error, AssetCryptoFailure):
         return AssetFailure(

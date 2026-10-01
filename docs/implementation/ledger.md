@@ -14,8 +14,8 @@ This ledger tracks executable service work. The separate [parity ledger](../inte
 | W00 atomic parity ledger | Static 77-case seed and desktop API preflight implemented; false-positive paths closed | 31 focused tests passed; checker 77/77 rows, zero errors; headless Chrome/Edge API probe 2/2 | Trusted W24 run registry and comparator; runtime reachability, Android/iOS/media/permission checks, support matrix sign-off; no `MATCHED` rows and `release_ready=false` |
 | W01 TVT bridge feasibility | Static handoff, frozen 199-operation manifest and declaration inventories implemented | 10 schema tests passed; 77 cases / 199 candidate operations; 281 request classes and 299 native declarations inventoried | Vendor rights, runtime fixtures and pilot; all six remote G-P1 families `BLOCKED` |
 | T05 durable jobs | Database-owned requests, outbox/inbox, restricted dispatcher/worker, fencing, cancellation, external uncertainty, status/items API and job-bound secret primitives implemented; task and milestone integration/fix reviews approved | [Actual Linux run 36716200713](https://github.com/himangga01/wisdom-super-observer/actions/runs/36716200713): 537 Python cases and all ten required real process/broker recovery cases, zero skips; no remaining Critical/Important review findings | Generic credential handlers fail CAPABILITY_UNSUPPORTED until the owning executor exists; no production IMPORT/REGISTRATION handler. Deployment and vendor effects remain pending |
-| T05A private assets | In progress; MinIO rejected for native installed-prefix multipart inventory/restart discovery; RustFS R17 three-literal source fix and independent review approved | [Latest foundation run 36831149737](../engineering/linux-ci.md#linux-foundation-run-36831149737); [MinIO11 failure](../engineering/linux-ci.md#eleventh-sealed-private-asset-baseline-native-listing-contract-failure); [latest actual RustFS probe14](../engineering/linux-ci.md#rustfs-cold-probe14--2026-10-01) failed setup in 14.23s at IAM-before export validation | Probe14 diagnostic `GATEWAY/IAM_BEFORE/EXPORT/EXPECTED_STATE`, status null; repeated log is one failure, not HTTP status. Native body/predicate and cleanup/acceptance remain unknown. R17's three diagnostics wire-name corrections are reviewed; one root 1,220 pytest-only aggregate passed. R18 conditional probe15 is defined, not activated; no actual15/manual retry. No provider receipt/authenticated RED/full14. Latest foundation 2,371 ordinary +10 actual recovery cases, zero skips; fbe and aa63 remain history. W02 closed, `MATCHED=0`, six G-P1 blocked, `release_ready=false` |
-| W02–W25 service features | W02 remains closed; W03–W25 pending | No private provider acceptance; no APK `MATCHED` rows and `release_ready=false` | T05A provider capability remains unresolved; all six remote G-P1 families remain `BLOCKED` |
+| T05A private assets | In progress; MinIO rejected for native installed-prefix multipart inventory/restart discovery; RustFS probe15 established the historical provider/authenticated baseline; full14 workflow/proof and fixture fix2 source gates approved | [Latest foundation run 36838223296](../engineering/linux-ci.md#linux-foundation-run-36838223296); [MinIO11 failure](../engineering/linux-ci.md#eleventh-sealed-private-asset-baseline-native-listing-contract-failure); [actual baseline probe15](../engineering/linux-ci.md#rustfs-baseline-probe15--2026-10-01); [approved full14 source transition](../engineering/linux-ci.md#full14-green-source-transition--approved-runtime-pending) | Probe15 at source `f779c69ad7fe434cb547a6f9555d20285aed387a` passed provider preflight/owned lifecycle and strict JUnit accepted one authenticated sealed656 RED in 48.35s (one failure, zero errors/skips); see [sanitized historical proof](evidence/2026-10-01-t05a-rustfs-baseline-red.json). This is not a current-route claim. R18 authority consumed. Current-HEAD Linux full14 has not run; T05A acceptance and APK parity remain pending. W02 runtime acceptance pending, `MATCHED=0`, six G-P1 blocked, `release_ready=false` |
+| W02–W25 service features | W02 first-model implementation is in progress; W03–W25 pending | The disjoint W02 model set passed 116 focused cases; review and account-HTTP source work are active. Runtime acceptance remains pending. T05A probe15 established its separate historical provider baseline; no APK `MATCHED` rows and `release_ready=false` | Complete W02 review and account-HTTP source/runtime evidence; all six remote G-P1 families remain `BLOCKED` |
 
 ## Previous integrated verification — 2026-09-30
 
@@ -125,45 +125,31 @@ Mypy run is claimed. Nine-file Ruff/format and
 configured mypy40 plus explicit pure-checker mypy2 are earlier pre-R13 results;
 mypy40 was also fresh in foundation runs 36821056354, 36824906088 and
 36831149737. No post-R13 nine-file static or mypy rerun is claimed. These are
-offline source/contract gates. Foundation run 36831149737 is the latest
-completed Linux evidence (2,371 ordinary cases and ten actual recovery cases,
-zero skips); fbe run 36824906088 and aa63 run 36821056354 remain historical.
-RustFS probe14 (run 36831149653, job 110267814324) is the latest actual
-provider attempt, following probe12 and the historical MinIO11 failure. Probe14 failed setup with one
-`GATEWAY/IAM_BEFORE/EXPORT/EXPECTED_STATE` diagnostic in 14.23 seconds and
-`status: null`. Its duplicated log rendering is one failure; null is not an
-observed HTTP status. The failed step was authenticated missing-feature RED
-observation after S3 preflight. Source locations 1056/1977/2023 are not values;
-trace reached the IAM before-snapshot after earlier checkpoint work. The native
-export body and exact rejected predicate were not retained. Zero public-proof,
-close-diagnostic and ACL-effect records do not establish cleanup or provider
-acceptance. R16's automatic probe14 authority is activated and consumed. R18 defines one
-conditional automatic probe15, not activated; no actual probe15 or manual
-retry is authorized. The accepted source-only diagnosis identifies
-three sufficient wire mismatches in native `diagnostics`: `admin:Trace` vs
-`admin:ServerTrace`, `admin:TopLocks` vs `admin:TopLocksInfo`, and
-`admin:HealthInfo` vs `admin:OBDInfo`. It does not establish which unique
-predicate failed at runtime. R17 changed only these three literals and its
-independent review approved with 0 Critical / 0 Important / 0 Minor and 2
-warnings; the root's single 1,220-case pytest aggregate passed with no skips.
-Probe13 remains historical: the accepted pinned-static-ELF
-diagnosis found a sufficient version-parser incompatibility, but not the unique
-actual predicate or complete formatter extent. The 1,130 post-R13 and 1,192
-post-R15 aggregates are pytest-only offline gates; R15 author Ruff/format
-covered one file each. Nine-file Ruff/format and configured/pure-checker mypy
-results are earlier evidence. No post-R15 global static or mypy rerun is
-claimed. Foundation run 36831149737 is latest completed (2,371 ordinary cases
-and ten actual recovery cases, zero skips); fbe 36824906088 and aa63 36821056354
-are historical. No RustFS provider receipt, authenticated HTTP, genuine
-sealed-656 RED, full14 GREEN, APK `MATCHED` row or release readiness is
-established; T05A remains in progress and W02 remains closed.
+offline source/contract gates. Foundation run 36838223296 is the latest
+completed Linux evidence (2,399 ordinary cases and ten actual recovery cases,
+zero skips); 4d41 run 36831149737, fbe run 36824906088 and aa63 run
+36821056354 remain dated history.
+RustFS probe15 (run 36838223294, job 110290730000) is now the latest actual
+provider attempt. It succeeded through provider preflight and owned lifecycle;
+the strict JUnit gate accepted one authenticated sealed656 missing-route RED in
+48.35 seconds (one test/failure, zero errors/skips). The
+[sanitized proof](evidence/2026-10-01-t05a-rustfs-baseline-red.json) is a
+historical baseline at source `f779c69ad7fe434cb547a6f9555d20285aed387a`, not
+a current-service route claim. The latest completed foundation is run
+36838223296 (2,399 ordinary and ten actual recovery cases, zero skips); its
+static/frontend/browser gates are recorded in the receipt. R18's automatic
+probe15 authority is consumed. The full14 workflow/checker/proof transition and fixture fix2 are approved at
+source/contract level; their scoped reviews report zero findings, with the
+independent 119-case packet and retained 387-case composition passing. The
+current-HEAD Linux full14 workflow has not executed. No actual full14 GREEN,
+T05A closure, W02 runtime acceptance, APK `MATCHED` row or release readiness is
+established. T05A remains in progress.
 
-T05A is in progress: private upload contracts, bounded S3/crypto/image adapters
-and the real Linux S3/HTTP fixture are being implemented in separate owned files.
-The initial fixture and strict result gates receive independent review. The
-separate [baseline RED probe](../engineering/linux-ci.md#private-asset-baseline-red-probe)
-must prove actual provider and authentication preflight before the missing route
-assertion. No S3/lifecycle acceptance or APK parity is claimed at this stage.
+T05A remains in progress. Probe15 already established the historical RustFS
+provider preflight and authenticated sealed656 baseline RED. The full14
+workflow/checker/proof source and fixture fix2 now have approved scoped reviews
+and passing source/contract packets; the actual current-HEAD Linux full14 run is
+still pending. This does not establish full14 lifecycle acceptance or APK parity.
 
 The distinct [406f47e Linux receipt](../engineering/linux-ci.md#linux-foundation-run-36774933005)
 at `406f47e` passed 1512 ordinary Python cases with zero skips in 128.54 seconds

@@ -1,4 +1,4 @@
-name: Private asset baseline RED proof
+name: Private asset full14 GREEN proof
 
 on:
   push:
@@ -7,10 +7,23 @@ on:
       - '.github/workflows/private-assets.yml'
       - 'scripts/dev/owned-ci-postgres.sh'
       - 'scripts/check_private_asset_red.py'
+      - 'scripts/check_private_asset_results.py'
       - 'scripts/asset_provider_receipt.py'
       - 'tests/support/asset_*.py'
+      - 'tests/support/asset_harness.py'
+      - 'tests/support/asset_process.py'
+      - 'tests/support/asset_job_handlers.py'
+      - 'tests/support/asset_broker.py'
+      - 'tests/support/asset_faults.py'
       - 'tests/integration/test_private_assets.py'
+      - 'tests/contract/test_asset_faults.py'
+      - 'tests/contract/test_asset_job_fixture.py'
+      - 'tests/contract/test_asset_suite_lifetime.py'
+      - 'tests/contract/test_private_asset_gate.py'
+      - 'tests/contract/test_private_asset_green_proof.py'
+      - 'tests/contract/test_private_asset_red_gate.py'
       - 'packages/core/pyproject.toml'
+      - 'packages/core/src/wso_core/assets.py'
       - 'pyproject.toml'
       - 'uv.lock'
 
@@ -18,52 +31,46 @@ permissions:
   contents: read
 
 concurrency:
-  group: private-assets-red-${{ github.ref }}
-  cancel-in-progress: true
+  group: private-assets-full14-green-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  baseline-red:
+  full14-green:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    defaults:
-      run:
-        working-directory: .superpowers/ci-private-assets-red
+    timeout-minutes: 100
     env:
       CI: 'true'
       WSO_CI_DISPOSABLE_POSTGRES: '1'
-      WSO_TEST_PYTHON: ${{ github.workspace }}/.superpowers/ci-private-assets-red/.venv/bin/python
+      WSO_TEST_PYTHON: ${{ github.workspace }}/.venv/bin/python
       WSO_TEST_RECOVERY_DATABASE_NAME: wso_ci_test
       WSO_TEST_RECOVERY_DATABASE_OWNER: postgres
     steps:
-      - name: Check out reviewed fixture infrastructure
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - name: Check out sealed T05 product baseline
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: 6565929776c2ff5b9ff55670bc4567b6d2cf4821
-          path: .superpowers/ci-private-assets-red
-          persist-credentials: false
-      - name: Overlay only fixture and dependency infrastructure
-        working-directory: .
+      - name: Anchor the original host-clock fixture allocation
+        working-directory: ${{ runner.workspace }}
         shell: bash
         run: |
           set -euo pipefail
-          task_baseline='.superpowers/ci-private-assets-red'
-          [[ "$(git -C "$task_baseline" rev-parse HEAD)" == 6565929776c2ff5b9ff55670bc4567b6d2cf4821 ]]
-          # No product asset module, contract model, route or migration is copied.
-          for task_path in \
-            pyproject.toml packages/core/pyproject.toml uv.lock \
-            tests/support/asset_provider.py tests/support/asset_minio.py \
-            tests/support/asset_rustfs.py \
-            tests/support/asset_harness.py \
-            tests/support/asset_process.py tests/integration/test_private_assets.py \
-            scripts/dev/owned-ci-postgres.sh scripts/check_private_asset_red.py \
-            scripts/asset_provider_receipt.py; do
-            mkdir -p "$task_baseline/$(dirname "$task_path")"
-            cp -- "$task_path" "$task_baseline/$task_path"
-          done
+          python3 - <<'PY'
+          import math
+          import os
+          import time
+          started = time.monotonic()
+          if not math.isfinite(started) or started < 0:
+              raise SystemExit("Host monotonic clock is unavailable")
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as stream:
+              stream.write(f"WSO_TEST_ASSET_SUITE_STARTED_MONOTONIC={started:.9f}\n")
+          PY
+      - name: Check out reviewed current HEAD
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Invalidate prior private suite evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .superpowers/verification
+          rm -f -- .superpowers/verification/private-assets-green.xml \
+            .superpowers/verification/private-assets-green-provider.json
       - name: Python 3.12.10
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
@@ -77,24 +84,42 @@ jobs:
       - name: Provision owned PostgreSQL 17.11
         shell: bash
         run: bash scripts/dev/owned-ci-postgres.sh start
-      - name: Observe authenticated missing-feature RED after actual S3 preflight
+      - name: Execute all fourteen real direct private asset cases
+        id: fixture-tests
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p .superpowers/verification
+          rm -f -- .superpowers/verification/private-assets-green.xml \
+            .superpowers/verification/private-assets-green-provider.json
           set +e
           .venv/bin/python -m pytest tests/integration/test_private_assets.py -q \
-            --tb=short --junitxml=.superpowers/verification/private-assets-red.xml
+            --tb=short --junitxml=.superpowers/verification/private-assets-green.xml
           task_pytest_exit=$?
           set -e
-          .venv/bin/python scripts/check_private_asset_red.py \
-            .superpowers/verification/private-assets-red.xml \
-            .superpowers/verification/private-assets-red-evidence.json \
-            --pytest-exit "$task_pytest_exit" \
-            --emit-public-proof
+          printf 'pytest_exit=%s\n' "$task_pytest_exit" >> "$GITHUB_OUTPUT"
       - name: Remove owned PostgreSQL fixture
+        id: postgres-cleanup
         if: always()
         shell: bash
-        run: bash scripts/dev/owned-ci-postgres.sh cleanup
-      # This job proves baseline RED only, never successful asset implementation.
-      # No upload of logs, credentials, IAM files, cookies or private test output.
+        run: |
+          bash scripts/dev/owned-ci-postgres.sh cleanup
+      - name: Validate complete results after PostgreSQL cleanup
+        if: always() && steps.fixture-tests.outcome == 'success' && steps.fixture-tests.outputs.pytest_exit != ''
+        shell: bash
+        env:
+          WSO_PYTEST_EXIT: ${{ steps.fixture-tests.outputs.pytest_exit }}
+          WSO_POSTGRES_CLEANUP_OUTCOME: ${{ steps.postgres-cleanup.outcome }}
+        run: |
+          set -euo pipefail
+          task_proof_args=()
+          if [[ "$WSO_POSTGRES_CLEANUP_OUTCOME" == success ]]; then
+            task_proof_args=(--emit-public-proof)
+          fi
+          .venv/bin/python scripts/check_private_asset_results.py \
+            .superpowers/verification/private-assets-green.xml \
+            --pytest-exit "$WSO_PYTEST_EXIT" \
+            --provider-receipt .superpowers/verification/private-assets-green-provider.json \
+            "${task_proof_args[@]}"
+          [[ "$WSO_POSTGRES_CLEANUP_OUTCOME" == success ]]
+      # Only sanitized canonical proof is public; private JUnit stays on the runner.

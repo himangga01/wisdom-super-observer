@@ -556,33 +556,214 @@ def test_outer_receipt_malformed_values_are_sanitized(tmp_path, payload):
     assert "PRIVATE_SENTINEL" not in str(rejected.value)
 
 
-def test_sealed_workflow_copies_only_reviewed_infrastructure():
+def test_sealed_workflow_copies_only_reviewed_infrastructure(tmp_path):
+    import math
+    import os
+    import shutil
+    import textwrap
+    import time
+
     workflow = (
         Path(__file__).resolve().parents[2] / ".github/workflows/private-assets.yml"
     ).read_text(encoding="utf-8")
-    overlay = re.search(r"for task_path in (.*?)\; do", workflow, re.DOTALL)
-    assert overlay is not None
-    copied = shlex.split(overlay.group(1).replace("\\\n", ""))
-    assert len(copied) == len(set(copied))
-    assert set(copied) == {
-        "pyproject.toml",
-        "packages/core/pyproject.toml",
-        "uv.lock",
-        "tests/support/asset_provider.py",
-        "tests/support/asset_minio.py",
-        "tests/support/asset_rustfs.py",
-        "tests/support/asset_harness.py",
-        "tests/support/asset_process.py",
-        "tests/integration/test_private_assets.py",
-        "scripts/dev/owned-ci-postgres.sh",
-        "scripts/check_private_asset_red.py",
-        "scripts/asset_provider_receipt.py",
-    }
-    # These are configuration contracts, not an execution of hosted CI.
-    assert re.findall(r"timeout-minutes: (\d+)", workflow) == ["20"]
-    assert re.findall(r"          ref: ([0-9a-f]+)", workflow) == [
-        "6565929776c2ff5b9ff55670bc4567b6d2cf4821"
+    # Read YAML step boundaries and scalar properties rather than matching names.
+    steps = []
+    for block in re.split(
+        r"^      - ", workflow.split("    steps:\n", 1)[1], flags=re.MULTILINE
+    )[1:]:
+        scalar = dict(re.findall(r"^        ([\w-]+): ([^\n]+)$", block, re.MULTILINE))
+        run = re.search(
+            r"^        run: \|\n((?:          .*\n|\n)+)", block, re.MULTILINE
+        )
+        scalar["run"] = textwrap.dedent(run.group(1)) if run else ""
+        scalar["with"] = dict(
+            re.findall(r"^          ([\w-]+): ([^\n]+)$", block, re.MULTILINE)
+        )
+        steps.append(scalar)
+    checkouts = [
+        step for step in steps if step.get("uses", "").startswith("actions/checkout@")
     ]
+    assert len(checkouts) == 1, "full14 must use one current-HEAD checkout"
+    assert checkouts[0]["uses"].split()[0] == (
+        "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
+    )
+    assert checkouts[0]["with"].get("persist-credentials") == "false"
+    assert "ref" not in checkouts[0]["with"]
+    assert "path" not in checkouts[0]["with"]
+    assert re.findall(r"^    timeout-minutes: (\d+)$", workflow, re.MULTILINE) == [
+        "100"
+    ]
+    assert re.findall(r"^  cancel-in-progress: (\w+)$", workflow, re.MULTILINE) == [
+        "false"
+    ]
+    concurrency = re.search(r"^  group: (.+)$", workflow, re.MULTILINE).group(1)
+    assert "${{ github.ref }}" in concurrency
+    assert re.findall(r"^    runs-on: (.+)$", workflow, re.MULTILINE) == [
+        "ubuntu-24.04"
+    ]
+    assert "full14" in workflow.splitlines()[0].lower()
+    assert "green" in workflow.splitlines()[0].lower()
+    assert ".superpowers/ci-private-assets-red" not in workflow
+    assert not re.search(r"\b(?:for task_path|git -C|cp --)\b", workflow)
+    assert not any("upload-artifact@" in step.get("uses", "") for step in steps)
+    assert re.findall(r"^      WSO_TEST_PYTHON: (.+)$", workflow, re.MULTILINE) == [
+        "${{ github.workspace }}/.venv/bin/python"
+    ]
+    setup = [
+        step
+        for step in steps
+        if step.get("uses", "").startswith("actions/setup-python@")
+    ]
+    assert len(setup) == 1
+    assert setup[0]["uses"].split()[0] == (
+        "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97"
+    )
+    assert setup[0]["with"].get("python-version") == "'3.12.10'"
+    assert steps[0]["shell"] == "bash"
+    assert steps[0]["working-directory"] == "${{ runner.workspace }}"
+
+    pytest_steps = [step for step in steps if "-m pytest " in step["run"]]
+    cleanup_steps = [
+        step
+        for step in steps
+        if shlex.split(step["run"])
+        == ["bash", "scripts/dev/owned-ci-postgres.sh", "cleanup"]
+    ]
+    verifier_steps = [
+        step
+        for step in steps
+        if "scripts/check_private_asset_results.py" in step["run"]
+    ]
+    assert len(pytest_steps) == len(cleanup_steps) == len(verifier_steps) == 1
+    pytest_step, cleanup_step, verifier_step = (
+        pytest_steps[0],
+        cleanup_steps[0],
+        verifier_steps[0],
+    )
+    assert (
+        steps.index(pytest_step)
+        < steps.index(cleanup_step)
+        < steps.index(verifier_step)
+    )
+    assert cleanup_step["if"] == "always()"
+    assert "always()" in verifier_step["if"]
+    assert pytest_step.get("id")
+    assert cleanup_step.get("id")
+    verifier_env = verifier_step["with"]
+    assert verifier_env["WSO_PYTEST_EXIT"] == (
+        "${{ steps." + pytest_step["id"] + ".outputs.pytest_exit }}"
+    )
+    assert verifier_env["WSO_POSTGRES_CLEANUP_OUTCOME"] == (
+        "${{ steps." + cleanup_step["id"] + ".outcome }}"
+    )
+
+    # Execute only shell configuration with controlled commands, never the fixture.
+    bash = shutil.which("bash")
+    if sys.platform == "win32":
+        git_bash = (
+            Path(os.environ.get("ProgramFiles", "C:/Program Files"))
+            / "Git/bin/bash.exe"
+        )
+        if git_bash.is_file():
+            bash = str(git_bash)
+    assert bash is not None, "configuration shell contract requires bash"
+    command_dir = tmp_path / "commands"
+    command_dir.mkdir()
+    for name in ("python", "python3"):
+        wrapper = command_dir / name
+        wrapper.write_text(
+            "#!/bin/bash\nexec "
+            + shlex.quote(sys.executable.replace("\\", "/"))
+            + ' "$@"\n',
+            encoding="utf-8",
+        )
+        wrapper.chmod(0o755)
+    env = dict(os.environ)
+    env["PATH"] = str(command_dir) + os.pathsep + env["PATH"]
+    env_file = tmp_path / "github-env"
+    env["GITHUB_ENV"] = str(env_file).replace("\\", "/")
+    before = time.monotonic()
+    anchor = subprocess.run(
+        [bash, "-c", steps[0]["run"]],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=20,
+        check=False,
+    )
+    after = time.monotonic()
+    assert anchor.returncode == 0, anchor.stderr
+    key, value = env_file.read_text(encoding="utf-8").strip().split("=", 1)
+    assert key == "WSO_TEST_ASSET_SUITE_STARTED_MONOTONIC"
+    assert re.fullmatch(r"\d+\.\d+", value)
+    assert math.isfinite(float(value)) and before <= float(value) <= after
+
+    python_stub = tmp_path / ".venv/bin/python"
+    python_stub.parent.mkdir(parents=True)
+    python_stub.write_text(
+        '#!/bin/bash\nprintf "%s\\n" "$@" > "$WSO_COMMAND_CAPTURE"\nexit 7\n',
+        encoding="utf-8",
+    )
+    python_stub.chmod(0o755)
+    capture = tmp_path / "captured-command"
+    output = tmp_path / "github-output"
+    env.update(
+        {
+            "WSO_COMMAND_CAPTURE": str(capture).replace("\\", "/"),
+            "GITHUB_OUTPUT": str(output).replace("\\", "/"),
+        }
+    )
+    captured = subprocess.run(
+        [bash, "-c", pytest_step["run"]],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=20,
+        check=False,
+    )
+    assert captured.returncode == 0, captured.stderr
+    assert capture.read_text(encoding="utf-8").splitlines() == [
+        "-m",
+        "pytest",
+        "tests/integration/test_private_assets.py",
+        "-q",
+        "--tb=short",
+        "--junitxml=.superpowers/verification/private-assets-green.xml",
+    ]
+    assert output.read_text(encoding="utf-8").splitlines() == ["pytest_exit=7"]
+
+    python_stub.write_text(
+        '#!/bin/bash\nprintf "%s\\n" "$@" > "$WSO_COMMAND_CAPTURE"\nexit 0\n',
+        encoding="utf-8",
+    )
+    for cleanup_outcome in ("success", "failure", "skipped", "cancelled", ""):
+        env.update(
+            {"WSO_PYTEST_EXIT": "7", "WSO_POSTGRES_CLEANUP_OUTCOME": cleanup_outcome}
+        )
+        verified = subprocess.run(
+            [bash, "-c", verifier_step["run"]],
+            cwd=tmp_path,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=20,
+            check=False,
+        )
+        args = capture.read_text(encoding="utf-8").splitlines()
+        assert args[:6] == [
+            "scripts/check_private_asset_results.py",
+            ".superpowers/verification/private-assets-green.xml",
+            "--pytest-exit",
+            "7",
+            "--provider-receipt",
+            ".superpowers/verification/private-assets-green-provider.json",
+        ]
+        assert args[6:] == (
+            ["--emit-public-proof"] if cleanup_outcome == "success" else []
+        )
+        assert (verified.returncode == 0) == (cleanup_outcome == "success")
 
 
 def test_workflow_changes_to_both_new_helpers_select_the_baseline_gate():
@@ -591,8 +772,32 @@ def test_workflow_changes_to_both_new_helpers_select_the_baseline_gate():
     ).read_text(encoding="utf-8")
     paths = workflow.split("    paths:\n", 1)[1].split("\npermissions:", 1)[0]
     patterns = re.findall(r"      - '([^']+)'", paths)
-    for changed in [
+    assert patterns and len(patterns) == len(set(patterns))
+    required_changes = [
+        ".github/workflows/private-assets.yml",
+        "scripts/dev/owned-ci-postgres.sh",
+        "scripts/check_private_asset_results.py",
         "scripts/asset_provider_receipt.py",
+        "tests/support/asset_provider.py",
         "tests/support/asset_rustfs.py",
-    ]:
-        assert any(fnmatch.fnmatchcase(changed, pattern) for pattern in patterns)
+        "tests/support/asset_harness.py",
+        "tests/support/asset_process.py",
+        "tests/support/asset_job_handlers.py",
+        "tests/support/asset_broker.py",
+        "tests/support/asset_faults.py",
+        "tests/integration/test_private_assets.py",
+        "tests/contract/test_asset_faults.py",
+        "tests/contract/test_asset_job_fixture.py",
+        "tests/contract/test_asset_suite_lifetime.py",
+        "tests/contract/test_private_asset_gate.py",
+        "tests/contract/test_private_asset_green_proof.py",
+        "tests/contract/test_private_asset_red_gate.py",
+        "packages/core/pyproject.toml",
+        "packages/core/src/wso_core/assets.py",
+        "pyproject.toml",
+        "uv.lock",
+    ]
+    for changed in required_changes:
+        assert any(fnmatch.fnmatchcase(changed, pattern) for pattern in patterns), (
+            changed
+        )

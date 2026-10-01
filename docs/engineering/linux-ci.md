@@ -362,6 +362,23 @@ The complete private log was 140,635 bytes, SHA-256
 watches are closed and no CI is active. This foundation evidence is not
 provider acceptance, authenticated sealed656 RED or full14 acceptance.
 
+### Linux foundation run 36838223296
+
+[Run 36838223296, job 110290730130](https://github.com/himangga01/wisdom-super-observer/actions/runs/36838223296/job/110290730130)
+at published HEAD `f779c69ad7fe434cb547a6f9555d20285aed387a` succeeded. It
+passed 2,399 ordinary Python cases with zero skips in 139.94 seconds and all
+ten actual Celery/Valkey recovery cases with zero skips in 251.18 seconds.
+Global Ruff and configured mypy on 40 files passed. Frontend passed 15 unit
+cases and typecheck/lint/build; twenty canonical exports were verified twice.
+The TVT checker reported 77 audit cases, 77 ledger rows and zero errors (not
+pytest cases). HTTPS Chrome passed 26 cases in 51.4 seconds. Valkey 9.1.2
+persistence smoke and owned PostgreSQL 17.11 workflow cleanup succeeded.
+
+The complete private log was 142,488 bytes, SHA-256
+`0bab28c7d6c9f99009b010723aa8d840620f4c08e4d7fedad9c2e6474f00b65d`. Both
+watches are closed and no CI is active. This is foundation evidence; provider
+acceptance is recorded separately below, and full14 remains pending.
+
 ### Third private asset probe: data volume verification failed
 
 [Run 36749047523](https://github.com/himangga01/wisdom-super-observer/actions/runs/36749047523)
@@ -451,7 +468,7 @@ The fixed error combines four checks over installed-prefix objects and multipart
 
 Independent source inspection of the pinned MinIO release used by this run (`RELEASE.2025-04-22T22-12-26Z`, commit `0d7408fc9969caf07de6a8c3a84f9fbb10a6739e`) establishes a native capability mismatch. Its [multipart-upload listing implementation (`ListMultipartUploads`)](https://github.com/minio/minio/blob/0d7408fc9969caf07de6a8c3a84f9fbb10a6739e/cmd/erasure-sets.go#L881) treats its nonempty `Prefix` as one exact object. Its [multipart listing](https://github.com/minio/minio/blob/0d7408fc9969caf07de6a8c3a84f9fbb10a6739e/cmd/erasure-multipart.go#L254) visits only that exact object’s multipart directory, rather than enumerating multipart uploads on arbitrary installed child keys. Its [server-pool implementation](https://github.com/minio/minio/blob/0d7408fc9969caf07de6a8c3a84f9fbb10a6739e/cmd/erasure-server-pool.go#L1696) does not provide durable, bounded cross-key pagination through its empty-prefix cache path. Thus this pinned candidate cannot satisfy installed-prefix multipart enumeration, continuation across child keys, and durable restart/orphan discovery. The actual four-way predicate remains unknown; this capability rejection is based on pinned source semantics, not invented run counts.
 
-Root rejected this MinIO candidate for the required contract. No same-provider diagnostic retry, manual or twelfth run is authorized; do not weaken pagination, filtering, set equality or privacy assertions, substitute known database rows, or patch the vendor. The conditional eleventh authority was consumed. Read-only primary-source investigations are complete. RustFS 1.0.0 is the approved transition design; its source/checker reviews and offline aggregate passed. The later probe12 and probe13 results and narrow R13 correction are recorded below. No provider is selected for acceptance. T05A remains in progress; provider acceptance, authenticated sealed656 RED, full14 and APK parity remain unproved.
+Root rejected this MinIO candidate for the required contract. No same-provider diagnostic retry, manual or twelfth run is authorized; do not weaken pagination, filtering, set equality or privacy assertions, substitute known database rows, or patch the vendor. The conditional eleventh authority was consumed. Read-only primary-source investigations are complete. RustFS 1.0.0 is the approved transition design; its source/checker reviews and offline aggregate passed. The later probe12–15 results and source updates are recorded below. Probe15 establishes the historical provider baseline and authenticated sealed656 RED; full14 and APK parity remain unproved, and T05A remains in progress.
 
 ### RustFS transition implementation status — 2026-10-01
 
@@ -459,7 +476,7 @@ The approved RustFS 1.0.0 design and exact archive/member hashes, profile,
 receipt ABI, role boundaries, restart proof, containment and budget are recorded
 in the [private asset transition status](private-assets.md#rustfs-transition-status--2026-10-01).
 The actual-run record remains separate from the design and source checks. The
-latest completed foundation is [run 36831149737](#linux-foundation-run-36831149737);
+latest completed foundation is [run 36838223296](#linux-foundation-run-36838223296);
 the earlier d5aaba8 receipt is preserved above. RustFS cold probe13 and its
 setup failure are recorded below; no provider acceptance followed.
 
@@ -479,7 +496,7 @@ aggregate passed 1,130 in 7.15 seconds, no skips (513 profile + 200 safety +
 201 helper + 216 checker), with all ten source hashes unchanged. That aggregate
 ran pytest only. The nine-file Ruff/format and mypy40 + pure-checker mypy2
 results belong to the earlier pre-R13 1,093 gate; mypy40 was also freshly
-verified by foundations 36821056354, 36824906088 and 36831149737. No nine-file static or mypy run is
+verified by foundations 36821056354, 36824906088, 36831149737 and 36838223296. No nine-file static or mypy run is
 claimed after R13. These are source/contract gates, not provider acceptance.
 
 R15's exact two-file source change is READY: `asset_rustfs.py` (56,158 bytes,
@@ -514,16 +531,16 @@ only. Log: 1,399 bytes, SHA-256
 All ten source hashes and six protected paths remained unchanged. These are
 offline source/contract gates, not provider acceptance.
 
-RustFS probe12, probe13 and probe14 have run and failed as recorded below;
-their automatic authorities are consumed. R17's three-literal fix is reviewed
-and its offline source gate passed. R18 defines one conditional corrected-
-fixture automatic probe15, not activated. Activation requires source/test and independent
-review approval, the root composition gate, final four-doc approval, private18,
-exact-six curation with raw-reviewed-to-index-to-commit identity, one authorized
-push and verified remote equality. No actual probe15 or manual/diagnostic retry
-has occurred or is authorized.
-No RustFS acceptance, authenticated HTTP, genuine sealed-656 RED, full14 GREEN,
-W02 reopening or APK parity is established.
+RustFS probes12–14 failed as recorded below; their automatic authorities are
+consumed. R17's three-literal fix and source review are approved. R18's one
+automatic probe15 succeeded and established provider preflight plus one genuine
+authenticated sealed656 missing-route RED; see the accepted proof below. This
+is the historical baseline at source f779, not a claim about a current product
+route. No manual retry occurred. The reviewed full14 workflow, combined checker,
+public proof contract and fixture source are now SOURCE_READY/approved; their
+source gates are recorded below. The actual full14 workflow at current HEAD has
+not run. T05A remains in progress, W02 runtime acceptance remains pending and
+APK parity is unproved.
 
 ### RustFS cold probe12 — 2026-10-01
 
@@ -601,8 +618,8 @@ aggregate ran pytest only; no fresh global Ruff or Mypy is claimed. All ten
 source hashes and six protected paths remained unchanged. These are offline
 gates, not provider acceptance. R18 authority and activation prerequisites are
 summarized above. Latest completed foundation is
-[run 36831149737](#linux-foundation-run-36831149737); fbe run 36824906088 and
-aa63 run 36821056354 remain historical evidence.
+[run 36838223296](#linux-foundation-run-36838223296); 4d41 run 36831149737,
+fbe run 36824906088 and aa63 run 36821056354 remain historical evidence.
 This failure supplements, and does not replace, the historical probe12,
 MinIO11 failures and d5 foundation receipt above.
 
@@ -648,6 +665,58 @@ are recorded above. No provider acceptance, authenticated sealed656 RED,
 full14 or W02 reopening is claimed. The latest completed foundation is run
 36831149737; fbe run 36824906088 and aa63 run 36821056354 remain historical
 receipts.
+
+### Full14 GREEN source transition — approved, runtime pending
+
+The full14 workflow and proof transition is approved at source baseline
+`f779c69ad7fe434cb547a6f9555d20285aed387a`. Its exact three final source
+identities are: `.github/workflows/private-assets.yml` (4,973 bytes,
+`e3916d5b9b061e1b5120e0cb38ed817f36b6db28cc1512b5e6ee35d11d3a9f95`),
+`scripts/check_private_asset_results.py` (7,501 bytes,
+`8e6b692083fbee3549747229e7a9330c1c75869a90585fa884da34a3b67fa236`), and
+`tests/contract/test_private_asset_red_gate.py` (28,228 bytes,
+`5e65b7b5d4c55b09ef8ca56af5d7138eca3946d25cb70d9148cba880d5eb9b80`). The
+independent proof contract is 17,814 bytes,
+`24c0fd90494878e9a11b7a1aad70c2d8f2ca80d3061ca8dcb87a5a3647a579d9`.
+
+The scoped transition review (9,976 bytes,
+`706354dc2782fc84cf53686bb11c0467f2fb03637167f2fcbfef5512a17e5cc5`)
+approved Spec and Quality with zero findings. Its independent packet passed
+119 in 8.06 seconds; the retained composition passed 387 in 3.71 seconds.
+Fixture fix2 review (12,079 bytes,
+`c98a3758a2ee116a0c21bd7ce8e973c6b5c603edbcd196d081997fcaddde5991`)
+approved with zero Critical, Important or Minor findings; its accepted final
+fault packet passed 168 in 0.48 seconds. The independent accepted fixture review
+records all thirteen findings addressed. These are source/contract results.
+
+The current-HEAD Linux full14 workflow has **not** executed. The historical
+probe15 sealed656 RED and its 13-key public proof remain intact below. Neither
+that baseline nor these source gates establish current-HEAD full14 GREEN,
+actual hour-window/recovery acceptance, T05A closure, W02 runtime acceptance,
+APK parity or release readiness.
+
+### RustFS baseline probe15 — 2026-10-01
+
+[Run 36838223294, job 110290730000](https://github.com/himangga01/wisdom-super-observer/actions/runs/36838223294/job/110290730000)
+at published source `f779c69ad7fe434cb547a6f9555d20285aed387a` succeeded. Provider
+preflight and the owned lifecycle completed successfully; the strict checker
+and all workflow steps passed. The selected sealed656 case produced one genuine
+authenticated baseline RED in 48.35 seconds: JUnit recorded one test, one
+failure, zero errors and zero skips. The actual assertion was authenticated
+`POST /api/v1/assets` returning 404 where 201 was expected. The sanitized
+[derived public proof](../implementation/evidence/2026-10-01-t05a-rustfs-baseline-red.json)
+records two authenticated tenants, `/me` 200 for both, zero stores, missing
+CSRF 403 / valid CSRF 204, and the failed asset-begin response. This is the
+historical sealed656 baseline, not a claim about a current service route.
+
+The private run log was 94,509 bytes, SHA-256
+`8f5c82b0861f4bf63c7932cb2ec842cde4711f7c272ba454cf78c76c03f72649`. R18's
+single automatic probe15 authority was consumed; no manual retry was used or
+is authorized. The reviewed full14 workflow/checker/proof transition and fixture
+source are approved at source/contract level. The current-HEAD Linux full14 gate
+has not executed. No actual full14 GREEN, APK parity or W02 runtime acceptance
+is established. T05A remains in
+progress; `MATCHED=0`, six G-P1 families remain blocked and `release_ready=false`.
 
 ## Evidence handling
 

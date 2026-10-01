@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "source_sha": "f779c69ad7fe434cb547a6f9555d20285aed387a",
+  "baseline_sha": "6565929776c2ff5b9ff55670bc4567b6d2cf4821",
+  "run_id": 36838223294,
+  "job_id": 110290730000,
+  "private_log_bytes": 94509,
+  "private_log_sha256": "8f5c82b0861f4bf63c7932cb2ec842cde4711f7c272ba454cf78c76c03f72649",
+  "historical_source_blob_oids": {
+    "pyproject.toml": "45e30d06ad67fb44d29edd55dc268e3406572d8c",
+    "packages/core/pyproject.toml": "08a5e35ef1ac7e04bbdee3fbf53cc083675f2431",
+    "uv.lock": "885172244355bca50de9bf3e6c872b7991124d44",
+    "tests/support/asset_provider.py": "1cbb8f80abbb5693b2b349326e629aa7a9c1131a",
+    "tests/support/asset_minio.py": "66db03ef8888be45681e29e1a442c7bf5088bbb8",
+    "tests/support/asset_rustfs.py": "c6c30b09bb5dd45362f7137fc02cb6a547d32fc6",
+    "tests/support/asset_harness.py": "776d7135d2d3fa9b4ca671d5acf2653ed9a62302",
+    "tests/support/asset_process.py": "b7572df8c9048594e4bc3d221b413ac40775f7bb",
+    "tests/integration/test_private_assets.py": "15835b2e3f0b868d8df291b2b956d8d81bf552a1",
+    "scripts/dev/owned-ci-postgres.sh": "77ab3bfd1506f5bdef19e5576f306aca0ff94570",
+    "scripts/check_private_asset_red.py": "db4cdc37c63f681f6693c774febb9325f953018d",
+    "scripts/asset_provider_receipt.py": "72b5b5cc331bc35ca95e1a288c8b5c9264fbf2b2",
+    ".github/workflows/private-assets.yml": "94036219154afd313ce793cf33c1283c79e53251"
+  },
+  "proof": {
+    "junit": {
+      "classname": "tests.integration.test_private_assets",
+      "errors": 0,
+      "failure": "authenticated POST /api/v1/assets returned 404; expected 201",
+      "failures": 1,
+      "name": "test_photo_upload_does_not_require_a_store",
+      "skipped": 0,
+      "tests": 1
+    },
+    "receipt": {
+      "asset_begin": {
+        "actual_status": 404,
+        "expected_status": 201
+      },
+      "baseline_sha": "6565929776c2ff5b9ff55670bc4567b6d2cf4821",
+      "http_preflight": {
+        "authenticated_tenants": 2,
+        "csrf_missing_status": 403,
+        "csrf_valid_status": 204,
+        "me_statuses": [
+          200,
+          200
+        ],
+        "store_counts": [
+          0,
+          0
+        ]
+      },
+      "provider": {
+        "admin_bootstrap": "native-sigv4-iam-zip-v1",
+        "archive_bytes": 194469895,
+        "archive_sha256": "c30a95b76546f25122c9ca387090ddb30c391ca5605621b0d7c881703c0f21c8",
+        "artifact_kind": "official-zip-server-local-scratch-image",
+        "binary_bytes": 264596736,
+        "binary_sha256": "222eedc3d9baabf6516702d9fbf230270c3ca49b50f562d3461c96e2cc6ae6ad",
+        "capabilities": "private IAM/put/get/head/delete/multipart/list/abort/presign-expiry/durable-prefix-pagination/restart",
+        "image_id": "sha256:3b568869a6cc96cc5339848c02ab3d1666c89b5e790ff1a0fd3a5fe4145aa156",
+        "owned_resource_mapping": true,
+        "provider": "RustFS",
+        "security_profile": "rustfs-inert-acl-dedicated-bucket-v1",
+        "source_commit": "d47f54bfb2f39f48bd1adda334bd27e151fe85b8",
+        "version": "1.0.0"
+      },
+      "schema_version": 1,
+      "stage": "ASSET_REQUEST_OBSERVED"
+    },
+    "schema_version": 1
+  }
+}
