@@ -2,6 +2,7 @@ param(
     [switch]$WithContainers,
     [switch]$WithBrowser,
     [switch]$WithPostgres,
+    [switch]$WithTvtDomain,
     [switch]$WithAuthBrowser,
     [switch]$WithJobBroker
 )
@@ -24,6 +25,9 @@ function Invoke-Checked {
 }
 
 try {
+    if ($WithTvtDomain -and -not $WithPostgres) {
+        throw 'TVT domain acceptance requires -WithPostgres.'
+    }
     if ($WithJobBroker -and (-not $WithPostgres -or -not $IsLinux -or $env:CI -ne 'true')) {
         throw 'Real job recovery requires the explicit Linux CI PostgreSQL gate.'
     }
@@ -37,7 +41,9 @@ try {
     Invoke-Checked pnpm @('install', '--frozen-lockfile')
     $pytestArgs = $uvRun + @(
         'pytest', '-m', 'not live', '--ignore=tests/jobs_recovery',
-        '--ignore=tests/integration/test_private_assets.py', '-q'
+        '--ignore=tests/integration/test_private_assets.py',
+        '--ignore=tests/integration/test_tvt_domain_scope.py',
+        '--ignore=tests/integration/test_tvt_domain_credentials.py', '-q'
     )
     if ($WithPostgres) {
         $roles = @(
@@ -77,6 +83,66 @@ try {
         ))
         if ($skippedIntegration.Count -gt 0) {
             throw 'A selected PostgreSQL integration test was skipped; its gate is unverified.'
+        }
+    }
+    if ($WithTvtDomain) {
+        $domainResultPath = Join-Path $resultDir 'pytest-tvt-domain.xml'
+        if (Test-Path -LiteralPath $domainResultPath) {
+            Remove-Item -LiteralPath $domainResultPath
+        }
+        $previousDomainAcceptance = [Environment]::GetEnvironmentVariable(
+            'WSO_TEST_W02_DOMAIN_ACCEPTANCE'
+        )
+        try {
+            $env:WSO_TEST_W02_DOMAIN_ACCEPTANCE = '1'
+            Invoke-Checked python ($uvRun + @(
+                'pytest', 'tests/integration/test_tvt_domain_scope.py',
+                'tests/integration/test_tvt_domain_credentials.py', '-q',
+                "--junitxml=$domainResultPath"
+            ))
+            [xml]$domainResults = Get-Content -LiteralPath $domainResultPath -Raw
+            $suites = @($domainResults.SelectNodes('//testsuite[not(testsuite)]'))
+            $cases = @($domainResults.SelectNodes('//testcase'))
+            $selectedCount = 0
+            if ($suites.Count -eq 0) {
+                throw 'TVT domain JUnit has no test suites; its gate is unverified.'
+            }
+            foreach ($suite in $suites) {
+                foreach ($metric in @('tests', 'failures', 'errors', 'skipped')) {
+                    $value = 0
+                    if (-not [int]::TryParse($suite.GetAttribute($metric), [ref]$value) -or
+                        $value -lt 0) {
+                        throw 'TVT domain JUnit has invalid counts; its gate is unverified.'
+                    }
+                    if ($metric -eq 'tests') {
+                        $selectedCount += $value
+                    } elseif ($value -ne 0) {
+                        throw 'TVT domain JUnit reports failure, error or skip; its gate is unverified.'
+                    }
+                }
+            }
+            $scopeCases = @($cases | Where-Object {
+                $_.GetAttribute('classname') -eq 'tests.integration.test_tvt_domain_scope'
+            })
+            $credentialCases = @($cases | Where-Object {
+                $_.GetAttribute('classname') -eq 'tests.integration.test_tvt_domain_credentials'
+            })
+            $unsuccessfulCases = @($domainResults.SelectNodes(
+                '//testcase[failure or error or skipped]'
+            ))
+            if ($selectedCount -ne 42 -or $cases.Count -ne 42 -or
+                $scopeCases.Count -ne 3 -or $credentialCases.Count -ne 39 -or
+                $unsuccessfulCases.Count -ne 0) {
+                throw 'TVT domain acceptance requires exactly 3 scope and 39 credential cases with zero failures, errors or skips.'
+            }
+        } finally {
+            if ($null -eq $previousDomainAcceptance) {
+                Remove-Item -LiteralPath Env:WSO_TEST_W02_DOMAIN_ACCEPTANCE
+            } else {
+                [Environment]::SetEnvironmentVariable(
+                    'WSO_TEST_W02_DOMAIN_ACCEPTANCE', $previousDomainAcceptance
+                )
+            }
         }
     }
     if ($WithJobBroker) {
