@@ -117,9 +117,32 @@ no skips (513 profile + 200 safety + 201 helper + 216 checker), with ten source
 hashes unchanged; this aggregate ran pytest only. R13 Ruff/format was run only
 on the two changed files. Nine-file Ruff/format and configured mypy40 plus
 pure-checker mypy2 were earlier pre-R13 results; mypy40 was also freshly
-verified by foundation run 36821056354. No post-R13 nine-file static or mypy
+verified by foundation runs 36821056354 and 36824906088. No post-R13 nine-file static or mypy
 run is claimed. These remain offline source/contract evidence, not RustFS or
-sealed-fixture behavior.
+sealed-fixture behavior. R15's exact two-source RustFS version-parser fix is
+READY and independently approved SpecPASS/QualityApproved with 0 Critical,
+Important, Minor or Warning findings. Source hashes: `asset_rustfs.py`
+`6de4210cac8dcaf930f0c8191ba4bf2d9e80f5fcc24c5f57a9fd5563e9bd0fae` and
+`test_asset_rustfs.py`
+`50db2c14dec62a9ec4d148b355a53898c3f02bd48d5448999899fe70fed22299`. The
+accepted static diagnosis establishes a sufficient parser incompatibility,
+not the unique actual probe13 predicate or full `LONG_VERSION` extent; stdout
+and exact predicate were not retained. The pinned embedded output has an
+empty literal Git branch, which
+the earlier fixture parser rejected. Under R15, only the Git branch may be
+empty and it is bounded to 256 bytes; the seven other non-status fields remain
+nonempty. The private Git status tail is separate, excluded from the per-field
+256-byte check, and bounded by the whole 16 KiB output limit. Separately,
+pinned RustFS `LONG_VERSION` plus locked Clap 4.6.7 conditionally permits two
+terminal LF bytes; this source-supported framing detail does not establish the
+unique actual probe13 predicate or full formatter extent. R15 changes only the version parser/helper and its tests.
+One terminal LF is preserved, two are accepted, and three or more are refused.
+The nine exact field labels, prefixes and order, 16 KiB output bound, pinned
+versions, duplicate rejection and private status discard remain unchanged. No
+PATH, IAM, phase/time budget, signing, relay, checker, provider, product or API
+behavior changed. R15's new five-contract aggregate passed 1,192 in 7.18 seconds without skips;
+it ran pytest only. Owner Ruff/format covered one file each. Earlier static
+and mypy evidence remains earlier, as described above.
 
 The frozen profile specifies 63 private-effect checks, the exact 24-control
 table, four true public-access-block readbacks, synthetic ACL characterization,
@@ -146,38 +169,31 @@ hex credential pairs. These remain design/source gates pending actual execution.
 The provider phase budget remains twelve minutes split into 6/3/3-minute phases,
 with three minutes for cleanup and one minute for the API/HTTP reserve; all
 existing call caps remain unchanged and new calls must fit them.
-The latest completed [Linux foundation run 36821056354](linux-ci.md#linux-foundation-run-36821056354)
-passed 2,272 ordinary Python cases and ten actual Celery/Valkey recovery cases,
-both with zero skips, plus its recorded static, frontend and browser gates.
-This foundation result is not provider or lifecycle acceptance. The full
-fourteen-case aging plan remains gated. The single conditional RustFS
-cold probe12 ran and failed setup in 9.94 seconds at the first pre-start
-credential-free version-container assertion. In published source `aa63`,
-`verify_server_version` at line 451 called `assert_version_container` at line
-552, which raised the fixed refusal at line 626. These are source locations;
-no actual inspect values or exact failed predicate were retained. Bounded
-extraction found zero public-proof and zero native-pagination records. Close
-diagnostics returned categories `[IMAGE, UNKNOWN, VOLUME]`, with relay
-unavailable; no cleanup or resource absence is inferred. See the [actual
-probe record](linux-ci.md#rustfs-cold-probe12--2026-10-01).
-Its one-attempt authority is consumed; no retry of probe12 is authorized.
-Source diagnosis found that the supported Docker/BuildKit path adds a
-public default `PATH` to scratch image metadata, inherited at container create
-and returned by inspect; the fixture's empty-environment guard conflicts with
-this behavior. The actual failed inspect predicate, value and selected builder
-metadata remain unknown, so this source-supported incompatibility does not
-reconstruct the unique run failure. Root R13 authorizes an explicit canonical
-`PATH` plus exact-singleton validation in two source files. The source fix is
-READY and independently approved with zero findings. Owner results: meaningful
-RED 22 failed / 14 passed / 161 deselected in 1.03 seconds; focused 39 passed
-in 0.21 seconds; owned safety 200 passed in 3.40 seconds; Ruff/format on both
-files passed. R14 defines conditional probe13 but does not activate it;
-`runtime_authorized=false`. Exact source/review/root-aggregate, final docs,
-private18, six-stage no-drift, reviewed commit/push and remote-SHA gates remain.
-No unchanged or diagnostic-only retry is authorized.
-No RustFS provider receipt, authenticated sealed656 RED or full14 GREEN was
-reached. W02 remains closed, APK `MATCHED` remains zero, six G-P1 families
-remain blocked and `release_ready=false`.
+The latest completed [Linux foundation run 36824906088](linux-ci.md#linux-foundation-run-36824906088)
+passed 2,309 ordinary Python cases and ten actual Celery/Valkey recovery cases,
+both with zero skips, plus its recorded static, frontend and browser gates. The
+earlier aa63 run 36821056354 remains historical evidence. This newer foundation
+result is not provider or lifecycle acceptance; the full fourteen-case aging plan remains gated. RustFS probe12 failed setup
+in 9.94 seconds as recorded below. R14's conditional probe13 was activated
+and consumed; [run 36824906085, job 110248311118](https://github.com/himangga01/wisdom-super-observer/actions/runs/36824906085/job/110248311118)
+failed setup in 11.35 seconds with `official RustFS version grammar differs`.
+The R13 mapping stage passed. In source snapshot `fbe090f`,
+`asset_provider.py` line 567 called `asset_rustfs.py` line 373 after the
+pre-start/post-exit image/version-Env and Running-false/ExitCode-0 guards;
+these are source locations, not runtime values. The exact version output and
+failed grammar predicate were not retained. Bounded diagnostics retained zero
+public proof, native paging, IAM snapshot diagnostics or close-failure
+diagnostics; that does not prove resource absence, cleanup or provider
+acceptance. Private log: 57,887 bytes, SHA-256
+`214f90edfb2d566ad2c6ed6ecc945909c327cbc61fa1d4e261650d8b813c5d00`.
+
+The accepted source diagnosis is based on read-only inspection of the existing
+pinned static ELF; it does not recover the unique actual probe13 predicate or
+full `LONG_VERSION` extent. R16 defines a conditional corrected-fixture
+automatic probe14, not activated; its final-doc-review/private18/curated
+commit-push/remote-SHA conditions remain. No run14, manual retry or
+unchanged/diagnostic-only run is authorized. No RustFS provider receipt,
+authenticated sealed656 RED or full14 GREEN is established. W02 remains closed, APK `MATCHED` remains zero, six G-P1 families remain blocked and `release_ready=false`.
 
 The two actual SeaweedFS 4.47 probes failed setup; neither is meaningful
 missing-feature RED. At that earlier stage, the proposed replacement was an

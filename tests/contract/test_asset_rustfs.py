@@ -330,11 +330,51 @@ def version_output():
     )
 
 
+def test_version_source_model_empty_branch_one_terminal_lf_is_valid(capsys):
+    from tests.support.asset_rustfs import verify_version
+
+    # Independent synthetic long-version fields; this is not recovered stdout.
+    output = (
+        "rustfs 1.0.0\n"
+        "build time   : SYNTHETIC-time\n"
+        "build profile: SYNTHETIC-profile\n"
+        "build os     : SYNTHETIC-os\n"
+        "rust version : SYNTHETIC-compiler\n"
+        "rust channel : SYNTHETIC-channel\n"
+        "git branch   : \n"
+        "git commit   : d47f54bfb2f39f48bd1adda334bd27e151fe85b8\n"
+        "git tag      : 1.0.0\n"
+        "git status   :\nSYNTHETIC-private-status\n"
+    )
+    assert verify_version(output) is None
+    assert capsys.readouterr() == ("", "")
+
+
+def test_version_source_model_nonempty_branch_two_terminal_lfs_is_valid(capsys):
+    from tests.support.asset_rustfs import verify_version
+
+    # Empty source status plus Clap's one added LF gives two terminal LFs.
+    output = (
+        "rustfs 1.0.0\n"
+        "build time   : SYNTHETIC-time\n"
+        "build profile: SYNTHETIC-profile\n"
+        "build os     : SYNTHETIC-os\n"
+        "rust version : SYNTHETIC-compiler\n"
+        "rust channel : SYNTHETIC-channel\n"
+        "git branch   : SYNTHETIC-branch\n"
+        "git commit   : d47f54bfb2f39f48bd1adda334bd27e151fe85b8\n"
+        "git tag      : 1.0.0\n"
+        "git status   :\n\n"
+    )
+    assert verify_version(output) is None
+    assert capsys.readouterr() == ("", "")
+
+
 @pytest.mark.parametrize(
     "change",
     [
         lambda value: value.replace("build time   :", "build time:"),
-        lambda value: value + "\n",
+        lambda value: value + "\n\n",
         lambda value: value.replace("git tag      : 1.0.0", "git tag      : unknown"),
         lambda value: value + "git commit   : secret\n",
         lambda value: value.replace("public", "\x1bsecret", 1),
@@ -794,6 +834,195 @@ def test_version_status_tail_uses_whole_output_bound_not_build_metadata_bound(ca
         "git status   : clean", "git status   : " + "private-path/" * 30
     )
     assert verify_version(output) is None
+    assert capsys.readouterr() == ("", "")
+
+
+def literal_version_header(branch="SYNTHETIC-branch"):
+    """Independent public pins and synthetic metadata; never actual cold stdout."""
+    return (
+        "rustfs 1.0.0\n"
+        "build time   : SYNTHETIC-time\n"
+        "build profile: SYNTHETIC-profile\n"
+        "build os     : SYNTHETIC-os\n"
+        "rust version : SYNTHETIC-compiler\n"
+        "rust channel : SYNTHETIC-channel\n"
+        f"git branch   : {branch}\n"
+        "git commit   : d47f54bfb2f39f48bd1adda334bd27e151fe85b8\n"
+        "git tag      : 1.0.0\n"
+        "git status   :"
+    )
+
+
+@pytest.mark.parametrize("branch", ["", "SYNTHETIC-branch"], ids=["empty", "named"])
+@pytest.mark.parametrize("terminal_lfs", [0, 1, 2])
+@pytest.mark.parametrize(
+    "status",
+    ["", " SYNTHETIC-inline-status", "\nSYNTHETIC-private-status"],
+    ids=["empty-status", "inline-status", "separate-status"],
+)
+def test_version_literal_field_combinations_accept_only_supported_terminal_lfs(
+    branch, terminal_lfs, status, capsys
+):
+    from tests.support.asset_rustfs import verify_version
+
+    output = literal_version_header(branch) + status + "\n" * terminal_lfs
+    assert verify_version(output) is None
+    assert verify_version(output.encode("ascii")) is None
+    assert capsys.readouterr() == ("", "")
+
+
+@pytest.mark.parametrize("terminal_lfs", [0, 1, 2])
+def test_version_branch_exact_256_byte_boundary_is_valid(terminal_lfs):
+    from tests.support.asset_rustfs import verify_version
+
+    output = literal_version_header("x" * 256) + "\n" * terminal_lfs
+    assert verify_version(output) is None
+
+
+@pytest.mark.parametrize("terminal_lfs", [0, 1, 2])
+def test_version_whole_exact_16k_byte_boundary_is_valid(terminal_lfs, capsys):
+    from tests.support.asset_rustfs import verify_version
+
+    header = literal_version_header("")
+    output = header + "S" * (16384 - len(header) - terminal_lfs) + "\n" * terminal_lfs
+    assert len(output.encode("ascii")) == 16384
+    assert verify_version(output) is None
+    assert capsys.readouterr() == ("", "")
+
+
+@pytest.mark.parametrize("branch", ["", "SYNTHETIC-branch"], ids=["empty", "named"])
+@pytest.mark.parametrize("terminal_lfs", [3, 4, 16])
+def test_version_three_or_more_terminal_lfs_are_refused(branch, terminal_lfs, capsys):
+    from tests.support.asset_rustfs import verify_version
+
+    with pytest.raises(RuntimeError, match="version grammar") as caught:
+        verify_version(
+            literal_version_header(branch)
+            + "\nSYNTHETIC-private-status"
+            + "\n" * terminal_lfs
+        )
+    assert str(caught.value) == "official RustFS version grammar differs"
+    assert capsys.readouterr() == ("", "")
+
+
+@pytest.mark.parametrize(
+    "required_line",
+    [
+        "build time   : SYNTHETIC-time",
+        "build profile: SYNTHETIC-profile",
+        "build os     : SYNTHETIC-os",
+        "rust version : SYNTHETIC-compiler",
+        "rust channel : SYNTHETIC-channel",
+        "git commit   : d47f54bfb2f39f48bd1adda334bd27e151fe85b8",
+        "git tag      : 1.0.0",
+    ],
+    ids=["time", "profile", "os", "compiler", "channel", "commit", "tag"],
+)
+def test_version_empty_branch_does_not_permit_other_empty_required_fields(
+    required_line, capsys
+):
+    from tests.support.asset_rustfs import verify_version
+
+    prefix = required_line[: required_line.index(":") + 2]
+    output = literal_version_header("").replace(required_line, prefix) + "\n\n"
+    with pytest.raises(RuntimeError, match="version grammar") as caught:
+        verify_version(output)
+    assert str(caught.value) == "official RustFS version grammar differs"
+    assert capsys.readouterr() == ("", "")
+
+
+@pytest.mark.parametrize(
+    "defect",
+    [
+        "missing-branch",
+        "wrong-branch-prefix",
+        "short-branch-spacing",
+        "branch-order",
+        "duplicate-branch",
+        "duplicate-time",
+        "overlong-branch",
+        "wrong-display",
+        "wrong-commit",
+        "wrong-tag",
+        "missing-status",
+        "whole-overflow",
+        "control",
+        "carriage-return",
+        "nonascii",
+        "invalid-utf8",
+        "short-only",
+    ],
+)
+def test_version_branch_exception_preserves_closed_grammar_and_identity(defect, capsys):
+    from tests.support.asset_rustfs import verify_version
+
+    output = literal_version_header("") + "\nSYNTHETIC-private-status\n\n"
+    if defect == "missing-branch":
+        output = output.replace("git branch   : \n", "")
+    elif defect == "wrong-branch-prefix":
+        output = output.replace("git branch   : ", "git branches : ")
+    elif defect == "short-branch-spacing":
+        output = output.replace("git branch   : ", "git branch: ")
+    elif defect == "branch-order":
+        output = output.replace(
+            "rust channel : SYNTHETIC-channel\ngit branch   : \n",
+            "git branch   : \nrust channel : SYNTHETIC-channel\n",
+        )
+    elif defect == "duplicate-branch":
+        output = output[:-2] + "\ngit branch   : SYNTHETIC-duplicate\n\n"
+    elif defect == "duplicate-time":
+        output = output[:-2] + "\nbuild time   : SYNTHETIC-duplicate\n\n"
+    elif defect == "overlong-branch":
+        output = output.replace(
+            "git branch   : \n", "git branch   : " + "x" * 257 + "\n"
+        )
+    elif defect == "wrong-display":
+        output = output.replace("rustfs 1.0.0", "rustfs 1.0.1")
+    elif defect == "wrong-commit":
+        output = output.replace("d47f54bfb2f39f48bd1adda334bd27e151fe85b8", "0" * 40)
+    elif defect == "wrong-tag":
+        output = output.replace("git tag      : 1.0.0", "git tag      : 1.0.1")
+    elif defect == "missing-status":
+        output = output.replace("git status   :\n", "")
+    elif defect == "whole-overflow":
+        header = literal_version_header("")
+        output = header + "S" * (16385 - len(header) - 2) + "\n\n"
+    elif defect == "control":
+        output = output.replace("SYNTHETIC-private-status", "SYNTHETIC-\x00-status")
+    elif defect == "carriage-return":
+        output = output.replace("\n", "\r\n")
+    elif defect == "nonascii":
+        output = output.replace("SYNTHETIC-private-status", "SYNTHETIC-é-status")
+    elif defect == "invalid-utf8":
+        output = output.encode("ascii").replace(
+            b"SYNTHETIC-private-status", b"SYNTHETIC-\xff-status"
+        )
+    else:
+        output = "rustfs 1.0.0\n"
+    with pytest.raises(RuntimeError, match="version grammar") as caught:
+        verify_version(output)
+    assert str(caught.value) == "official RustFS version grammar differs"
+    assert capsys.readouterr() == ("", "")
+
+
+@pytest.mark.parametrize(
+    "shape", ["bytearray", "memoryview", "none", "number", "list", "dict"]
+)
+def test_version_only_native_string_or_bytes_shapes_are_accepted(shape, capsys):
+    from tests.support.asset_rustfs import verify_version
+
+    encoded = (literal_version_header("") + "\n\n").encode("ascii")
+    output = {
+        "bytearray": bytearray(encoded),
+        "memoryview": memoryview(encoded),
+        "none": None,
+        "number": 123,
+        "list": [encoded],
+        "dict": {"version": encoded},
+    }[shape]
+    with pytest.raises(RuntimeError, match="version grammar") as caught:
+        verify_version(output)
+    assert str(caught.value) == "official RustFS version grammar differs"
     assert capsys.readouterr() == ("", "")
 
 

@@ -326,7 +326,7 @@ def verify_version(output):
             type(output) is not str
             or len(output.encode("utf-8")) > 16384
             or not re.fullmatch(r"[\x20-\x7e\n]+", output)
-            or output.endswith("\n\n")
+            or output.endswith("\n\n\n")
         ):
             raise ValueError
         lines = output.splitlines()
@@ -357,7 +357,8 @@ def verify_version(output):
         for line, label, prefix in zip(lines[1:10], labels, prefixes, strict=True):
             value = line[len(prefix) :]
             if not line.startswith(prefix) or (
-                label != "git status" and (len(value) > 256 or not value)
+                label != "git status"
+                and (len(value) > 256 or (not value and label != "git branch"))
             ):
                 raise ValueError
             if label == "git commit" and value != SERVER_COMMIT:

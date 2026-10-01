@@ -328,6 +328,23 @@ The complete private log was 92,115 bytes, SHA-256
 workflow watches are closed and no CI is active. This remains foundation
 evidence, not private-provider or lifecycle acceptance.
 
+### Linux foundation run 36824906088
+
+[Run 36824906088, job 110248311371](https://github.com/himangga01/wisdom-super-observer/actions/runs/36824906088/job/110248311371)
+at published HEAD `fbe090f64fb1573f895dfffcf56baba69e929ef3` succeeded. It
+passed 2,309 ordinary Python cases with zero skips in 142.77 seconds and all
+ten actual Celery/Valkey recovery cases with zero skips in 250.27 seconds.
+Global Ruff and configured mypy on 40 files passed. Frontend passed 15 unit
+cases and typecheck/lint/build; twenty canonical exports were verified twice.
+The TVT checker reported 77 audit cases, 77 ledger rows and zero errors (not
+pytest cases). HTTPS Chrome passed 26 cases in 56.7 seconds. Valkey 9.1.2
+persistence smoke and the owned PostgreSQL 17.11 workflow cleanup succeeded.
+
+The complete private log was 92,461 bytes, SHA-256
+`84b31b94cbf3c23d465a4e969abba4978db4fd39ae5e5c94ec753eaa026f4d89`. Both
+workflow watches are closed and no CI is active. This is foundation evidence,
+not provider acceptance, a genuine sealed656 RED or full14 acceptance.
+
 ### Third private asset probe: data volume verification failed
 
 [Run 36749047523](https://github.com/himangga01/wisdom-super-observer/actions/runs/36749047523)
@@ -417,7 +434,7 @@ The fixed error combines four checks over installed-prefix objects and multipart
 
 Independent source inspection of the pinned MinIO release used by this run (`RELEASE.2025-04-22T22-12-26Z`, commit `0d7408fc9969caf07de6a8c3a84f9fbb10a6739e`) establishes a native capability mismatch. Its [multipart-upload listing implementation (`ListMultipartUploads`)](https://github.com/minio/minio/blob/0d7408fc9969caf07de6a8c3a84f9fbb10a6739e/cmd/erasure-sets.go#L881) treats its nonempty `Prefix` as one exact object. Its [multipart listing](https://github.com/minio/minio/blob/0d7408fc9969caf07de6a8c3a84f9fbb10a6739e/cmd/erasure-multipart.go#L254) visits only that exact object’s multipart directory, rather than enumerating multipart uploads on arbitrary installed child keys. Its [server-pool implementation](https://github.com/minio/minio/blob/0d7408fc9969caf07de6a8c3a84f9fbb10a6739e/cmd/erasure-server-pool.go#L1696) does not provide durable, bounded cross-key pagination through its empty-prefix cache path. Thus this pinned candidate cannot satisfy installed-prefix multipart enumeration, continuation across child keys, and durable restart/orphan discovery. The actual four-way predicate remains unknown; this capability rejection is based on pinned source semantics, not invented run counts.
 
-Root rejected this MinIO candidate for the required contract. No same-provider diagnostic retry, manual or twelfth run is authorized; do not weaken pagination, filtering, set equality or privacy assertions, substitute known database rows, or patch the vendor. The conditional eleventh authority was consumed. Read-only primary-source investigations are complete. RustFS 1.0.0 is the approved transition design; its source/checker reviews and offline aggregate passed. The later probe12 result and the narrow R13 PATH correction are recorded below. No provider is selected for acceptance. T05A remains in progress; provider acceptance, authenticated sealed656 RED, full14 and APK parity remain unproved.
+Root rejected this MinIO candidate for the required contract. No same-provider diagnostic retry, manual or twelfth run is authorized; do not weaken pagination, filtering, set equality or privacy assertions, substitute known database rows, or patch the vendor. The conditional eleventh authority was consumed. Read-only primary-source investigations are complete. RustFS 1.0.0 is the approved transition design; its source/checker reviews and offline aggregate passed. The later probe12 and probe13 results and narrow R13 correction are recorded below. No provider is selected for acceptance. T05A remains in progress; provider acceptance, authenticated sealed656 RED, full14 and APK parity remain unproved.
 
 ### RustFS transition implementation status — 2026-10-01
 
@@ -425,8 +442,8 @@ The approved RustFS 1.0.0 design and exact archive/member hashes, profile,
 receipt ABI, role boundaries, restart proof, containment and budget are recorded
 in the [private asset transition status](private-assets.md#rustfs-transition-status--2026-10-01).
 The actual-run record remains separate from the design and source checks. The
-latest completed foundation is [run 36821056354](#linux-foundation-run-36821056354);
-the earlier d5aaba8 receipt is preserved above. RustFS cold probe12 and its
+latest completed foundation is [run 36824906088](#linux-foundation-run-36824906088);
+the earlier d5aaba8 receipt is preserved above. RustFS cold probe13 and its
 setup failure are recorded below; no provider acceptance followed.
 
 The independent receipt-checker component is READY: 216 focused contracts
@@ -445,12 +462,48 @@ aggregate passed 1,130 in 7.15 seconds, no skips (513 profile + 200 safety +
 201 helper + 216 checker), with all ten source hashes unchanged. That aggregate
 ran pytest only. The nine-file Ruff/format and mypy40 + pure-checker mypy2
 results belong to the earlier pre-R13 1,093 gate; mypy40 was also freshly
-verified by foundation run 36821056354. No nine-file static or mypy run is
+verified by foundations 36821056354 and 36824906088. No nine-file static or mypy run is
 claimed after R13. These are source/contract gates, not provider acceptance.
 
-Root's one conditional RustFS probe12 ran and failed as recorded below; its
-single-attempt authority is consumed. R14 defines a conditional probe13 but
-does not activate it or authorize runtime. No retry of probe12 is authorized.
+R15's exact two-file source change is READY: `asset_rustfs.py` (56,158 bytes,
+SHA-256 `6de4210cac8dcaf930f0c8191ba4bf2d9e80f5fcc24c5f57a9fd5563e9bd0fae`)
+and `test_asset_rustfs.py` (80,632 bytes, SHA-256
+`50db2c14dec62a9ec4d148b355a53898c3f02bd48d5448999899fe70fed22299`).
+The accepted read-only diagnosis receipt is 12,770 bytes, SHA-256
+`290fa9081e9a5132b4363f11e4fb24bfe3f80643b1bf9b8805add249613f8c9d`.
+Independent review `T05A-rustfs-version-fix1-review.md` is 10,177 bytes,
+SHA-256 `6307d97b54d32d120c67d97b23e366ed177719adebaf577e8760db58359eae2f`,
+SpecApproved/QualityApproved with 0 Critical / 0 Important / 0 Minor / 0 Warning. The source diagnosis is accepted as a sufficient parser incompatibility,
+though it does not establish the unique actual predicate or full `LONG_VERSION`
+extent. Actual stdout and exact predicate remain unretained. The pinned
+embedded output has an empty literal Git branch, which the earlier fixture
+parser rejected. In the R15 parser contract, only the Git
+branch may be empty and its value is bounded to 256 bytes; the seven other
+non-status fields remain nonempty. The private Git status tail is a separate
+field, excluded from the per-field 256-byte check and bounded by the whole
+16 KiB output limit. Separately, pinned RustFS `LONG_VERSION` plus locked Clap
+4.6.7 can conditionally add two terminal LF bytes. This source-supported
+framing behavior does not establish the unique actual probe13 predicate or
+full formatter extent. The nearby
+305/fat-pointer candidate is unproved and not adopted.
+
+The R15 owner reported two isolated actual REDs (one failure each, 0.26 and
+0.21 seconds), source selection 2 passed in 0.14 seconds, helper selection
+263 passed in 0.45 seconds, and Ruff/format on one file each. Root's fresh
+five-contract aggregate passed 1,192 in 7.18 seconds with no skips (513
+profile + 200 safety + 263 helper + 216 checker); its new aggregate ran pytest
+only. Log: 1,399 bytes, SHA-256
+`d7492a7f3b8906e7b2970781d62ecd3cc2e1d1d21f0a343a91a303e3404ede58`.
+All ten source hashes and six protected paths remained unchanged. These are
+offline source/contract gates, not provider acceptance.
+
+Root's conditional RustFS probe12 and R14's conditional probe13 have both run
+and failed as recorded below; both single-attempt authorities are consumed.
+R16 defines one conditional corrected-fixture automatic probe14, but it is not
+activated and authorizes no runtime yet. Its conditions include final four-doc
+review, private18, exact six-stage curation/hash/commit checks, one authorized
+push and remote equality at the exact published SHA. No manual retry or
+unchanged/diagnostic-only run is authorized.
 No RustFS acceptance, authenticated HTTP, genuine sealed-656 RED, full14 GREEN,
 W02 reopening or APK parity is established.
 
@@ -484,14 +537,44 @@ the unique runtime failure.
 
 Root R13's exact public singleton `PATH` correction is source READY and
 independently approved SpecPASS/QualityApproved with zero findings. The owner
-reports the RED and focused results summarized above. R14 defines one
-conditional probe13, but its authority record says it is not activated and
-`runtime_authorized=false`. It requires exact two-source READY/review/root-
-aggregate gates, final four-doc review, private18, exact-six-stage/no-drift/
-whitespace, reviewed commit, one authorized push and verified remote SHA. No
-unchanged or diagnostic-only retry is authorized. This
-failure supplements, and does not replace, the historical MinIO11 failure and
-d5 foundation receipt above.
+reports the RED and focused results summarized above. R14's conditional probe13
+was activated and consumed. Probe13 failed setup in 11.35 seconds with the
+fixed message `official RustFS version grammar differs`. The R13 mapping stage
+passed; post-start version-grammar validation failed before the broader
+privacy/native checks were accepted. In source snapshot `fbe090f`,
+`asset_provider.py` line 567 called the helper at `asset_rustfs.py` line 373
+after the pre-start/post-exit image/version-Env and Running-false/ExitCode-0
+guards. These are historical source locations, not runtime values. The raw
+version output and exact failed grammar predicate were not retained; no tag,
+build or commit identity is inferred. Bounded diagnostics retained zero public
+proof, zero native paging, zero IAM snapshot diagnostics and zero close-failure
+diagnostics. Missing diagnostics do not prove final resource absence, cleanup
+or provider acceptance. The private log was 57,887 bytes, SHA-256
+`214f90edfb2d566ad2c6ed6ecc945909c327cbc61fa1d4e261650d8b813c5d00`.
+
+The accepted read-only diagnosis comes from the existing pinned static ELF,
+without executing it. The source change passed independent review; details and
+limits are summarized above. No run14 has occurred and no retry authority is
+active. The latest completed foundation
+is [run 36824906088](#linux-foundation-run-36824906088); the earlier aa63
+receipt 36821056354 remains dated historical evidence.
+This failure supplements, and does not replace, the historical probe12,
+MinIO11 failures and d5 foundation receipt above.
+
+### RustFS cold probe13 — 2026-10-01
+
+[Run 36824906085, job 110248311118](https://github.com/himangga01/wisdom-super-observer/actions/runs/36824906085/job/110248311118)
+failed with one setup error in 11.35 seconds. The fixed error was
+`official RustFS version grammar differs`. The R13 mapping stage passed; the
+helper rejected the official version grammar after the image/version-Env and
+running/exit-code guards. The exact version output and grammar predicate were
+not retained. No public proof, native paging, IAM snapshot diagnostic or
+close-failure diagnostic was retained, which does not prove resource absence
+or provider acceptance. The private log SHA-256 is recorded in this section's
+summary above. The run's one-attempt authority is consumed. R16 defines one conditional
+corrected-fixture automatic probe14, still not activated; its documentation,
+private18, curated-source commit/push and remote-equality gates remain. No
+manual retry or unchanged/diagnostic-only run is authorized.
 
 ## Evidence handling
 
