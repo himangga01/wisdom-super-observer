@@ -1,0 +1,5 @@
+/build/
+*.apk
+*.so
+*.class
+private/

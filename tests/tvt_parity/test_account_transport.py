@@ -378,7 +378,7 @@ def transport(
 
 def test_actual_stdlib_transport_serializes_post_header_tls_and_closes(monkeypatch):
     p, t = modules()
-    client, peer, constructed, _ = transport(t, monkeypatch)
+    client, peer, constructed, _ = transport(t, monkeypatch, clock=lambda: 0)
     request = builder(p).login(login(p))
     reply = client.send(request)
     assert reply.native_msgcode == 200
