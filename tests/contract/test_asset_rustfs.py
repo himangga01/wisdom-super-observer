@@ -104,7 +104,6 @@ def iam_fixture():
     from tests.support.asset_rustfs import (
         NativeIam,
         PhaseBudget,
-        builtin_policies,
         zip_maps,
     )
 
@@ -129,7 +128,7 @@ def iam_fixture():
             "stsuser_mappings",
         )
     }
-    maps["policies"] = {**builtin_policies(), **policies}
+    maps["policies"] = {**native_defaults(), **policies}
     stamp = "2026-10-01T00:00:00Z"
     maps["users"] = {
         identities[actor][0]: {"secretKey": identities[actor][1], "status": "enabled"}
@@ -196,6 +195,7 @@ def iam_fixture():
 
 
 def test_native_no_effect_uses_twenty_reads_and_two_independent_denials():
+    # Independent literal native templates model the complete unchanged IAM state.
     native, calls, _, _ = iam_fixture()
     native.no_effect()
     assert len(calls) == 22
@@ -1068,8 +1068,8 @@ def native_defaults():
         "readwrite": {
             "Version": "2012-10-17",
             "Statement": [
-                {"Effect": "Allow", "Action": "s3:*", "Resource": "arn:aws:s3:::*"},
-                {"Effect": "Allow", "Action": "sts:AssumeRole"},
+                {"Effect": "Allow", "Action": ["s3:*"], "Resource": ["arn:aws:s3:::*"]},
+                {"Effect": "Allow", "Action": ["sts:AssumeRole"]},
             ],
         },
         "readonly": {
@@ -1082,9 +1082,9 @@ def native_defaults():
                         "s3:GetObject",
                         "s3:GetBucketQuota",
                     ],
-                    "Resource": "arn:aws:s3:::*",
+                    "Resource": ["arn:aws:s3:::*"],
                 },
-                {"Effect": "Allow", "Action": "sts:AssumeRole"},
+                {"Effect": "Allow", "Action": ["sts:AssumeRole"]},
             ],
         },
         "writeonly": {
@@ -1092,10 +1092,10 @@ def native_defaults():
             "Statement": [
                 {
                     "Effect": "Allow",
-                    "Action": "s3:PutObject",
-                    "Resource": "arn:aws:s3:::*",
+                    "Action": ["s3:PutObject"],
+                    "Resource": ["arn:aws:s3:::*"],
                 },
-                {"Effect": "Allow", "Action": "sts:AssumeRole"},
+                {"Effect": "Allow", "Action": ["sts:AssumeRole"]},
             ],
         },
         "diagnostics": {
@@ -1105,26 +1105,26 @@ def native_defaults():
                     "Effect": "Allow",
                     "Action": [
                         "admin:Profiling",
-                        "admin:Trace",
+                        "admin:ServerTrace",
                         "admin:ConsoleLog",
                         "admin:ServerInfo",
-                        "admin:TopLocks",
-                        "admin:HealthInfo",
+                        "admin:TopLocksInfo",
+                        "admin:OBDInfo",
                         "admin:Prometheus",
                         "admin:BandwidthMonitor",
                     ],
-                    "Resource": "arn:aws:s3:::*",
+                    "Resource": ["arn:aws:s3:::*"],
                 },
-                {"Effect": "Allow", "Action": "sts:AssumeRole"},
+                {"Effect": "Allow", "Action": ["sts:AssumeRole"]},
             ],
         },
         "consoleAdmin": {
             "Version": "2012-10-17",
             "Statement": [
-                {"Effect": "Allow", "Action": "admin:*"},
-                {"Effect": "Allow", "Action": "kms:*"},
-                {"Effect": "Allow", "Action": "s3:*", "Resource": "arn:aws:s3:::*"},
-                {"Effect": "Allow", "Action": "sts:AssumeRole"},
+                {"Effect": "Allow", "Action": ["admin:*"]},
+                {"Effect": "Allow", "Action": ["kms:*"]},
+                {"Effect": "Allow", "Action": ["s3:*"], "Resource": ["arn:aws:s3:::*"]},
+                {"Effect": "Allow", "Action": ["sts:AssumeRole"]},
             ],
         },
         "KMSKeyAdministrator": {
@@ -1140,9 +1140,9 @@ def native_defaults():
                         "kms:RotateKey",
                         "kms:DeleteKey",
                     ],
-                    "Resource": "arn:aws:kms:::*",
+                    "Resource": ["arn:aws:kms:::*"],
                 },
-                {"Effect": "Allow", "Action": "sts:AssumeRole"},
+                {"Effect": "Allow", "Action": ["sts:AssumeRole"]},
             ],
         },
         "KMSKeyUser": {
@@ -1151,9 +1151,9 @@ def native_defaults():
                 {
                     "Effect": "Allow",
                     "Action": ["kms:GenerateDataKey", "kms:Decrypt", "kms:DescribeKey"],
-                    "Resource": "arn:aws:kms:::*",
+                    "Resource": ["arn:aws:kms:::*"],
                 },
-                {"Effect": "Allow", "Action": "sts:AssumeRole"},
+                {"Effect": "Allow", "Action": ["sts:AssumeRole"]},
             ],
         },
         "KMSAuditor": {
@@ -1162,12 +1162,254 @@ def native_defaults():
                 {
                     "Effect": "Allow",
                     "Action": ["kms:DescribeKey", "kms:ListKeys"],
-                    "Resource": "arn:aws:kms:::*",
+                    "Resource": ["arn:aws:kms:::*"],
                 },
-                {"Effect": "Allow", "Action": "sts:AssumeRole"},
+                {"Effect": "Allow", "Action": ["sts:AssumeRole"]},
             ],
         },
     }
+
+
+def literal_policy_sets(policy):
+    """Compare ordered native sets without changing or deduplicating wire strings."""
+    result = deepcopy(policy)
+    for statement in result["Statement"]:
+        for name in ("Action", "Resource"):
+            if name in statement:
+                value = statement[name]
+                statement[name] = sorted([value] if type(value) is str else value)
+    result["Statement"].sort(
+        key=lambda statement: json.dumps(statement, sort_keys=True)
+    )
+    return result
+
+
+def test_pinned_native_diagnostics_matches_full_literal_wire_policy():
+    from tests.support.asset_rustfs import builtin_policies
+
+    expected = {
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Effect": "Allow",
+                "Action": [
+                    "admin:Profiling",
+                    "admin:ServerTrace",
+                    "admin:ConsoleLog",
+                    "admin:ServerInfo",
+                    "admin:TopLocksInfo",
+                    "admin:OBDInfo",
+                    "admin:Prometheus",
+                    "admin:BandwidthMonitor",
+                ],
+                "Resource": ["arn:aws:s3:::*"],
+            },
+            {"Effect": "Allow", "Action": ["sts:AssumeRole"]},
+        ],
+    }
+    assert literal_policy_sets(
+        builtin_policies()["diagnostics"]
+    ) == literal_policy_sets(expected)
+
+
+def test_source_modeled_complete_native_export_snapshot_is_accepted(capsys):
+    from tests.support.asset_rustfs import export_maps
+
+    native, calls, _, maps = iam_fixture()
+    # All eight source-defined defaults and seven maps are synthetic test inputs.
+    decoded = export_maps(export_archive(maps))
+    assert set(decoded) == {
+        "policies",
+        "users",
+        "groups",
+        "svcaccts",
+        "user_mappings",
+        "group_mappings",
+        "stsuser_mappings",
+    }
+    assert set(decoded["policies"]) == {
+        "readwrite",
+        "readonly",
+        "writeonly",
+        "diagnostics",
+        "consoleAdmin",
+        "KMSKeyAdministrator",
+        "KMSKeyUser",
+        "KMSAuditor",
+        "wso-gateway",
+        "wso-maintenance",
+    }
+    snapshot = json.loads(native.snapshot())
+    assert set(snapshot) == {
+        "export",
+        "gateway",
+        "cleanup",
+        "wso-gateway",
+        "wso-maintenance",
+    }
+    assert snapshot["export"]["users"] == {
+        "c" * 20: {"secretKey": "d" * 40, "status": "enabled"},
+        "e" * 20: {"secretKey": "f" * 40, "status": "enabled"},
+    }
+    assert calls == [
+        ("bootstrap", "GET", "export-iam"),
+        ("bootstrap", "GET", "user-info"),
+        ("bootstrap", "GET", "user-info"),
+        ("bootstrap", "GET", "info-canned-policy"),
+        ("bootstrap", "GET", "info-canned-policy"),
+    ]
+    assert capsys.readouterr() == ("", "")
+
+
+@pytest.mark.parametrize(
+    "default",
+    [
+        "readwrite",
+        "readonly",
+        "writeonly",
+        "diagnostics",
+        "consoleAdmin",
+        "KMSKeyAdministrator",
+        "KMSKeyUser",
+        "KMSAuditor",
+    ],
+)
+def test_pinned_native_default_templates_have_independent_complete_semantics(default):
+    from tests.support.asset_rustfs import builtin_policies
+
+    actual = builtin_policies()
+    assert set(actual) == {
+        "readwrite",
+        "readonly",
+        "writeonly",
+        "diagnostics",
+        "consoleAdmin",
+        "KMSKeyAdministrator",
+        "KMSKeyUser",
+        "KMSAuditor",
+    }
+    assert literal_policy_sets(actual[default]) == literal_policy_sets(
+        native_defaults()[default]
+    )
+
+
+@pytest.mark.parametrize(
+    "native_action, old_alias",
+    [
+        ("admin:ServerTrace", "admin:Trace"),
+        ("admin:TopLocksInfo", "admin:TopLocks"),
+        ("admin:OBDInfo", "admin:HealthInfo"),
+    ],
+    ids=["trace-alias", "locks-alias", "health-alias"],
+)
+def test_native_diagnostics_each_old_alias_alone_is_refused(
+    native_action, old_alias, capsys
+):
+    native, calls, _, maps = iam_fixture()
+    actions = maps["policies"]["diagnostics"]["Statement"][0]["Action"]
+    actions[actions.index(native_action)] = old_alias
+    with pytest.raises(NativeSnapshotFailure) as caught:
+        native.snapshot()
+    assert (caught.value.component, caught.value.condition, caught.value.status) == (
+        "EXPORT",
+        "EXPECTED_STATE",
+        None,
+    )
+    assert calls == [
+        ("bootstrap", "GET", "export-iam"),
+        ("bootstrap", "GET", "user-info"),
+        ("bootstrap", "GET", "user-info"),
+        ("bootstrap", "GET", "info-canned-policy"),
+        ("bootstrap", "GET", "info-canned-policy"),
+    ]
+    assert "admin:" not in str(caught.value)
+    assert capsys.readouterr() == ("", "")
+
+
+@pytest.mark.parametrize(
+    "defect",
+    [
+        "missing-action",
+        "extra-action",
+        "duplicate-action",
+        "resource",
+        "condition",
+        "sts-resource",
+        "sts-action",
+        "extra-statement",
+        "version",
+        "other-default",
+        "unknown-ID",
+        "unknown-NotAction",
+        "unknown-NotResource",
+        "unknown-Principal",
+    ],
+)
+def test_native_diagnostics_complete_tree_changes_are_refused(defect, capsys):
+    native, calls, _, maps = iam_fixture()
+    policy = maps["policies"]["diagnostics"]
+    statement = policy["Statement"][0]
+    if defect == "missing-action":
+        statement["Action"].remove("admin:Profiling")
+    elif defect == "extra-action":
+        statement["Action"].append("admin:*")
+    elif defect == "duplicate-action":
+        statement["Action"].append("admin:ServerTrace")
+    elif defect == "resource":
+        statement["Resource"] = ["arn:aws:s3:::unexpected/*"]
+    elif defect == "condition":
+        statement["Condition"] = {"StringLike": {"s3:prefix": ["unexpected/*"]}}
+    elif defect == "sts-resource":
+        policy["Statement"][1]["Resource"] = ["arn:aws:s3:::*"]
+    elif defect == "sts-action":
+        policy["Statement"][1]["Action"] = ["sts:*"]
+    elif defect == "extra-statement":
+        policy["Statement"].append({"Effect": "Allow", "Action": ["kms:*"]})
+    elif defect == "version":
+        policy["Version"] = "2008-10-17"
+    elif defect == "other-default":
+        maps["policies"]["diagnostics"] = native_defaults()["readonly"]
+    elif defect == "unknown-ID":
+        policy["ID"] = "SYNTHETIC-id"
+    else:
+        statement[defect.removeprefix("unknown-")] = (
+            [] if defect != "unknown-Principal" else {}
+        )
+    with pytest.raises(NativeSnapshotFailure) as caught:
+        native.snapshot()
+    assert (caught.value.component, caught.value.condition, caught.value.status) == (
+        "EXPORT",
+        "EXPECTED_STATE",
+        None,
+    )
+    assert len(calls) == 5 and all(method == "GET" for _, method, _ in calls)
+    assert "unexpected" not in str(caught.value) and "SYNTHETIC" not in str(
+        caught.value
+    )
+    assert capsys.readouterr() == ("", "")
+
+
+def test_source_modeled_native_defaults_ignore_only_valid_ordering():
+    native, _, _, maps = iam_fixture()
+    before = native.snapshot()
+    for name in (
+        "readwrite",
+        "readonly",
+        "writeonly",
+        "diagnostics",
+        "consoleAdmin",
+        "KMSKeyAdministrator",
+        "KMSKeyUser",
+        "KMSAuditor",
+    ):
+        policy = maps["policies"][name]
+        for statement in policy["Statement"]:
+            for field in ("Action", "Resource"):
+                if field in statement:
+                    statement[field].reverse()
+        policy["Statement"].reverse()
+    maps["policies"] = dict(reversed(list(maps["policies"].items())))
+    assert native.snapshot() == before
 
 
 def export_archive(maps):

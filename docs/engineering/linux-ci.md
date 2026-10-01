@@ -345,6 +345,23 @@ The complete private log was 92,461 bytes, SHA-256
 workflow watches are closed and no CI is active. This is foundation evidence,
 not provider acceptance, a genuine sealed656 RED or full14 acceptance.
 
+### Linux foundation run 36831149737
+
+[Run 36831149737, job 110267816003](https://github.com/himangga01/wisdom-super-observer/actions/runs/36831149737/job/110267816003)
+at published commit `4d41c100be5481218afd53b92e989a257591da1c` succeeded. It
+passed 2,371 ordinary Python cases with zero skips in 140.54 seconds and all
+ten actual Celery/Valkey recovery cases with zero skips in 256.37 seconds.
+Global Ruff and configured mypy on 40 files passed. Frontend passed 15 unit
+cases and typecheck/lint/build; twenty canonical exports were verified twice.
+The TVT checker reported 77 audit cases, 77 ledger rows and zero errors (not
+pytest cases). HTTPS Chrome passed 26 cases in 48.3 seconds. Valkey 9.1.2
+persistence smoke and owned PostgreSQL 17.11 workflow cleanup succeeded.
+
+The complete private log was 140,635 bytes, SHA-256
+`5f26cdf25d7363c771f56a8abd7b12b20f15d57a824c1da2a1824eacb0f22223`. Both
+watches are closed and no CI is active. This foundation evidence is not
+provider acceptance, authenticated sealed656 RED or full14 acceptance.
+
 ### Third private asset probe: data volume verification failed
 
 [Run 36749047523](https://github.com/himangga01/wisdom-super-observer/actions/runs/36749047523)
@@ -442,7 +459,7 @@ The approved RustFS 1.0.0 design and exact archive/member hashes, profile,
 receipt ABI, role boundaries, restart proof, containment and budget are recorded
 in the [private asset transition status](private-assets.md#rustfs-transition-status--2026-10-01).
 The actual-run record remains separate from the design and source checks. The
-latest completed foundation is [run 36824906088](#linux-foundation-run-36824906088);
+latest completed foundation is [run 36831149737](#linux-foundation-run-36831149737);
 the earlier d5aaba8 receipt is preserved above. RustFS cold probe13 and its
 setup failure are recorded below; no provider acceptance followed.
 
@@ -462,7 +479,7 @@ aggregate passed 1,130 in 7.15 seconds, no skips (513 profile + 200 safety +
 201 helper + 216 checker), with all ten source hashes unchanged. That aggregate
 ran pytest only. The nine-file Ruff/format and mypy40 + pure-checker mypy2
 results belong to the earlier pre-R13 1,093 gate; mypy40 was also freshly
-verified by foundations 36821056354 and 36824906088. No nine-file static or mypy run is
+verified by foundations 36821056354, 36824906088 and 36831149737. No nine-file static or mypy run is
 claimed after R13. These are source/contract gates, not provider acceptance.
 
 R15's exact two-file source change is READY: `asset_rustfs.py` (56,158 bytes,
@@ -497,13 +514,14 @@ only. Log: 1,399 bytes, SHA-256
 All ten source hashes and six protected paths remained unchanged. These are
 offline source/contract gates, not provider acceptance.
 
-Root's conditional RustFS probe12 and R14's conditional probe13 have both run
-and failed as recorded below; both single-attempt authorities are consumed.
-R16 defines one conditional corrected-fixture automatic probe14, but it is not
-activated and authorizes no runtime yet. Its conditions include final four-doc
-review, private18, exact six-stage curation/hash/commit checks, one authorized
-push and remote equality at the exact published SHA. No manual retry or
-unchanged/diagnostic-only run is authorized.
+RustFS probe12, probe13 and probe14 have run and failed as recorded below;
+their automatic authorities are consumed. R17's three-literal fix is reviewed
+and its offline source gate passed. R18 defines one conditional corrected-
+fixture automatic probe15, not activated. Activation requires source/test and independent
+review approval, the root composition gate, final four-doc approval, private18,
+exact-six curation with raw-reviewed-to-index-to-commit identity, one authorized
+push and verified remote equality. No actual probe15 or manual/diagnostic retry
+has occurred or is authorized.
 No RustFS acceptance, authenticated HTTP, genuine sealed-656 RED, full14 GREEN,
 W02 reopening or APK parity is established.
 
@@ -552,12 +570,39 @@ diagnostics. Missing diagnostics do not prove final resource absence, cleanup
 or provider acceptance. The private log was 57,887 bytes, SHA-256
 `214f90edfb2d566ad2c6ed6ecc945909c327cbc61fa1d4e261650d8b813c5d00`.
 
-The accepted read-only diagnosis comes from the existing pinned static ELF,
-without executing it. The source change passed independent review; details and
-limits are summarized above. No run14 has occurred and no retry authority is
-active. The latest completed foundation
-is [run 36824906088](#linux-foundation-run-36824906088); the earlier aa63
-receipt 36821056354 remains dated historical evidence.
+The accepted read-only probe13 diagnosis came from the existing pinned static
+ELF. Root also accepted a source-only probe14 diagnosis: the fixture's three
+`diagnostics` policy actions differ from pinned RustFS wire values:
+`admin:Trace` vs `admin:ServerTrace`, `admin:TopLocks` vs
+`admin:TopLocksInfo`, and `admin:HealthInfo` vs `admin:OBDInfo`. This is a
+sufficient source incompatibility, not proof of the unique actual export
+predicate; actual export body and exact predicate remain unretained. R17 changed
+only these three literals in `asset_rustfs.py` (56,165 bytes, SHA-256
+`9935434e5a60d244196870b68f4847d103c31f5cb5046d7bd921b8e2baa1c8f7`), producing
+`admin:ServerTrace`, `admin:TopLocksInfo` and `admin:OBDInfo`. Every other raw
+source byte was preserved; other diagnostics actions/defaults, bindings,
+policies, requests, deadlines, cleanup, pins, version, PATH, receipt and product
+behavior remain unchanged. Independent source review (12,821 bytes, SHA-256
+`02aeab5a3b620a6247e78ba3eee0bcdd62df06b862ef2186c4a825c111892eee`) approved
+Spec/Quality with 0 Critical / 0 Important / 0 Minor and 2 evidence-boundary
+warnings.
+
+The helper tests (88,404 bytes, SHA-256
+`9078b6a7778043e4472862ddb6c02e083f16d9d78ee713542f840fe2f18992c2`) retain the
+prior 263 cases and add 28, for 291. Two isolated actual REDs each failed once
+(0.27s factory inequality; 0.36s EXPORT/EXPECTED_STATE/null) before source
+activation. Source selection 2 passed in 0.20s; helper 29 passed / 262
+deselected in 0.16s and full291 passed in 0.56s. Author Ruff/format ran once
+per changed path. Root ran one five-contract pytest aggregate: 1,220 passed in
+7.55s, zero skips (513 profile + 200 safety + 291 helper + 216 checker), log
+1,399 bytes, SHA-256
+`a8fc497214a317a9bb6772b6fe3d33f31b69d685bb0819f809794414e5026e17`. This
+aggregate ran pytest only; no fresh global Ruff or Mypy is claimed. All ten
+source hashes and six protected paths remained unchanged. These are offline
+gates, not provider acceptance. R18 authority and activation prerequisites are
+summarized above. Latest completed foundation is
+[run 36831149737](#linux-foundation-run-36831149737); fbe run 36824906088 and
+aa63 run 36821056354 remain historical evidence.
 This failure supplements, and does not replace, the historical probe12,
 MinIO11 failures and d5 foundation receipt above.
 
@@ -571,10 +616,38 @@ running/exit-code guards. The exact version output and grammar predicate were
 not retained. No public proof, native paging, IAM snapshot diagnostic or
 close-failure diagnostic was retained, which does not prove resource absence
 or provider acceptance. The private log SHA-256 is recorded in this section's
-summary above. The run's one-attempt authority is consumed. R16 defines one conditional
-corrected-fixture automatic probe14, still not activated; its documentation,
-private18, curated-source commit/push and remote-equality gates remain. No
-manual retry or unchanged/diagnostic-only run is authorized.
+summary above. R14's automatic probe13 authority is consumed.
+
+### RustFS cold probe14 — 2026-10-01
+
+[Run 36831149653, job 110267814324](https://github.com/himangga01/wisdom-super-observer/actions/runs/36831149653/job/110267814324)
+at published commit `4d41c100be5481218afd53b92e989a257591da1c` failed with
+one setup error in 14.23 seconds. The sanitized diagnostic was
+`GATEWAY/IAM_BEFORE/EXPORT/EXPECTED_STATE`, with `status: null`. The same
+failure appeared twice in the log; it is one failure, and null means the
+semantic diagnostic had no status value, not an observed HTTP status. The
+trace reached the IAM before-snapshot after earlier checkpoint work; source
+locations include `asset_harness.py:115,449`, `asset_provider.py:479,1977,2023`
+and `asset_rustfs.py:1056`. These are locations, not values. The native export
+payload and unique failed export predicate were not retained. The failed step
+was observation of authenticated missing-feature RED after actual S3
+preflight.
+
+Bounded extraction retained zero public-proof prefixes, zero close-diagnostic
+prefixes and no ACL-effect diagnostic. These absences do not prove teardown,
+resource absence or provider acceptance. Private log: 94,137 bytes, SHA-256
+`9c848f27046a311f9c363d265c5744baa980650ced48ad75b9422e88f9d35f9f`. Root
+accepted the source-only diagnosis of three wrong `diagnostics` wire action
+literals: `admin:Trace` should be `admin:ServerTrace`, `admin:TopLocks`
+should be `admin:TopLocksInfo`, and `admin:HealthInfo` should be
+`admin:OBDInfo`. This is sufficient incompatibility, not a claim about the
+unique actual predicate; the native export body and exact predicate remain
+unretained. R17 changed only those three literals and its independent review
+approved. The source and test evidence, aggregate, and conditional R18 state
+are recorded above. No provider acceptance, authenticated sealed656 RED,
+full14 or W02 reopening is claimed. The latest completed foundation is run
+36831149737; fbe run 36824906088 and aa63 run 36821056354 remain historical
+receipts.
 
 ## Evidence handling
 

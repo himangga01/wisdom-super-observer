@@ -117,7 +117,7 @@ no skips (513 profile + 200 safety + 201 helper + 216 checker), with ten source
 hashes unchanged; this aggregate ran pytest only. R13 Ruff/format was run only
 on the two changed files. Nine-file Ruff/format and configured mypy40 plus
 pure-checker mypy2 were earlier pre-R13 results; mypy40 was also freshly
-verified by foundation runs 36821056354 and 36824906088. No post-R13 nine-file static or mypy
+verified by foundation runs 36821056354, 36824906088 and 36831149737. No post-R13 nine-file static or mypy
 run is claimed. These remain offline source/contract evidence, not RustFS or
 sealed-fixture behavior. R15's exact two-source RustFS version-parser fix is
 READY and independently approved SpecPASS/QualityApproved with 0 Critical,
@@ -169,11 +169,11 @@ hex credential pairs. These remain design/source gates pending actual execution.
 The provider phase budget remains twelve minutes split into 6/3/3-minute phases,
 with three minutes for cleanup and one minute for the API/HTTP reserve; all
 existing call caps remain unchanged and new calls must fit them.
-The latest completed [Linux foundation run 36824906088](linux-ci.md#linux-foundation-run-36824906088)
-passed 2,309 ordinary Python cases and ten actual Celery/Valkey recovery cases,
+The latest completed [Linux foundation run 36831149737](linux-ci.md#linux-foundation-run-36831149737)
+passed 2,371 ordinary Python cases and ten actual Celery/Valkey recovery cases,
 both with zero skips, plus its recorded static, frontend and browser gates. The
-earlier aa63 run 36821056354 remains historical evidence. This newer foundation
-result is not provider or lifecycle acceptance; the full fourteen-case aging plan remains gated. RustFS probe12 failed setup
+fbe run 36824906088 and earlier aa63 run 36821056354 remain historical evidence.
+This foundation result is not provider or lifecycle acceptance; the full fourteen-case aging plan remains gated. RustFS probe12 failed setup
 in 9.94 seconds as recorded below. R14's conditional probe13 was activated
 and consumed; [run 36824906085, job 110248311118](https://github.com/himangga01/wisdom-super-observer/actions/runs/36824906085/job/110248311118)
 failed setup in 11.35 seconds with `official RustFS version grammar differs`.
@@ -187,13 +187,27 @@ diagnostics; that does not prove resource absence, cleanup or provider
 acceptance. Private log: 57,887 bytes, SHA-256
 `214f90edfb2d566ad2c6ed6ecc945909c327cbc61fa1d4e261650d8b813c5d00`.
 
-The accepted source diagnosis is based on read-only inspection of the existing
-pinned static ELF; it does not recover the unique actual probe13 predicate or
-full `LONG_VERSION` extent. R16 defines a conditional corrected-fixture
-automatic probe14, not activated; its final-doc-review/private18/curated
-commit-push/remote-SHA conditions remain. No run14, manual retry or
-unchanged/diagnostic-only run is authorized. No RustFS provider receipt,
-authenticated sealed656 RED or full14 GREEN is established. W02 remains closed, APK `MATCHED` remains zero, six G-P1 families remain blocked and `release_ready=false`.
+The accepted read-only diagnosis for probe14 identifies a sufficient
+incompatibility: three actions in the fixture's `diagnostics` default policy
+differ from pinned RustFS wire values (`admin:Trace`/`admin:ServerTrace`,
+`admin:TopLocks`/`admin:TopLocksInfo`, `admin:HealthInfo`/`admin:OBDInfo`). It
+does not identify the unique actual export predicate; native body and exact
+predicate remain unretained. R17 changed only these three source literals and its independent review
+approved Spec/Quality with 0 Critical / 0 Important / 0 Minor and 2 evidence-
+boundary warnings. Its independent helper retains the previous 263 tests and
+adds 28, with literal eight-default expectations and strict alias refusals.
+Root's one 1,220-case aggregate passed in 7.55 seconds without skips; it ran
+pytest only. R16's probe14 automatic authority was activated and consumed.
+R18 defines one conditional corrected-fixture automatic probe15, not activated;
+no actual probe15 or manual retry is authorized. No RustFS provider
+receipt, authenticated sealed656 RED or full14 GREEN is established. The latest
+actual attempt is [probe14](linux-ci.md#rustfs-cold-probe14--2026-10-01), which
+failed setup on `GATEWAY/IAM_BEFORE/EXPORT/EXPECTED_STATE` with diagnostic
+`status: null`; repeated logging was one failure, not two operations. Native
+payload and the unique export predicate were not retained. Zero public-proof,
+close and ACL-effect diagnostics do not prove cleanup or acceptance. Latest
+completed foundation is run 36831149737; fbe run 36824906088 and aa63 run
+36821056354 are historical evidence. W02 remains closed, APK `MATCHED` remains zero, six G-P1 families remain blocked and `release_ready=false`.
 
 The two actual SeaweedFS 4.47 probes failed setup; neither is meaningful
 missing-feature RED. At that earlier stage, the proposed replacement was an

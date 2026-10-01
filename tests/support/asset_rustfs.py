@@ -539,11 +539,11 @@ def builtin_policies():
                     "admin:" + name
                     for name in (
                         "Profiling",
-                        "Trace",
+                        "ServerTrace",
                         "ConsoleLog",
                         "ServerInfo",
-                        "TopLocks",
-                        "HealthInfo",
+                        "TopLocksInfo",
+                        "OBDInfo",
                         "Prometheus",
                         "BandwidthMonitor",
                     )
