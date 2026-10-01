@@ -14,7 +14,7 @@ This ledger tracks executable service work. The separate [parity ledger](../inte
 | W00 atomic parity ledger | Static 77-case seed and desktop API preflight implemented; false-positive paths closed | 31 focused tests passed; checker 77/77 rows, zero errors; headless Chrome/Edge API probe 2/2 | Trusted W24 run registry and comparator; runtime reachability, Android/iOS/media/permission checks, support matrix sign-off; no `MATCHED` rows and `release_ready=false` |
 | W01 TVT bridge feasibility | Static handoff, frozen 199-operation manifest and declaration inventories implemented | 10 schema tests passed; 77 cases / 199 candidate operations; 281 request classes and 299 native declarations inventoried | Vendor rights, runtime fixtures and pilot; all six remote G-P1 families `BLOCKED` |
 | T05 durable jobs | Database-owned requests, outbox/inbox, restricted dispatcher/worker, fencing, cancellation, external uncertainty, status/items API and job-bound secret primitives implemented; task and milestone integration/fix reviews approved | [Actual Linux run 36716200713](https://github.com/himangga01/wisdom-super-observer/actions/runs/36716200713): 537 Python cases and all ten required real process/broker recovery cases, zero skips; no remaining Critical/Important review findings | Generic credential handlers fail CAPABILITY_UNSUPPORTED until the owning executor exists; no production IMPORT/REGISTRATION handler. Deployment and vendor effects remain pending |
-| T05A private assets | In progress; MinIO v2 fixture source, strict consumers, optional public-proof source and component-diagnostic source amendment received scoped approval | [Foundation run 36782405311](../engineering/linux-ci.md#linux-foundation-run-36782405311) passed; [eighth provider attempt](../engineering/linux-ci.md#eighth-sealed-private-asset-baseline-attempt-anonymous-get-transport-error-and-cleanup-failure) stopped during setup with anonymous-GET transport error and fixture-local cleanup failure | Actual provider privacy/IAM and HTTP preflight, a later cold retry with diagnostic source, complete fourteen-case GREEN acceptance, actual relay connectivity, and whole APK parity |
+| T05A private assets | In progress; MinIO v2 fixture source, strict consumers, optional public-proof source and cutoff/request-boundary diagnostic amendment received scoped approval | [Latest completed foundation receipt](../engineering/linux-ci.md#linux-foundation-run-36789932368); [ninth provider attempt](../engineering/linux-ci.md#ninth-sealed-private-asset-baseline-attempt-anonymous-head-transport-error) stopped during setup with anonymous-HEAD transport error and fixture-local RELAY_TRANSPORT close refusal | Actual provider privacy/IAM and HTTP preflight, a separately authorized later cold retry, complete fourteen-case GREEN acceptance, actual relay connectivity, and whole APK parity; publish the locally committed diagnostic refinement |
 | W02–W25 service features | Pending | None | Private storage prerequisite and family-specific gates |
 
 ## Previous integrated verification — 2026-09-30
@@ -125,8 +125,17 @@ passed 1567 ordinary Python cases and ten actual Celery/Valkey recovery cases,
 both with zero skips. Ruff/mypy 40, frontend typecheck/lint/build and 15 unit
 cases, twenty canonical exports twice, TVT evidence checker 77 audit cases / 77
 ledger rows / zero errors, HTTPS Chrome 26, Valkey smoke and owned PostgreSQL
-cleanup passed. It covers the reviewed source commit `3bcf178a9eb93d296658a11a2cedf03e833e02f3`, but predates and excludes the diagnostic source commit `cddeee3e438ccfa7a51f817b24d2781e51be2495` and this documentation amendment. These foundation
-counts do not establish provider acceptance.
+cleanup passed. It covers the reviewed source commit `3bcf178a9eb93d296658a11a2cedf03e833e02f3`, but predates and excludes the diagnostic source commit `cddeee3e438ccfa7a51f817b24d2781e51be2495` and this documentation amendment. These foundation counts do not establish provider acceptance.
+
+The completed [ee9c11b foundation receipt](../engineering/linux-ci.md#linux-foundation-run-36789932368)
+passed 1642 ordinary Python cases and ten actual Celery/Valkey recovery cases,
+both with zero skips. Ruff/mypy 40, frontend typecheck/lint/build and 15 unit
+cases, twenty canonical exports twice, TVT evidence checker 77 audit cases / 77
+ledger rows / zero errors, HTTPS Chrome 26, Valkey smoke and owned PostgreSQL
+cleanup passed. It covers source commit `cddeee3` and the published docs at
+`ee9c11b`, but predates and excludes diagnostic source commit
+`3048067bd515bcd86a2a41f48c1de56874e26785` and this draft. It remains foundation evidence only; it does not establish
+provider acceptance.
 
 The v2 producer and strict-consumer changes each received independent scoped
 approval with zero findings; the producer passed 251 focused cases and the root
@@ -187,8 +196,10 @@ provider close failed. This does not prove an HTTPX/socket failure, anonymous
 HTTP 200, provider privacy/IAM, authenticated RED, or full14 acceptance. Source
 order places it at scheduled entry 27 only.
 
-The diagnostic-only source amendment was committed locally as
-`cddeee3e438ccfa7a51f817b24d2781e51be2495` and received scoped Astra approval
+The diagnostic-only source amendment was committed as
+`cddeee3e438ccfa7a51f817b24d2781e51be2495`, then pushed with the reviewed docs
+in one branch update resulting in `ee9c11b2c14a409b1d055e3b62a1359abb93c718`;
+the remote SHA was verified and the tree was clean. It received scoped Astra approval
 with no Critical, Important, or Minor findings. Its initial meaningful RED
 selection had three failures before 375 passed; review identified causal-origin
 masking and closed-stdout `ValueError`. After fix round 1, the six-case RED
@@ -201,8 +212,48 @@ retain fixed exception kind/phase and observed status, first relay origin with
 a nonblocking safe snapshot, and fixed close category. Combined-branch cutoff
 reason remains `PUMP_CUTOFF` or `UNKNOWN`; counters do not establish quiescence.
 Behavior, acceptance, profile/schema, budgets, call order and cleanup authority
-are unchanged. The source review establishes neither the eighth probe’s cause
-nor provider acceptance; publication remains pending.
+are unchanged. The source review establishes neither the eighth nor ninth
+probe’s cause nor provider acceptance. The completed publication does not
+change these gates.
+
+The ninth [sealed baseline attempt](../engineering/linux-ci.md#ninth-sealed-private-asset-baseline-attempt-anonymous-head-transport-error)
+ended with one setup error in 22.04 seconds. The gateway multipart mutation
+returned HTTP 200 / accepted inert candidate; the failed new-object
+`anonymous_head` effect recorded `HTTPX_READ_ERROR` / `HTTP_REQUEST`, with
+`TRANSPORT_ERROR`, null status and code `TRANSPORT_ERROR`. The close snapshot
+reported `RELAY_TRANSPORT`, state `CLOSED`, `failed=true`, tracked connection,
+socket and worker counts zero, first stage `PUMP_CUTOFF`, and first kind
+`UNKNOWN`. Counts do not prove quiescence; exact cutoff reason and chronology
+relative to the HTTP failure remain unknown, and close does not prove the cutoff
+caused the effect failure. Workflow-owned PostgreSQL cleanup succeeded, but
+fixture-local close refused. No public proof, provider/authenticated HTTP,
+sealed656 genuine RED or full14 acceptance was reached.
+
+A separate cutoff/request-boundary source refinement was committed locally as
+`3048067bd515bcd86a2a41f48c1de56874e26785` against ee9 after independent Astra
+spec approval and quality approval with zero findings. The meaningful RED
+selection failed five cases with 381 deselected in 0.47 seconds before
+implementation; the covering 442 passed in 2.35 seconds. Root’s fresh 442
+passed in 2.16 seconds; Ruff/format four files, configured mypy 40, final source
+hashes, AST boundary, six unchanged gates, exact four-file staging, no-drift/
+diff checks and private 18-value guard passed. The change preserves the existing
+stop/event plus zero-or-one-clock behavior, old numeric minimum bound and its
+fixed absolute/idle label across late checks (absolute wins ties), and attaches
+fixed nonblocking relay snapshots before request and at failure. Success,
+status/content access and call order remain unchanged; no product or harness
+caller is changed. Fatal poison/admission, budgets, 381 contracts, 24 controls,
+63 effects, profile/schema and cleanup/refusal semantics remain unchanged.
+The monotonic stop guard prevents an intentional stop from installing first-
+register `PUMP_CUTOFF` metadata; an idle or absolute deadline may instead
+install cutoff metadata during teardown. The actual ninth bound and chronology
+remain unknown. The diagnostics do not establish cause or provider acceptance.
+The local commit’s publication remains pending. The root ruling conditionally
+accepts exactly one automatic tenth cold workflow from the next authorized
+single branch push, after final four-document review/freeze, curated staging,
+private18/no-drift/whitespace checks, documentation commit and remote-SHA
+verification. No actual tenth has run. An intermediate 304-only push, manual
+retry or behavior repair is not authorized; the ninth observation alone does
+not authorize execution.
 
 The reviewed two-file result-gate receipt-safety correction passed 247 scoped
 cases and an independent review with zero Critical or Important findings. It
