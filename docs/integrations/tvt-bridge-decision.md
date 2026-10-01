@@ -2,6 +2,24 @@
 
 Checked 2026-09-27 for the SuperLive Plus 1.18.1 APK (SHA-256 `f57ff98226fcc7a0ec3587b077d5538facb57cc5b713a0938d1ee02b0f72f281`). This is a feasibility decision, not a bridge implementation. No vendor contact, login, device command, packet capture, payment, or runtime pilot occurred in this slice. **G-P1 is BLOCKED for every remote family.**
 
+## Active development decision — 2026-10-02
+
+The user confirmed that no separate vendor SDK/API documentation exists and directed implementation from the analyzed APK. Development uses the [APK-derived adapter contracts](apk-derived-adapter-contracts.md): account HTTP route C and device/media route B through the packaged Android `NetClientProtocal` JNI helper. This supersedes the historical acquisition order and `CONTRACT_CAPTURED` prerequisite for development. `SOURCE_DERIVED` is a prose evidence description, not a new machine-readable enum. The 199-operation/77-case baseline and existing runtime statuses remain unchanged; current G-P1 remote families remain BLOCKED and `MATCHED` remains 0.
+
+| Family | Current development route | Pending acceptance |
+| --- | --- | --- |
+| Account/login/profile/renewal/logout | C: native `/user/*` POST JSON, exact envelope types and conditional fields, independent password/UUID proofs, region/DC state and separate account/P2P tokens | Scoped success/error/timeout, expiry/logout and response/readback comparison; unfinished register/recovery and signing branches need targeted APK decode |
+| Device/media/playback/Talk | B: chosen packaged ABI, exact class/declarations/callbacks, positive handle/task gating, generation-scoped lifecycle and bounded 44/24-byte post-native parser | Android load/classloader/lifecycle/hosting and binary-use terms, actual transport/frames/audio/crypto, task close/restart/capacity, playback and Talk |
+| Sharing/control/event/cloud/VAS/Tyco/H5 | Develop from each reviewed APK call/serializer boundary; retain separate identities and explicit undecoded branches | Per-operation captured fixtures, permitted deployment, definitive writes/readback and browser outcomes; no family-wide inferred pass |
+
+Implement Python scoped ports and fake-worker/source parser slices now. Account HTTP can run in the Python service; Android JNI runs in a managed Android helper, never as a Linux Python extension. Generic RTSP cannot replace required TVT account/P2P/media behavior. Opaque NAT/N9000/control/wire branches are targeted decode work items, not guessed constants or a vendor-contact detour. Exact hosting, licensing, library load/lifecycle and runtime tests remain acceptance work.
+
+Independent W02 contract/adapter development proceeds while T05A full14 executes. Integration acceptance still requires the foundation: one nested `{error:{code,message,details?},request_id}` serializer; delegated T04 capability checks at issue/redeem/use with the protected real actor and legacy OWNER behavior; fixed domain job kinds and checked enqueue/read/cancel/claim/use; actor-key uniqueness and server-derived cross-actor business holds preserving durable `UNKNOWN_OUTCOME`; provenance integrity without byte grants and separately reviewed future TVT admission/ingress through every existing AssetStore route. Development does not close these foundation/security/runtime gates.
+
+## Historical decision record — 2026-09-27
+
+The sections below preserve the original dated feasibility findings, candidate table and optional vendor leads. Their “None” selections, acquisition ordering and prohibition on W04 consumption before capture describe the 2026-09-27 runtime-evidence boundary; the active development decision above supersedes those development prerequisites. The historical absence of runtime proof remains valid.
+
 ## What the available evidence establishes
 
 The [static protocol feasibility review](apk-audit/11-protocol-feasibility.md) identifies the APK's Java-to-JNI request router, separate device/media native path, cloud path, and Tyco REST path. Its `/sdk/*` names are in-process dispatch identifiers, not a documented web API. The [public-source review](apk-audit/00-tvtopensdk-web-check.md) found no confirmed externally redistributable copy of this exact `TVTOpenSDK`. Five packaged `TVTOpenSDK` NAT methods return zero; 31 native signatures lack conventional matching exports in the audited ABIs. The separate native device path may work, but static symbols do not prove its wire protocol or server deployment rights.

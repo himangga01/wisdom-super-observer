@@ -1,6 +1,14 @@
 # TVT runtime contract and capture protocol
 
-Date: 2026-09-27. Scope: W01's static **seed** for the SuperLive Plus 1.18.1 baseline, not a captured or usable protocol. The [77-case inventory](apk-audit/12-functional-parity-contracts.md) is the source of case IDs and static entry evidence; [§3.5 of the implementation plan](../superpowers/plans/2026-09-27-superlive-plus-web-parity-implementation-plan.md) defines the runtime handoff.
+Date: 2026-09-27. Scope: W01's static **seed** for the SuperLive Plus 1.18.1 baseline, not a captured-runtime protocol. The 2026-10-02 correction below supplies separate source-derived development authority. The [77-case inventory](apk-audit/12-functional-parity-contracts.md) is the source of case IDs and static entry evidence; [§3.5 of the implementation plan](../superpowers/plans/2026-09-27-superlive-plus-web-parity-implementation-plan.md) defines the runtime handoff.
+
+## APK-derived development authority — 2026-10-02
+
+No separate vendor SDK/API documentation exists for this task. The user directed implementation from the analyzed APK; [APK-derived adapter contracts](apk-derived-adapter-contracts.md) supply account HTTP route C and packaged Android helper route B with explicit source identities, serializers, JNI/callback/parser fields and remaining decode work. W01 iterates targeted decode and later captures acceptance evidence; vendor questions are historical optional leads. Development does not wait for vendor acquisition or `CONTRACT_CAPTURED`.
+
+`SOURCE_DERIVED` is a prose description of static development evidence only. It is not written into the existing machine-readable status enum. Keep the frozen 199 operation tuples, 77 cases, coverage/fixture fields and `runtime_proof=NO` unchanged until authentic runtime evidence satisfies promotion. An `UNMAPPED` or `BLOCKED` runtime row can have an implementation under development; record its decoded boundary and unresolved fields separately. Source-derived serializers, synthetic proof vectors, mocks, JNI exports and parser fixtures do not establish server acceptance, G-P1 PASS, MATCHED or release readiness.
+
+The development handoff names the exact APK/ABI/library hash, Java path or native offset, decoded request/response/callback field types, adapter B/C route and explicit undecoded branches. Missing remote fields require targeted APK analysis rather than fabricated constants. The existing complete runtime envelope below remains required before captured-runtime promotion and runtime/production enablement. Android hosting/load/classloader/lifecycle, binary-use terms, real token/transport/frame behavior and operation success/error/readback remain later acceptance gates. Independent W02 contracts/adapters may proceed during T05A full14; foundation/runtime/storage/security acceptance still requires its actual gates.
 
 ## Machine-readable files
 
@@ -12,7 +20,7 @@ Each operation records `case_id`, `matrix_id`, `source_apk_hash`, `entry_path`, 
 
 The [frozen operation baseline](tvt-frozen-operation-baseline.csv) independently pins the original 199 tuples of case ID, operation ID and candidate label from the 77-case static seed. Its canonical representation is the tuples sorted lexically, each encoded as UTF-8 case ID, tab, operation ID, tab, candidate label, newline. SHA-256 of those bytes is 971c1a5d0aa5d4b34b55b43c47d18ce6d45a01f8eea1c691154656ab77c8be93, pinned in the schema test. CI requires all 199 original tuples to remain in both the handoff and coverage CSV even if those two files are edited together. It also rejects a changed baseline manifest. Static route/JNI inventories directly link only 26 distinct seed operation IDs; the other 173 remain protected by this baseline while their upstream edges are unresolved.
 
-Runtime discoveries may append a new operation under an existing case with a fresh stable operation ID, or add a new case with a suffix under the relevant P case when a newly delivered H5 or conditional branch reveals atomic behavior. Record source APK hash, discovery evidence, matrix/reachability, owner and new candidate label; add the row to the handoff, coverage CSV and parity ledger in the same change. Start it at UNMAPPED or a specifically evidenced BLOCKED status. It increases the applicable denominator and cannot inherit a MATCHED result. Obtain independent product-owner review of the expanded matrix and run the schema/coverage tests before implementation consumes it.
+Runtime discoveries may append a new operation under an existing case with a fresh stable operation ID, or add a new case with a suffix under the relevant P case when a newly delivered H5 or conditional branch reveals atomic behavior. Record source APK hash, discovery evidence, matrix/reachability, owner and new candidate label; add the row to the handoff, coverage CSV and parity ledger in the same change. Start it at UNMAPPED or a specifically evidenced BLOCKED status. It increases the applicable denominator and cannot inherit a MATCHED result. Obtain independent product-owner review of the expanded matrix and run the schema/coverage tests before runtime acceptance consumes it; independent source-derived development keeps the added boundary explicit without assigning captured or matched status.
 
 Do not delete, rename or recycle a frozen ID because a static candidate later proves unused or changes meaning. Record the finding and its evidence in that row, then use an explicit reachability/status decision; retain its history. If a corrected APK baseline or formally approved scope correction truly requires changing a frozen tuple, create a new versioned baseline and ledger while preserving this one, cite the source and reviewer, invalidate affected parity results, update the pinned digest and tests in a reviewable change, and recalculate release coverage. Silent synchronized edits to YAML and CSV are rejected.
 
@@ -30,12 +38,12 @@ The operation handoff includes fixture_path and owner in addition to the fields 
 
 ## Status and gate rules
 
-- `UNMAPPED`: candidate behavior has no observed upstream contract or selected adapter. This is the default for remote rows.
+- `UNMAPPED`: candidate behavior has no captured-runtime upstream contract/acceptance decision; source-derived development selection does not promote it. This is the default for remote rows.
 - `BLOCKED`: a concrete reason prevents capture or operation; record the exact account, device, browser, vendor, rights or transport reason and date before using it.
 - `CONTRACT_CAPTURED`: the exact call and result have a sanitized, replayable success/error/timeout fixture on a specified account/device/region matrix; rights and deployment runtime are identified; an independent reviewer signs it.
 - `NOT_APPLICABLE`: no upstream call is required for this local boundary, with cited evidence. It does not establish browser equivalence.
 
-Neither an APK route name nor a candidate label may be promoted. No remote row has `CONTRACT_CAPTURED`; no family passes G-P1. A full family decision additionally requires every mandatory reachable operation to replay in the chosen runtime under its permitted rights, including LAN/P2P/relay or Talk where the reference app uses them. `DECLARED` candidates require a runtime entry-path check before being counted reachable or excluded.
+Neither an APK route name nor a candidate label may be promoted. No remote row has `CONTRACT_CAPTURED`; no family passes G-P1. This remains an acceptance boundary, not a development barrier. A full family decision additionally requires every mandatory reachable operation to replay in the chosen runtime under its permitted rights, including LAN/P2P/relay or Talk where the reference app uses them. `DECLARED` candidates require a runtime entry-path check before being counted reachable or excluded.
 
 ## Required capture envelope
 

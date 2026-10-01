@@ -1212,8 +1212,10 @@ def test_concurrent_matching_admissions_consume_exactly_once():
     ids=["multipart-before-complete", "list-before-delete"],
 )
 def test_real_loopback_relay_preserves_unmatched_bytes_and_consumes_reset_once(flow):
+    import errno
     import os
     import socket
+    import sys
     import threading
     import time
     from urllib.parse import urlsplit
@@ -1307,15 +1309,29 @@ def test_real_loopback_relay_preserves_unmatched_bytes_and_consumes_reset_once(f
             chunks = []
             try:
                 client.shutdown(socket.SHUT_WR)
-            except ConnectionResetError as error:
+            except OSError as error:
                 if not (
                     reset
-                    and os.name == "nt"
-                    and getattr(error, "winerror", None) == 10054
+                    and (
+                        (
+                            os.name == "nt"
+                            and isinstance(error, ConnectionResetError)
+                            and getattr(error, "winerror", None) == 10054
+                        )
+                        or (
+                            sys.platform.startswith("linux")
+                            and error.errno == errno.ENOTCONN
+                        )
+                    )
                 ):
                     raise
                 shutdown_resets.append(
-                    {"boundary": "shutdown(SHUT_WR)", "winerror": error.winerror}
+                    {
+                        "boundary": "shutdown(SHUT_WR)",
+                        "platform": sys.platform,
+                        "errno": error.errno,
+                        "winerror": getattr(error, "winerror", None),
+                    }
                 )
                 client.close()
             else:
