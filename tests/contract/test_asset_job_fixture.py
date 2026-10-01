@@ -554,3 +554,174 @@ def test_environment_bad_role_port_cannot_leak_url_or_ambient_secret(tmp_path, n
     assert str(failure.value) == "invalid fixture contract"
     assert "synthetic-url-poison" not in repr(failure.value)
     assert "unrelated-synthetic-canary" not in repr(failure.value)
+
+
+@pytest.fixture
+def identity_worker(tmp_path, monkeypatch):
+    """Register the actual child handlers without starting Celery or opening clients."""
+    from celery.signals import worker_process_init, worker_process_shutdown
+    from kombu.transport.redis import Channel
+
+    from tests.contract.test_asset_faults import identity_barrier
+    from tests.support import asset_faults as faults
+    from tests.support import asset_job_handlers as handlers
+
+    control = identity_barrier(tmp_path, monkeypatch)
+    lookup_state = {}
+    monkeypatch.setattr(
+        faults, "process_identity", lambda pid, owner: lookup_state["read"](pid, owner)
+    )
+    monkeypatch.setattr(Channel, "QoS", Channel.QoS)
+    monkeypatch.setattr(handlers, "_CONTROL", handlers._CONTROL)
+    monkeypatch.setattr(handlers, "_READER", handlers._READER)
+    before_init = {receiver for _, receiver in worker_process_init.receivers}
+    before_shutdown = {receiver for _, receiver in worker_process_shutdown.receivers}
+    app = handlers.create_worker_app(
+        {
+            "WSO_ASSET_FIXTURE_BROKER_URL": "redis://127.0.0.1:6379/0",
+            "WSO_TEST_JOB_DATABASE_URL": (
+                "postgresql+psycopg://wso_job_worker:synthetic@127.0.0.1:5432/fixture_db"
+            ),
+            "WSO_ASSET_FIXTURE_WORKER_ID": "synthetic-worker",
+        },
+        control,
+    )
+    (child_init,) = [
+        receiver
+        for _, receiver in worker_process_init.receivers
+        if receiver not in before_init
+    ]
+    (child_shutdown,) = [
+        receiver
+        for _, receiver in worker_process_shutdown.receivers
+        if receiver not in before_shutdown
+    ]
+    try:
+        yield control, child_init, child_shutdown, lookup_state
+    finally:
+        worker_process_init.disconnect(child_init)
+        worker_process_shutdown.disconnect(child_shutdown)
+        app.close()
+
+
+def test_child_init_native_publication_roundtrips_through_owned_parent_reader(
+    tmp_path, monkeypatch, identity_worker
+):
+    import os
+    import threading
+    import time
+    from concurrent.futures import ThreadPoolExecutor
+    from types import SimpleNamespace
+
+    from tests.support import asset_broker as broker
+    from tests.support import asset_faults as faults
+    from tests.support.asset_process import ProcessMode
+
+    control, child_init, child_shutdown, lookup_state = identity_worker
+    command = ("synthetic-python", "synthetic-worker")
+    child = faults.ProcessIdentity(control.owner, os.getpid(), 7, 11, 11, 37, command)
+    parent_identity = faults.ProcessIdentity(control.owner, 11, 7, 1, 11, 31, command)
+
+    def lookup(pid, owner):
+        assert owner == control.owner
+        return child if pid == child.pid else parent_identity
+
+    lookup_state["read"] = lookup
+    monkeypatch.setattr(broker, "process_identity", lookup)
+    descriptor = os.open(tmp_path / "synthetic-pidfd", os.O_CREAT | os.O_RDWR, 0o600)
+
+    def pin(pid, flags):
+        assert (pid, flags) == (child.pid, 0)
+        return descriptor
+
+    monkeypatch.setattr(os, "pidfd_open", pin, raising=False)
+    parent = SimpleNamespace(
+        mode=ProcessMode.JOB_WORKER,
+        spec=SimpleNamespace(control_path=tmp_path),
+        identity=parent_identity,
+        process=SimpleNamespace(pid=11),
+        command=command,
+    )
+    jobs = object.__new__(broker.AssetJobs)
+    jobs.h = SimpleNamespace(owner=control.owner)
+    jobs.processes, jobs.children = [parent], {}
+    jobs.child_stop, jobs.child_lock = threading.Event(), threading.Lock()
+    jobs.child_failure, jobs.seen_children = None, set()
+    child_path = tmp_path / f"child-{child.pid}.json"
+    release_path = tmp_path / f"child-{child.pid}.release"
+    shutdown_needed = False
+    try:
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            caller = executor.submit(child_init)
+            try:
+                cutoff = time.monotonic() + 1.0
+                while not child_path.exists():
+                    if caller.done():
+                        caller.result()
+                    assert time.monotonic() < cutoff
+                    time.sleep(0.005)
+                shutdown_needed = True
+                value = json.loads(child_path.read_bytes())
+                assert value == {
+                    "owner": control.owner,
+                    "pid": child.pid,
+                    "uid": 7,
+                    "ppid": 11,
+                    "pgid": 11,
+                    "start_ticks": 37,
+                    "command": ["synthetic-python", "synthetic-worker"],
+                }
+                stopper = threading.Timer(0.05, jobs.child_stop.set)
+                stopper.start()
+                try:
+                    jobs.observe_children()
+                finally:
+                    stopper.cancel()
+                    stopper.join()
+                assert jobs.child_failure is None
+                assert jobs.children == {child.pid: (child, descriptor, parent)}
+                assert jobs.seen_children == {child_path}
+                observed = jobs.children[child.pid][0]
+                assert type(observed.command) is tuple
+                faults.validate_process_identity(child, observed)
+                assert not caller.done()
+            finally:
+                faults.snapshot_json(
+                    release_path,
+                    {"owner": control.owner, "pid": child.pid, "start_ticks": 37},
+                )
+            caller.result(timeout=1)
+    finally:
+        if shutdown_needed:
+            child_shutdown()
+        os.close(descriptor)
+    assert json.loads((tmp_path / "helpers.json").read_bytes()) == {
+        "owner": control.owner,
+        "pids": [],
+        "complete": True,
+    }
+    assert json.loads((tmp_path / f"child-{child.pid}-settled.json").read_bytes()) == {
+        "owner": control.owner,
+        "settled": True,
+    }
+    assert (
+        json.loads((tmp_path / "last-event.json").read_bytes())["event"]
+        == "WORKER_READY"
+    )
+
+
+@pytest.mark.parametrize("identity", [None, {"command": ["synthetic-python"]}])
+def test_child_init_malformed_identity_never_publishes_or_starts_helpers(
+    tmp_path, monkeypatch, identity_worker, identity
+):
+    import os
+
+    from tests.support import asset_faults as faults
+
+    _control, child_init, _child_shutdown, lookup_state = identity_worker
+    lookup_state["read"] = lambda pid, owner: identity
+    with pytest.raises(faults.FixtureContractError, match="^invalid fixture contract$"):
+        child_init()
+    assert not (tmp_path / f"child-{os.getpid()}.json").exists()
+    assert not (tmp_path / "helpers.json").exists()
+    assert not (tmp_path / "last-event.json").exists()

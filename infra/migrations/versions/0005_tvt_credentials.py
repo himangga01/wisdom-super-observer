@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from alembic import op
-from sqlalchemy import text
 
 revision = "0005_tvt_credentials"
 down_revision = "0004_tvt_domain"
@@ -29,15 +28,42 @@ def _function(signature: str, sql: str, owner: str, grantee: str) -> None:
         op.execute(f"GRANT EXECUTE ON FUNCTION {signature} TO {grantee}")
 
 
-def _definition(signature: str) -> str:
-    return str(
-        op.get_bind()
-        .execute(
-            text("SELECT pg_get_functiondef(CAST(:s AS regprocedure))"),
-            {"s": signature},
-        )
-        .scalar_one()
-    )
+def _definition_sql(source: str, target: str, replacements=()) -> str:
+    """Read and transform the installed definition when the DDL executes.
+
+    pg_get_functiondef includes the complete body and function settings, but
+    not ACL/ownership. CREATE OR REPLACE preserves those on public functions;
+    only newly created private backup functions receive a new restricted ACL.
+    The same block executes online and is emitted verbatim in offline scripts.
+    """
+
+    def literal(value: str) -> str:
+        return "'" + value.replace("'", "''") + "'"
+
+    edits = []
+    if source != target:
+        edits.append((source.split("(")[0] + "(", target.split("(")[0] + "("))
+    edits.extend(replacements)
+    statements = []
+    for old, new in edits:
+        statements.append(f"""
+          position := strpos(definition, {literal(old)});
+          IF position = 0 THEN
+            RAISE EXCEPTION 'credential foundation entry point not found';
+          END IF;
+          definition := overlay(definition placing {literal(new)}
+            from position for length({literal(old)}));
+        """)
+    return f"""
+      DO $credential_definition$
+      DECLARE definition text; position integer;
+      BEGIN
+        definition := pg_catalog.pg_get_functiondef({literal(source)}::regprocedure);
+        {"".join(statements)}
+        EXECUTE definition;
+      END;
+      $credential_definition$;
+    """
 
 
 def upgrade() -> None:
@@ -48,19 +74,12 @@ def upgrade() -> None:
     )
     # Save the exact installed T04/T05 bodies as private functions unavailable to runtime roles.
     # Downgrade restores these, including previously installed job fences.
-    originals = {}
     for signature in FOUNDATION:
         name = signature.split("(")[0]
-        body = _definition("public." + signature)
-        originals[signature] = body
         backup = signature.replace(name, "credential_original_" + name, 1)
         _function(
             "wso_private." + backup,
-            body.replace(
-                "public." + name + "(",
-                "wso_private.credential_original_" + name + "(",
-                1,
-            ),
+            _definition_sql("public." + signature, "wso_private." + backup),
             "wso_migrator",
             "",
         )
@@ -167,12 +186,8 @@ def upgrade() -> None:
         "public.wso_issue_domain_connection_handle(jsonb,text,timestamptz)",
     ):
         op.execute(f"ALTER FUNCTION {bounded} SET lock_timeout TO '3s'")
-    for signature, body in originals.items():
-        # R44: row locks cannot refresh an older MVCC snapshot when mapping
-        # leaves the connection tuple unchanged. Deny before any admission.
-        prefix, begin, statements = body.partition("BEGIN")
-        if not begin:
-            raise RuntimeError("credential foundation entry point not found")
+    for signature in FOUNDATION:
+        # R44: deny unsupported snapshots before any admission or authority read.
         isolation_reject = (
             "RETURN NULL"
             if signature.startswith("wso_issue_")
@@ -180,29 +195,34 @@ def upgrade() -> None:
             if signature.startswith("wso_redeem_")
             else "RETURN"
         )
-        body = (
-            prefix
-            + begin
-            + "\n IF current_setting('transaction_isolation') IS DISTINCT FROM 'read committed' THEN "
-            + isolation_reject
-            + "; END IF;\n"
-            + statements
-        )
-        body = body.replace(
-            "INSERT INTO wso_private.connection_handles VALUES",
-            f"INSERT INTO wso_private.connection_handles({COLS}) VALUES",
-        )
-        if signature.startswith("wso_issue_connection_handle"):
-            body = body.replace(
-                "SELECT version_id INTO version",
-                "IF wso_private.wso_connection_is_domain(p_id) THEN RETURN NULL; END IF;\n SELECT version_id INTO version",
-                1,
+        replacements = [
+            (
+                "BEGIN",
+                "BEGIN\n IF current_setting('transaction_isolation') IS DISTINCT FROM 'read committed' THEN "
+                + isolation_reject
+                + "; END IF;\n",
             )
-        elif signature.startswith("wso_issue_job_connection_handle"):
-            body = body.replace(
-                "SELECT version_id INTO version",
-                "IF wso_private.wso_connection_is_domain(p_connection) THEN RETURN NULL; END IF;\n SELECT version_id INTO version",
-                1,
+        ]
+        if signature.startswith("wso_issue_"):
+            # 0003 already names the seven legacy columns in the owner issuer.
+            # Only the job issuer still relies on positional insertion.
+            if signature.startswith("wso_issue_job_"):
+                replacements.append(
+                    (
+                        "INSERT INTO wso_private.connection_handles VALUES",
+                        f"INSERT INTO wso_private.connection_handles({COLS}) VALUES",
+                    )
+                )
+            connection = (
+                "p_id"
+                if signature.startswith("wso_issue_connection_handle")
+                else "p_connection"
+            )
+            replacements.append(
+                (
+                    "SELECT version_id INTO version",
+                    f"IF wso_private.wso_connection_is_domain({connection}) THEN RETURN NULL; END IF;\n SELECT version_id INTO version",
+                )
             )
         else:
             reject = "RETURN false" if "redeem" in signature else "RETURN"
@@ -221,38 +241,38 @@ def upgrade() -> None:
             ELSIF h.admission_kind='LEGACY' AND h.domain_cap_id IS NULL THEN
               IF wso_private.wso_connection_is_domain(h.connection_id) THEN {reject}; END IF;
             """
-            body = body.replace(start, guard + start, 1)
-            body = body.replace(
-                end,
-                f"ELSE {reject}; END IF;\n IF h.expires_at<=clock_timestamp() THEN {reject}; END IF;\n "
-                + end,
-                1,
+            replacements.append((start, guard + start))
+            replacements.append(
+                (
+                    end,
+                    f"ELSE {reject}; END IF;\n IF h.expires_at<=clock_timestamp() THEN {reject}; END IF;\n "
+                    + end,
+                )
             )
-            # Mapping may be committed while legacy authorization waits for its
-            # connection lock: re-read it after all those locks are held.
-            body = body.replace(
-                end,
-                f"IF h.admission_kind='LEGACY' AND wso_private.wso_connection_is_domain(h.connection_id) THEN {reject}; END IF;\n "
-                + end,
-                1,
+            # Re-read mapping after legacy authorization has acquired its locks.
+            replacements.append(
+                (
+                    end,
+                    f"IF h.admission_kind='LEGACY' AND wso_private.wso_connection_is_domain(h.connection_id) THEN {reject}; END IF;\n "
+                    + end,
+                )
             )
-            body = body.replace(
-                "INSERT INTO wso_private.connection_leases VALUES",
-                f"INSERT INTO wso_private.connection_leases({COLS},admission_kind,domain_cap_id) VALUES",
-            )
-            body = body.replace(
-                "h.expires_at,h.job_id,h.job_lease_generation);",
-                "h.expires_at,h.job_id,h.job_lease_generation,h.admission_kind,h.domain_cap_id);",
-            )
-        _function(
-            "public." + signature,
-            body,
-            "wso_migrator",
-            "wso_app"
-            if signature.startswith("wso_issue_connection")
-            else "wso_job_worker"
-            if signature.startswith("wso_issue_job")
-            else "wso_connection_worker",
+            if "redeem" in signature:
+                replacements.extend(
+                    [
+                        (
+                            "INSERT INTO wso_private.connection_leases VALUES",
+                            f"INSERT INTO wso_private.connection_leases({COLS},admission_kind,domain_cap_id) VALUES",
+                        ),
+                        (
+                            "h.expires_at,h.job_id,h.job_lease_generation);",
+                            "h.expires_at,h.job_id,h.job_lease_generation,h.admission_kind,h.domain_cap_id);",
+                        ),
+                    ]
+                )
+        # Replacing the existing public function retains its exact ACL and owner.
+        op.execute(
+            _definition_sql("public." + signature, "public." + signature, replacements)
         )
 
 
@@ -262,20 +282,7 @@ def downgrade() -> None:
     for signature in FOUNDATION:
         name = signature.split("(")[0]
         backup = signature.replace(name, "credential_original_" + name, 1)
-        body = _definition("wso_private." + backup)
-        body = body.replace(
-            "wso_private.credential_original_" + name + "(", "public." + name + "(", 1
-        )
-        _function(
-            "public." + signature,
-            body,
-            "wso_migrator",
-            "wso_app"
-            if signature.startswith("wso_issue_connection")
-            else "wso_job_worker"
-            if signature.startswith("wso_issue_job")
-            else "wso_connection_worker",
-        )
+        op.execute(_definition_sql("wso_private." + backup, "public." + signature))
         op.execute("DROP FUNCTION wso_private." + backup)
     op.execute(
         "DROP FUNCTION public.wso_issue_domain_connection_handle(jsonb,text,timestamptz)"

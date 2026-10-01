@@ -211,7 +211,11 @@ def create_worker_app(env, control):
     from wso_core.assets import AssetEvent
     from wso_core.job_runtime import create_app
 
-    from tests.support.asset_faults import HelperObserver, process_identity
+    from tests.support.asset_faults import (
+        HelperObserver,
+        process_identity,
+        process_identity_snapshot,
+    )
     from tests.support.asset_faults import snapshot_json as private_json
 
     global _CONTROL
@@ -240,7 +244,7 @@ def create_worker_app(env, control):
         identity = process_identity(os.getpid(), control.owner)
         private_json(
             control.directory / f"child-{os.getpid()}.json",
-            {name: getattr(identity, name) for name in identity.__dataclass_fields__},
+            process_identity_snapshot(identity),
         )
         observer["helper"] = HelperObserver(control).start()
         control.callback(AssetEvent("WORKER_READY", UUID(hex=control.owner)))

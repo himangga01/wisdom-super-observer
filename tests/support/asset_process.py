@@ -368,10 +368,78 @@ def _private_value(value):
     return value
 
 
+def adapter_failure(action, progress, code):
+    stages = {
+        "BOOTSTRAP",
+        "PRESIGN",
+        "SOURCE_READ",
+        "DIRECT_PUT",
+        "DIRECT_READ",
+        "MULTIPART_CREATE",
+        "MULTIPART_PARTS",
+        "MULTIPART_COMPLETE",
+        "MULTIPART_READ",
+        "ABORT_AND_LIST",
+        "LOCAL_SETTLEMENT",
+    }
+    stage, body = progress.get("stage"), progress.get("body")
+    return {
+        "schema": 1,
+        "action": action
+        if type(action) is str and action in {"adapter", "presign"}
+        else "UNKNOWN",
+        "stage": stage if type(stage) is str and stage in stages else "UNKNOWN",
+        "body": body
+        if type(body) is str and body in {"BOUNDED_DIRECT", "FULL_CIPHERTEXT"}
+        else "UNKNOWN",
+        "error_code": code
+        if type(code) is str
+        and code in {"UNAVAILABLE", "DEADLINE", "INTEGRITY", "LIMIT", "NOT_FOUND"}
+        else "UNKNOWN",
+    }
+
+
+def read_adapter_failure(directory):
+    try:
+        with (directory / "adapter-diagnostic.json").open("rb") as stream:
+            raw = stream.read(8193)
+        require(len(raw) <= 8192)
+        value = json.loads(raw)
+        require(type(value) is dict)
+    except (OSError, ValueError):
+        value = {}
+    return adapter_failure(value.get("action"), value, value.get("error_code"))
+
+
 def adapter_probe(env, control, action):
+    progress = {"stage": "BOOTSTRAP", "body": "UNKNOWN"}
+    try:
+        return _adapter_probe(env, control, action, progress)
+    except BaseException as error:
+        from wso_core.storage import StorageFailure
+
+        code = error.code if isinstance(error, StorageFailure) else "UNKNOWN"
+        from tests.support.asset_faults import snapshot_json
+
+        diagnostic = adapter_failure(action, progress, code)
+        try:
+            snapshot_json(
+                control.directory / "adapter-diagnostic.json",
+                diagnostic,
+                owner=control.owner,
+            )
+            print(
+                "WSO_ASSET_ADAPTER_DIAGNOSTIC=" + json.dumps(diagnostic, sort_keys=True)
+            )
+        except (OSError, ValueError):
+            pass
+        raise
+
+
+def _adapter_probe(env, control, action, progress):
     """Normal APP bootstrap and SpawnS3Client, inside restricted child custody."""
     from wso_api.assets.bootstrap import load_asset_settings, start_asset_runtime
-    from wso_core.storage import IOBudget, ObjectLocator
+    from wso_core.storage import PART_BYTES, IOBudget, ObjectLocator
 
     from tests.support.asset_faults import snapshot_json as private_json
 
@@ -406,6 +474,7 @@ def adapter_probe(env, control, action):
 
     try:
         if action == "presign":
+            progress["stage"] = "PRESIGN"
             result = {
                 "owner": control.owner,
                 "url": runtime.objects.presign(
@@ -415,6 +484,7 @@ def adapter_probe(env, control, action):
         else:
             import hashlib
 
+            progress["stage"] = "SOURCE_READ"
             ciphertext = read_all(locator)
             require(
                 runtime.objects.head(locator, budget=budget()).byte_size
@@ -426,25 +496,42 @@ def adapter_probe(env, control, action):
                 UUID(data["probe_asset"]),
                 UUID(data["probe_attempt"]),
             )
-            runtime.objects.put(probe, ciphertext, budget=budget())
-            require(
-                runtime.objects.head(probe, budget=budget()).byte_size
-                == len(ciphertext)
+            direct_probe = ObjectLocator(
+                locator.installation_id,
+                locator.tenant_id,
+                UUID(data["direct_probe_asset"]),
+                UUID(data["direct_probe_attempt"]),
             )
+            direct_body = ciphertext[: PART_BYTES + 36]
+            progress.update(stage="DIRECT_PUT", body="BOUNDED_DIRECT")
+            runtime.objects.put(direct_probe, direct_body, budget=budget())
+            progress["stage"] = "DIRECT_READ"
+            require(
+                runtime.objects.head(direct_probe, budget=budget()).byte_size
+                == len(direct_body)
+                and read_all(direct_probe) == direct_body
+            )
+            progress.update(stage="MULTIPART_CREATE", body="FULL_CIPHERTEXT")
             upload = runtime.objects.create_multipart(probe, budget=budget())
             completed = False
             try:
+                progress["stage"] = "MULTIPART_PARTS"
                 parts = tuple(
                     runtime.objects.upload_part(
                         probe, upload, index + 1, chunk, budget=budget()
                     )
                     for index, chunk in enumerate(
-                        (ciphertext[:5242880], ciphertext[5242880:])
+                        ciphertext[start : start + PART_BYTES]
+                        for start in range(0, len(ciphertext), PART_BYTES)
                     )
                 )
                 require(
-                    all(parts[index].part_number == index + 1 for index in range(2))
+                    all(
+                        parts[index].part_number == index + 1
+                        for index in range(len(parts))
+                    )
                 )
+                progress["stage"] = "MULTIPART_COMPLETE"
                 runtime.objects.complete_multipart(
                     probe, upload, parts, budget=budget()
                 )
@@ -452,10 +539,12 @@ def adapter_probe(env, control, action):
             finally:
                 if not completed:
                     runtime.objects.abort_multipart(probe, upload, budget=budget())
+            progress["stage"] = "MULTIPART_READ"
             require(
                 hashlib.sha256(read_all(probe)).digest()
                 == hashlib.sha256(ciphertext).digest()
             )
+            progress["stage"] = "ABORT_AND_LIST"
             abandoned = runtime.objects.create_multipart(probe, budget=budget())
             require(
                 any(
@@ -473,6 +562,7 @@ def adapter_probe(env, control, action):
                 ).items
             )
             result = {"owner": control.owner, "accepted": True}
+        progress["stage"] = "LOCAL_SETTLEMENT"
         require(
             runtime.objects.local_cleanup_complete()
             and time.monotonic() < data["cutoff"]
@@ -495,6 +585,31 @@ def adapter_probe(env, control, action):
                 first = first or error
         if first is not None and primary is None:
             raise RuntimeError("owned adapter settlement refused") from None
+
+
+def delete_adapter_probes(objects, value):
+    """Maintenance identity deletes both owned probes under their original cutoff."""
+    from wso_core.storage import IOBudget, ObjectLocator
+
+    def budget():
+        now = time.monotonic()
+        require(now < value["cutoff"])
+        return IOBudget(min(now + 5, value["cutoff"]))
+
+    for prefix in ("probe", "direct_probe"):
+        locator = ObjectLocator(
+            UUID(value["installation_id"]),
+            UUID(value["tenant_id"]),
+            UUID(value[prefix + "_asset"]),
+            UUID(value[prefix + "_attempt"]),
+        )
+        objects.delete(locator, budget=budget())
+        require(
+            not objects.list_objects(locator=locator, budget=budget()).items
+            and not objects.list_multipart(locator=locator, budget=budget()).items
+        )
+    require(time.monotonic() < value["cutoff"])
+    return {"deleted": True, "identity": "wso_asset_maintenance"}
 
 
 def main():
@@ -563,36 +678,12 @@ def main():
                 else:
                     raise RuntimeError("former cleanup token accepted")
             elif sys.argv[2] == "adapter-delete":
-                from wso_core.storage import IOBudget, ObjectLocator
-
                 value = json.loads((control.directory / "adapter.json").read_bytes())
                 require(
                     value["owner"] == control.owner
                     and "WSO_ASSET_KEY_FILES_JSON" not in os.environ
                 )
-                locator = ObjectLocator(
-                    UUID(value["installation_id"]),
-                    UUID(value["tenant_id"]),
-                    UUID(value["probe_asset"]),
-                    UUID(value["probe_attempt"]),
-                )
-
-                def budget():
-                    now = time.monotonic()
-                    require(now < value["cutoff"])
-                    return IOBudget(min(now + 5, value["cutoff"]))
-
-                service.objects.delete(locator, budget=budget())
-                require(
-                    not service.objects.list_objects(
-                        locator=locator, budget=budget()
-                    ).items
-                    and not service.objects.list_multipart(
-                        locator=locator, budget=budget()
-                    ).items
-                )
-                require(time.monotonic() < value["cutoff"])
-                result = {"deleted": True, "identity": "wso_asset_maintenance"}
+                result = delete_adapter_probes(service.objects, value)
             elif sys.argv[2] == "no-read":
                 from wso_core.storage import IOBudget, ObjectLocator, StorageFailure
 

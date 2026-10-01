@@ -17,6 +17,7 @@ import tempfile
 import threading
 import time
 import zipfile
+from contextlib import contextmanager
 from pathlib import Path
 from urllib.parse import urljoin, urlsplit
 
@@ -195,14 +196,29 @@ class RelayCommands:
         self.lock = threading.Lock()
         self.records = {}
 
-    def run(self, command, environment, deadline):
-        record = {"process": None}
-        identity = id(record)
-        with self.lock:
-            if self.stop.is_set() or time.monotonic() >= deadline:
-                raise RuntimeError("relay validation cancelled")
-            self.records[identity] = record
+    @contextmanager
+    def registry(self, deadline):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0 or not self.lock.acquire(timeout=remaining):
+            raise RuntimeError("owned relay command registry cutoff")
         try:
+            if time.monotonic() >= deadline:
+                raise RuntimeError("owned relay command registry cutoff")
+            yield
+            if time.monotonic() >= deadline:
+                raise RuntimeError("owned relay command registry cutoff")
+        finally:
+            self.lock.release()
+
+    def run(self, command, environment, deadline):
+        record = {"process": None, "creation_finished": False}
+        identity = id(record)
+        process = None
+        try:
+            with self.registry(deadline):
+                if self.stop.is_set() or time.monotonic() >= deadline:
+                    raise RuntimeError("relay validation cancelled")
+                self.records[identity] = record
             # Record pending creation first; no lifecycle lock spans OS creation.
             process = subprocess.Popen(
                 command,
@@ -241,11 +257,12 @@ class RelayCommands:
         except (OSError, ValueError, subprocess.SubprocessError, RuntimeError):
             raise RuntimeError("owned relay inspect failed") from None
         finally:
-            process = record["process"]
-            if process is None:
-                with self.lock:
-                    self.records.pop(identity, None)
-            else:
+            # Admission's post-check may fail after insertion but before Popen.
+            # Only this producer can publish that no future creation is possible.
+            # A missed operation cutoff leaves this fact for bounded later cleanup.
+            record["process"] = process
+            record["creation_finished"] = True
+            if process is not None:
                 if process.poll() is None:
                     try:
                         process.kill()
@@ -255,17 +272,26 @@ class RelayCommands:
                     for stream in (process.stdout, process.stderr):
                         if stream:
                             stream.close()
-                    with self.lock:
+                    with self.registry(deadline):
                         self.records.pop(identity, None)
 
     def cancel(self, deadline):
         # Pending creations remain registered until their owning worker settles.
         while True:
-            with self.lock:
+            with self.registry(deadline):
                 records = list(self.records.items())
             for identity, record in records:
                 process = record["process"]
                 if process is None:
+                    if record.get("creation_finished") is True:
+                        with self.registry(deadline):
+                            # Recheck after locking: never discard a concurrently
+                            # published exact handle or a genuinely live creator.
+                            if (
+                                record["process"] is None
+                                and record.get("creation_finished") is True
+                            ):
+                                self.records.pop(identity, None)
                     continue
                 if process.poll() is None:
                     try:
@@ -276,14 +302,14 @@ class RelayCommands:
                     for stream in (process.stdout, process.stderr):
                         if stream:
                             stream.close()
-                    with self.lock:
+                    with self.registry(deadline):
                         self.records.pop(identity, None)
-            with self.lock:
+            with self.registry(deadline):
                 if not self.records:
                     return
             if time.monotonic() >= deadline:
                 raise RuntimeError("owned relay child cleanup unsettled")
-            time.sleep(0.01)
+            time.sleep(min(0.01, max(0, deadline - time.monotonic())))
 
 
 class LoopbackRelay:
@@ -657,29 +683,56 @@ class LoopbackRelay:
         if self.socket_identity(self.listener) != self.listener_identity:
             raise RuntimeError("owned relay transport failed")
 
-    def close(self):
-        deadline = time.monotonic() + self.CLEANUP_SECONDS
-        with self.lock:
+    def close(self, *, deadline=None):
+        deadline = min(
+            time.monotonic() + self.CLEANUP_SECONDS,
+            deadline if deadline is not None else float("inf"),
+        )
+        self.stop.set()
+        if not self.lock.acquire(timeout=max(0, deadline - time.monotonic())):
+            raise RuntimeError("owned relay cleanup lock unsettled")
+        try:
             self.state = "STOPPING"
-            self.stop.set()
             streams = tuple(self.sockets)
             threads = tuple(self.threads)
+        finally:
+            self.lock.release()
+        socket_failure = False
         for stream in streams:
             try:
                 stream.shutdown(socket.SHUT_RDWR)
             except OSError:
                 pass
-            stream.close()
-        self.commands.cancel(deadline)
+            try:
+                stream.close()
+            except OSError:
+                socket_failure = True
+        command_failure = None
+        try:
+            self.commands.cancel(deadline)
+        except Exception as error:  # noqa: BLE001 -- still join owned relay threads.
+            command_failure = error
         for thread in threads:
             if thread.ident is not None:
                 thread.join(max(0, deadline - time.monotonic()))
-        if self.live_threads or self.commands.records:
+        if (
+            socket_failure
+            or command_failure is not None
+            or any(thread.is_alive() for thread in threads)
+            or self.commands.records
+            or time.monotonic() >= deadline
+        ):
             raise RuntimeError("owned relay cleanup unsettled")
-        with self.lock:
+        if not self.lock.acquire(timeout=max(0, deadline - time.monotonic())):
+            raise RuntimeError("owned relay cleanup lock unsettled")
+        try:
+            if time.monotonic() >= deadline:
+                raise RuntimeError("owned relay cleanup cutoff")
             self.sockets.clear()
             self.threads.clear()
             self.state = "CLOSED"
+        finally:
+            self.lock.release()
 
 
 def verify_private_path(path, mode):

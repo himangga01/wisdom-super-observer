@@ -607,20 +607,31 @@ class AssetHarness:
         return self.request("POST", "/api/v1/assets", actor=actor, json=body)
 
     def put(self, session, data, *, actor=None, content_type="image/png", **kwargs):
-        return self.request(
+        return self._upload_exchange(
             "PUT",
-            session["upload_path"],
+            lambda: self.request(
+                "PUT",
+                session["upload_path"],
+                actor=actor,
+                headers={
+                    "X-Upload-Session": session["id"],
+                    "Content-Type": content_type,
+                },
+                content=data,
+                **kwargs,
+            ),
             actor=actor,
-            headers={"X-Upload-Session": session["id"], "Content-Type": content_type},
-            content=data,
-            **kwargs,
         )
 
     def complete(self, asset_id, *, actor=None):
         actor = actor or self.actors[0]
-        return self.request(
-            "POST",
-            f"/api/v1/assets/{asset_id}/complete?tenant_id={actor.tenant_id}",
+        return self._upload_exchange(
+            "COMPLETE",
+            lambda: self.request(
+                "POST",
+                f"/api/v1/assets/{asset_id}/complete?tenant_id={actor.tenant_id}",
+                actor=actor,
+            ),
             actor=actor,
         )
 
@@ -924,7 +935,13 @@ class AssetHarness:
         )[0]
 
     def require_begin(self, data, **kwargs):
-        response = self.begin(data, **kwargs)
+        self._upload_trial = min(33, getattr(self, "_upload_trial", 0) + 1)
+        response = self._upload_exchange(
+            "BEGIN",
+            lambda: self.begin(data, **kwargs),
+            actor=kwargs.get("actor"),
+            expected=201,
+        )
         require(response.status_code == 201)
         session = response.json()
         self.upload_sizes[session["id"]] = len(data)
@@ -941,8 +958,102 @@ class AssetHarness:
         require(response.status_code == 201)
         return response.json()
 
-    @staticmethod
-    def assert_error(response, status, code=None):
+    def _upload_exchange(self, stage, operation, *, actor=None, expected=None):
+        self._upload_stage, self._upload_started = stage, time.monotonic()
+        actors = getattr(self, "actors", ())
+        self._upload_actor = actor or (actors[0] if actors else None)
+        try:
+            response = operation()
+        except BaseException:
+            self.upload_diagnostic(None, expected=expected, caller="ERROR")
+            raise
+        self.upload_diagnostic(response, expected=expected)
+        return response
+
+    def upload_diagnostic(self, response, *, expected=None, caller="FINISHED"):
+        """Bounded categorical evidence only; no request or response values escape."""
+        count = getattr(self, "_upload_diagnostic_count", 0)
+        if count >= 128:
+            return
+        self._upload_diagnostic_count = count + 1
+        status = getattr(response, "status_code", None)
+        code = "UNKNOWN"
+        content = getattr(response, "content", b"")
+        if type(content) is bytes and len(content) <= 8192:
+            try:
+                value = json.loads(content)
+                candidate = value.get("error", {}).get("code")
+                if type(candidate) is str and candidate in {
+                    "ASSET_INTEGRITY",
+                    "ASSET_LENGTH",
+                    "ASSET_TYPE",
+                    "ASSET_LIMIT",
+                    "ASSET_UNAVAILABLE",
+                    "ASSET_DEADLINE",
+                    "ASSET_NOT_FOUND",
+                    "ASSET_CONFLICT",
+                    "ASSET_FORBIDDEN",
+                }:
+                    code = candidate
+            except (ValueError, TypeError, AttributeError, RecursionError):
+                pass
+        now = time.monotonic()
+        elapsed = max(0, now - getattr(self, "_upload_started", now))
+        actor = getattr(self, "_upload_actor", None)
+        expires = getattr(actor, "expires_at", None)
+        remaining = (
+            (expires - datetime.now(UTC)).total_seconds()
+            if isinstance(expires, datetime) and expires.tzinfo
+            else None
+        )
+        trial = getattr(self, "_upload_trial", 0)
+        stage = getattr(self, "_upload_stage", "UNKNOWN")
+        diagnostic = {
+            "schema": 1,
+            "trial": f"UPLOAD_{trial:02d}"
+            if type(trial) is int and 1 <= trial <= 32
+            else "OTHER",
+            "stage": stage
+            if type(stage) is str and stage in {"BEGIN", "PUT", "COMPLETE", "RECOVERY"}
+            else "UNKNOWN",
+            "expected": expected
+            if type(expected) is int and 100 <= expected <= 599
+            else "ABSENT",
+            "actual": status
+            if type(status) is int and 100 <= status <= 599
+            else "ABSENT",
+            "error_code": code,
+            "disconnected": getattr(response, "disconnected", False) is True,
+            "elapsed": "LT_1S"
+            if elapsed < 1
+            else "LE_30S"
+            if elapsed <= 30
+            else "LE_120S"
+            if elapsed <= 120
+            else "GT_120S",
+            "session_remaining": "UNKNOWN"
+            if remaining is None
+            else "EXPIRED"
+            if remaining <= 0
+            else "LE_30S"
+            if remaining <= 30
+            else "LE_300S"
+            if remaining <= 300
+            else "GT_300S",
+            "caller": caller
+            if type(caller) is str and caller in {"FINISHED", "ERROR", "RUNNING"}
+            else "UNKNOWN",
+            "event_wait": False,
+        }
+        try:
+            print(
+                "WSO_ASSET_UPLOAD_DIAGNOSTIC=" + json.dumps(diagnostic, sort_keys=True)
+            )
+        except (OSError, ValueError):
+            pass
+
+    def assert_error(self, response, status, code=None):
+        self.upload_diagnostic(response, expected=status)
         require(response.status_code == status)
         body = response.json()
         require(
@@ -991,11 +1102,15 @@ class AssetHarness:
         header = (
             f"PUT {session['upload_path']} HTTP/1.1\r\nHost: {urlsplit(self.base_url).netloc}\r\nCookie: {SESSION_COOKIE}={actor.token}\r\nOrigin: https://app.test\r\nX-CSRF-Token: {actor.csrf}\r\nX-Upload-Session: {session['id']}\r\nContent-Type: image/png\r\nContent-Length: {length}\r\nConnection: close\r\n\r\n"
         ).encode()
-        return raw_http_exchange(
-            self.base_url,
-            header,
-            (body,),
-            time.monotonic() + self.deadlines.allowance(120.0, self.phase),
+        return self._upload_exchange(
+            "PUT",
+            lambda: raw_http_exchange(
+                self.base_url,
+                header,
+                (body,),
+                time.monotonic() + self.deadlines.allowance(120.0, self.phase),
+            ),
+            actor=actor,
         )
 
     @staticmethod
@@ -1134,6 +1249,12 @@ class AssetHarness:
             self.start_api()
 
     def recover_rejected(self, session, *, natural_expiry=False):
+        return self._upload_exchange(
+            "RECOVERY",
+            lambda: self._recover_rejected(session, natural_expiry=natural_expiry),
+        )
+
+    def _recover_rejected(self, session, *, natural_expiry=False):
         row = self.row(session["asset_id"])
         if natural_expiry or row["state"] == "PENDING":
             self.wait_until_utc(datetime.fromisoformat(session["expires_at"]), cap=180)
@@ -1252,14 +1373,40 @@ class AssetHarness:
         finally:
             engine.dispose()
 
-    def revoke_membership(self, actor):
+    def revoke_asset_authority(self, actor):
+        """R45: revoke current OWNER authority, retaining membership and audit."""
+        values = {"t": actor.tenant_id, "u": actor.user_id}
+        audit_sql = "SELECT * FROM public.audit_events WHERE tenant_id=:t AND actor_user_id=:u ORDER BY id"
+        before = self.query(audit_sql, values)
+        require(before)
         with self.admin.begin() as db:
-            db.execute(
+            changed = db.execute(
                 text(
-                    "DELETE FROM public.memberships WHERE tenant_id=:t AND user_id=:u"
+                    "UPDATE public.memberships SET role='STAFF' WHERE tenant_id=:t AND user_id=:u AND role='OWNER'"
                 ),
-                {"t": actor.tenant_id, "u": actor.user_id},
+                values,
             )
+            require(changed.rowcount == 1)
+        require(self.query(audit_sql, values) == before)
+        require(
+            self.query(
+                "SELECT role FROM public.memberships WHERE tenant_id=:t AND user_id=:u",
+                values,
+            )
+            == [{"role": "STAFF"}]
+        )
+        require(self.request("GET", "/api/v1/me", actor=actor).status_code == 200)
+        require(
+            self.request(
+                "GET", f"/api/v1/connections?tenant_id={actor.tenant_id}", actor=actor
+            ).status_code
+            == 403
+        )
+        require(self.begin(self.image(), actor=actor).status_code == 403)
+
+    def revoke_membership(self, actor):
+        """Legacy actual14 caller spelling; R45 means asset authority revocation."""
+        self.revoke_asset_authority(actor)
 
     def assert_no_stores(self):
         require(
@@ -1311,6 +1458,7 @@ class AssetHarness:
 
     def prepare_case(self):
         self.deadlines.check(self.phase)
+        self._upload_trial, self._upload_diagnostic_count = 0, 0
         for index in (0, 1):
             actor = self.actors[index]
             if actor.expires_at is None or actor.expires_at <= datetime.now(
@@ -1323,6 +1471,29 @@ class AssetHarness:
     def control_for(self, owned=None):
         owned = owned or self.modes[self.process.pid]
         return BarrierControl(owned.spec.control_path, self.owner)
+
+    def wait_event(self, control, cutoff, call):
+        try:
+            return control.wait(cutoff)
+        except BaseException:
+            diagnostic = {
+                "schema": 1,
+                "event_wait": True,
+                "caller": "RUNNING"
+                if not call.done.is_set()
+                else "ERROR"
+                if call.error is not None
+                else "FINISHED",
+                "cutoff_expired": time.monotonic() >= cutoff,
+            }
+            try:
+                print(
+                    "WSO_ASSET_EVENT_DIAGNOSTIC="
+                    + json.dumps(diagnostic, sort_keys=True)
+                )
+            except (OSError, ValueError):
+                pass
+            raise
 
     def call(self, function, *, cap, release=None):
         call = OwnedCall(
@@ -1604,8 +1775,8 @@ class AssetHarness:
             require(self.asset_count() == before)
         self.recover_rejected(pending)
         failed = self.require_begin(data)
-        wrong = bytes([data[0] ^ 1]) + data[1:]
-        require(self.put(failed, wrong).status_code == 422)
+        wrong = data[:-1] + bytes([data[-1] ^ 1])
+        self.assert_error(self.put(failed, wrong), 422, "ASSET_INTEGRITY")
         require(self.row(failed["asset_id"])["state"] == "REJECTED")
         before = self.asset_count()
         require(
@@ -1663,10 +1834,19 @@ class AssetHarness:
                 },
                 "probe_asset": str(uuid4()),
                 "probe_attempt": str(uuid4()),
+                "direct_probe_asset": str(uuid4()),
+                "direct_probe_attempt": str(uuid4()),
             },
         )
         owned = self.start_mode(ProcessMode.API, spec, argument=action)
         self.await_fact(lambda: owned.process.poll() is not None, cap=120)
+        if owned.process.returncode != 0:
+            from tests.support.asset_process import read_adapter_failure
+
+            print(
+                "WSO_ASSET_ADAPTER_DIAGNOSTIC="
+                + json.dumps(read_adapter_failure(spec.control_path), sort_keys=True)
+            )
         require(owned.process.returncode == 0)
         result = json.loads((spec.control_path / "adapter-result.json").read_bytes())
         require(result["owner"] == self.owner)
@@ -1853,7 +2033,7 @@ class AssetHarness:
             else:
                 call = self.call(lambda: self.put(session, data), cap=120)
             try:
-                control.wait(cutoff)
+                self.wait_event(control, cutoff, call)
                 self.assert_helpers_settled(self.modes[self.process.pid])
                 self.stop_current_api(force=True)
                 call.result(error_allowed=True)
@@ -1976,7 +2156,7 @@ class AssetHarness:
             )
             call = self.call(lambda: self.put(session, data), cap=120)
             try:
-                record = control.wait(cutoff)
+                record = self.wait_event(control, cutoff, call)
                 require(self.raw_object(asset))
                 require(self.delete(asset["id"]).status_code == 202)
                 control.release(record)
@@ -2224,7 +2404,7 @@ class AssetHarness:
         elif mutation == "session":
             self.revoke_session(actor)
         elif mutation == "membership":
-            self.revoke_membership(actor)
+            self.revoke_asset_authority(actor)
         else:
             require(mutation == "parent" and parent is not None)
             require(self.delete(parent["id"], actor=actor).status_code == 202)
@@ -2263,7 +2443,7 @@ class AssetHarness:
                 cap=30,
             )
             try:
-                record = control.wait(cutoff)
+                record = self.wait_event(control, cutoff, call)
                 self.assert_helpers_settled(self.modes[self.process.pid])
                 self.revoke(mutation, actor, asset, parent)
                 control.release(record)
@@ -2623,7 +2803,7 @@ class AssetHarness:
             elif variant == "parent-deleted":
                 require(self.delete(parent["id"], actor=actor).status_code == 202)
             elif variant == "membership-revoked":
-                self.revoke_membership(actor)
+                self.revoke_asset_authority(actor)
             worker = jobs.launch_worker()
             jobs.launch_dispatch()
             self.await_fact(
@@ -2779,6 +2959,32 @@ class AssetHarness:
         from wso_core.storage import ObjectLocator, object_key, parse_object_key
 
         inventory = self.physical_inventory()
+        if tuple(map(len, inventory)) != expected_counts:
+            original = getattr(self, "seed_inventory", ({}, {}))
+            print(
+                "WSO_ASSET_INVENTORY_DIAGNOSTIC="
+                + json.dumps(
+                    {
+                        "schema": 1,
+                        "objects": min(len(inventory[0]), 4096),
+                        "multiparts": min(len(inventory[1]), 4096),
+                        "original_objects_present": min(
+                            len(set(inventory[0]) & set(original[0])), 4096
+                        ),
+                        "original_multiparts_present": min(
+                            len(set(inventory[1]) & set(original[1])), 4096
+                        ),
+                        "extra_objects": min(
+                            len(set(inventory[0]) - set(original[0])), 4096
+                        ),
+                        "extra_multiparts": min(
+                            len(set(inventory[1]) - set(original[1])), 4096
+                        ),
+                        "original_metadata_matches": inventory == original,
+                    },
+                    sort_keys=True,
+                )
+            )
         require(tuple(map(len, inventory)) == expected_counts)
         tracker = EpochTracker(
             {
@@ -3134,90 +3340,140 @@ class AssetHarness:
         require({str(row["asset_id"]) for row in rows} <= self.conservative)
 
     def __exit__(self, *_exc):
-        from scripts.asset_provider_receipt import validate_provider_receipt
-
-        errors = []
-        self.provider_evidence.unlink(missing_ok=True)
-        if FixturePhase.TEARDOWN not in self.deadlines.cutoffs:
-            self.deadlines.begin_teardown()
-        self.phase = FixturePhase.TEARDOWN
-        for call in tuple(self.callers):
-            try:
-                call.close()
-            except BaseException:  # noqa: BLE001 -- retain owned settlement failures without raw exception output.
-                errors.append("CALLER")
-            else:
-                self.callers.remove(call)
-        for process, log in tuple(self.launches):
-            if process.poll() is None:
-                errors.append("UNVERIFIED_PROCESS")
-            else:
-                process.wait(
-                    timeout=max(
-                        0.001,
-                        min(3, self.deadlines.cutoffs[self.phase] - time.monotonic()),
-                    )
-                )
-                log.close()
-                self.launches.remove((process, log))
-        if self.jobs_context is not None:
-            try:
-                self.jobs_context.__exit__(*_exc)
-            except BaseException:  # noqa: BLE001 -- retain owned settlement failures without raw exception output.
-                errors.append("JOB")
-        for owned in tuple(self.modes.values()):
-            try:
-                self.stop_mode(owned)
-            except BaseException:  # noqa: BLE001 -- retain owned settlement failures without raw exception output.
-                errors.append("PROCESS")
-        for fault in tuple(self.faults):
-            try:
-                fault.close()
-            except BaseException:  # noqa: BLE001 -- retain owned settlement failures without raw exception output.
-                errors.append("FAULT")
-            else:
-                self.faults.remove(fault)
-        if self.access is not None:
-            try:
-                self.access.close()
-            except BaseException:  # noqa: BLE001 -- retain owned settlement failures without raw exception output.
-                errors.append("SDK")
-            else:
-                self.access = None
+        errors, cleanup_causes = [], []
         receipt = None
-        if not errors:
+        stage = "CUTOFF"
+
+        def record(category, error):
+            errors.append(category)
+            cleanup_causes.append(error)
+
+        try:
+            # Establish custody's existing deadline before any filesystem or
+            # launch operation. The outer finally also covers this setup.
+            if FixturePhase.TEARDOWN not in self.deadlines.cutoffs:
+                self.deadlines.begin_teardown()
+            self.phase = FixturePhase.TEARDOWN
+            self.provider.cleanup_cutoff = min(
+                self.provider.cleanup_cutoff
+                if self.provider.cleanup_cutoff is not None
+                else time.monotonic() + 180,
+                self.deadlines.cutoffs[self.phase],
+            )
+            stage = "RECEIPT"
             try:
+                self.provider_evidence.unlink(missing_ok=True)
+            except BaseException as error:  # noqa: BLE001 -- retain filesystem failure.
+                record(stage, error)
+            stage = "CALLER"
+            for call in tuple(self.callers):
+                try:
+                    call.close()
+                except BaseException as error:  # noqa: BLE001 -- continue owned cleanup.
+                    record(stage, error)
+                else:
+                    self.callers.remove(call)
+            stage = "LAUNCH"
+            for process, log in tuple(self.launches):
+                try:
+                    if process.poll() is None:
+                        errors.append("UNVERIFIED_PROCESS")
+                        continue
+                    process.wait(
+                        timeout=max(
+                            0,
+                            min(
+                                3, self.deadlines.cutoffs[self.phase] - time.monotonic()
+                            ),
+                        )
+                    )
+                    log.close()
+                except BaseException as error:  # noqa: BLE001 -- retain exact launch custody.
+                    record(stage, error)
+                else:
+                    self.launches.remove((process, log))
+            stage = "JOB"
+            if self.jobs_context is not None:
+                try:
+                    self.jobs_context.__exit__(*_exc)
+                except BaseException as error:  # noqa: BLE001 -- continue owned cleanup.
+                    record(stage, error)
+            stage = "PROCESS"
+            for owned in tuple(self.modes.values()):
+                try:
+                    self.stop_mode(owned)
+                except BaseException as error:  # noqa: BLE001 -- retain exact process custody.
+                    record(stage, error)
+            stage = "FAULT"
+            for fault in tuple(self.faults):
+                try:
+                    fault.close()
+                except BaseException as error:  # noqa: BLE001 -- continue owned cleanup.
+                    record(stage, error)
+                else:
+                    self.faults.remove(fault)
+            stage = "SDK"
+            if self.access is not None:
+                try:
+                    self.access.close()
+                except BaseException as error:  # noqa: BLE001 -- continue owned cleanup.
+                    record(stage, error)
+                else:
+                    self.access = None
+            stage = "SQL"
+            if self.admin is not None:
+                try:
+                    self.admin.dispose()
+                except BaseException as error:  # noqa: BLE001 -- retain SQL failure before recycling.
+                    record(stage, error)
+            if not errors:
+                stage = "PROVIDER"
+                from scripts.asset_provider_receipt import validate_provider_receipt
+
                 if self.provider.receipt is not None:
                     receipt = dict(self.provider.receipt)
                     validate_provider_receipt(receipt)
-                if self.provider.cleanup_cutoff is None:
-                    self.provider.cleanup_cutoff = min(
-                        time.monotonic() + 180, self.deadlines.cutoffs[self.phase]
-                    )
+                self.deadlines.check(self.phase)
                 self.provider.close()
-            except BaseException:  # noqa: BLE001 -- retain owned settlement failures without raw exception output.
-                errors.append("PROVIDER")
-        if self.admin is not None:
-            try:
-                self.admin.dispose()
-            except BaseException:  # noqa: BLE001 -- retain owned settlement failures without raw exception output.
-                errors.append("SQL")
+                stage = "KEYS"
+                for name in ("K1", "K2"):
+                    (self.directory / name).unlink(missing_ok=True)
+                self.deadlines.check(self.phase)
+                stage = "RECEIPT"
+                if (
+                    receipt is not None
+                    and getattr(self, "suite_success", False)
+                    and not (_exc and _exc[0])
+                ):
+                    self.provider_evidence.parent.mkdir(parents=True, exist_ok=True)
+                    exclusive_private_json(self.provider_evidence, receipt)
+        except BaseException as error:  # noqa: BLE001 -- every early operation reaches finally.
+            record(stage, error)
+        finally:
+            if errors:
+                try:
+                    if self.provider.cleanup_cutoff is None:
+                        # Deadline setup itself failed: no fresh cleanup allowance.
+                        self.provider.cleanup_cutoff = min(
+                            time.monotonic(), self.deadlines.start + 94 * 60
+                        )
+                    self.provider.quiesce_local()
+                except BaseException as error:  # noqa: BLE001 -- retain initiating failure too.
+                    record("LOCAL_UNSETTLED", error)
+                else:
+                    errors.append("LOCAL_QUIESCED_TARGET_RETAINED")
         if errors:
-            # Retain provider/keys whenever local transport or process ownership
-            # is unresolved. Never turn cancellation into a recycling proof.
-            raise RuntimeError(
+            refusal = RuntimeError(
                 "asset fixture cleanup refused: " + ",".join(sorted(set(errors)))
-            ) from None
-        for name in ("K1", "K2"):
-            (self.directory / name).unlink(missing_ok=True)
-        self.deadlines.check(self.phase)
-        if (
-            receipt is not None
-            and getattr(self, "suite_success", False)
-            and not (_exc and _exc[0])
-        ):
-            self.provider_evidence.parent.mkdir(parents=True, exist_ok=True)
-            exclusive_private_json(self.provider_evidence, receipt)
+            )
+            refusal.cleanup_causes = tuple(cleanup_causes)
+            raise refusal from (
+                _exc[1]
+                if len(_exc) > 1 and _exc[1] is not None
+                else cleanup_causes[0]
+                if cleanup_causes
+                else None
+            )
 
 
 @pytest.fixture(scope="module")

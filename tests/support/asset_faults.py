@@ -738,6 +738,21 @@ class ProcessIdentity:
             private_string(item)
 
 
+def process_identity_snapshot(identity):
+    """Publish the explicit native identity schema without changing its tuple custody."""
+    require(type(identity) is ProcessIdentity)
+    identity.__post_init__()
+    return {
+        "owner": identity.owner,
+        "pid": identity.pid,
+        "uid": identity.uid,
+        "ppid": identity.ppid,
+        "pgid": identity.pgid,
+        "start_ticks": identity.start_ticks,
+        "command": list(identity.command),
+    }
+
+
 def validate_process_identity(expected, observed):
     require(
         type(expected) is ProcessIdentity
@@ -894,11 +909,8 @@ class BarrierControl:
             armed["id"] is not None and armed["id"] != str(event.asset_id)
         ):
             return
-        # Serialize only explicit private fields (slotted identities have no dict).
         identity = process_identity(os.getpid(), self.owner)
-        record["identity"] = {
-            k: getattr(identity, k) for k in ProcessIdentity.__dataclass_fields__
-        }
+        record["identity"] = process_identity_snapshot(identity)
         snapshot_json(self.directory / "reached.json", record)
         while not (self.directory / "release.json").exists():
             if time.monotonic() >= armed["cutoff"]:

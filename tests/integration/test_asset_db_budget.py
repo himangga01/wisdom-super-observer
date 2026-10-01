@@ -8,10 +8,13 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from time import monotonic, sleep
 from uuid import uuid4
 
 import pytest
+from alembic.config import Config
+from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.orm import sessionmaker
@@ -44,6 +47,20 @@ class FixtureURLs(dict):
         return "<explicit fixture URLs redacted>"
 
 
+def _assert_source_head(db, config=None):
+    config = config or Config(
+        str(Path(__file__).resolve().parents[2] / "infra/alembic.ini")
+    )
+    source_heads = set(ScriptDirectory.from_config(config).get_heads())
+    installed = list(
+        db.execute(text("SELECT version_num FROM alembic_version")).scalars()
+    )
+    assert len(source_heads) == 1, "budget fixture requires exactly one source head"
+    assert len(installed) == 1 and set(installed) == source_heads, (
+        "budget fixture installed revision differs from the Alembic source head"
+    )
+
+
 @pytest.fixture(scope="module")
 def budget_database():
     names = ("ADMIN", "SESSION", "IDENTITY", "APP")
@@ -55,10 +72,7 @@ def budget_database():
     admin = create_engine(urls["ADMIN"], hide_parameters=True)
     verify_fixture_database(admin, domain_only=sys.platform == "win32")
     with admin.connect() as db:
-        assert (
-            db.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-            == "0003a_assets"
-        )
+        _assert_source_head(db)
     providers = [
         create_budgeted_provider(urls["SESSION"], pool_size=1),
         create_budgeted_provider(urls["IDENTITY"], pool_size=1),

@@ -2129,6 +2129,7 @@ class AssetProvider:
             "network": "NETWORK",
             "volume": "VOLUME",
             "private-files": "PRIVATE_FILES",
+            "local-quiesced-target-retained": "LOCAL_QUIESCED_TARGET_RETAINED",
         }
         normalized = sorted(
             {
@@ -2148,6 +2149,37 @@ class AssetProvider:
         except (OSError, ValueError):
             pass  # A closed output stream cannot replace the existing cleanup refusal.
 
+    def quiesce_local(self):
+        """Settle exact local handles without recycling targets or private keys."""
+        self.receipt = None
+        if self.cleanup_cutoff is None:
+            raise RuntimeError("local quiescence requires original cleanup cutoff")
+        deadline = self.cleanup_cutoff
+        failures = []
+        if self.relay is not None:
+            try:
+                self.relay.close(deadline=deadline)
+            except Exception:  # noqa: BLE001 -- never recycle under unresolved custody.
+                failures.append("relay-unsettled")
+        # These records contain Popen handles we created, never rediscovered PIDs.
+        for record in tuple(self.commands.active):
+            process, threads = record
+            try:
+                if process.poll() is None:
+                    process.kill()
+                remaining = max(0, deadline - time.monotonic())
+                process.wait(timeout=remaining)
+                for thread in threads:
+                    thread.join(max(0, deadline - time.monotonic()))
+                if any(thread.is_alive() for thread in threads):
+                    raise RuntimeError("owned command readers unsettled")
+                self.commands.active.remove(record)
+            except Exception:  # noqa: BLE001 -- preserve records, continue local stop.
+                failures.append("relay-unsettled")
+        self.emit_close_diagnostic(failures or ["local-quiesced-target-retained"])
+        if failures:
+            raise RuntimeError("owned local quiescence unsettled; target retained")
+
     def close(self):
         failures = []
         if self.cleanup_cutoff is None:
@@ -2156,13 +2188,17 @@ class AssetProvider:
             self.commands.assert_settled()
         except RuntimeError:
             self.receipt = None
+            try:
+                self.quiesce_local()
+            except Exception:  # noqa: BLE001 -- preserve initiating command refusal.
+                failures.append("relay-unsettled")
             self.emit_close_diagnostic(["relay-unsettled"])
             raise RuntimeError(
                 "owned command cleanup unsettled; target retained"
             ) from None
         if self.relay is not None:
             try:
-                self.relay.close()
+                self.relay.close(deadline=self.cleanup_cutoff)
             except Exception:  # noqa: BLE001 -- never recycle under unknown relay ownership
                 self.receipt = None
                 # Retain exact Docker/private resources while forwarding ownership

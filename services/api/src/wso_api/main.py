@@ -25,6 +25,8 @@ from wso_api.connections.router import configure_connections
 from wso_api.connections.router import router as connections_router
 from wso_api.jobs.router import router as jobs_router
 from wso_api.stores.router import router as stores_router
+from wso_api.tvt.startup import configure_startup
+from wso_api.tvt.startup import router as startup_router
 
 
 def _error_response(
@@ -70,6 +72,7 @@ def create_app(
     app = FastAPI(lifespan=lifespan)
     checks = dict(readiness_checks or {})
     configure_auth(app)
+    configure_startup(app)
     configure_connections(app)
     configure_assets(app, runtime=asset_runtime)
     app.include_router(auth_router)
@@ -77,6 +80,7 @@ def create_app(
     app.include_router(connections_router)
     app.include_router(jobs_router)
     app.include_router(assets_router)
+    app.include_router(startup_router)
 
     @app.middleware("http")
     async def request_context(
@@ -97,6 +101,7 @@ def create_app(
             "/api/v1/connections",
             "/api/v1/jobs",
             "/api/v1/assets",
+            "/api/v1/tvt",
         } or path.startswith(
             (
                 "/api/v1/auth/",
@@ -104,6 +109,7 @@ def create_app(
                 "/api/v1/connections/",
                 "/api/v1/jobs/",
                 "/api/v1/assets/",
+                "/api/v1/tvt/",
             )
         ):
             response.headers["Cache-Control"] = "no-store"

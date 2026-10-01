@@ -43,7 +43,8 @@ try {
         'pytest', '-m', 'not live', '--ignore=tests/jobs_recovery',
         '--ignore=tests/integration/test_private_assets.py',
         '--ignore=tests/integration/test_tvt_domain_scope.py',
-        '--ignore=tests/integration/test_tvt_domain_credentials.py', '-q'
+        '--ignore=tests/integration/test_tvt_domain_credentials.py',
+        '--ignore=tests/integration/test_tvt_startup.py', '-q'
     )
     if ($WithPostgres) {
         $roles = @(
@@ -171,7 +172,7 @@ try {
         'Money.json', 'ProductCandidate.json', 'SignedMoney.json',
         'RegistrationJobPayload.json',
         'StoreScope.json', 'TenantScope.json', 'UploadSession.json', 'VariantOption.json',
-        'openapi.json'
+        'openapi.json', 'tvt.ts'
     )
     $actualExports = @(Get-ChildItem -LiteralPath $generated -File -Recurse |
         ForEach-Object { [IO.Path]::GetRelativePath($generated, $_.FullName) })
@@ -188,6 +189,7 @@ try {
         throw 'Checked-in contract exports are empty.'
     }
     Invoke-Checked python ($uvRun + @('python', 'scripts/export_contracts.py'))
+    Invoke-Checked python ($uvRun + @('python', 'scripts/generate_tvt_types.py'))
     $first = @(Get-ChildItem -LiteralPath $generated -File -Recurse | ForEach-Object {
         [pscustomobject]@{
             Path = [IO.Path]::GetRelativePath($generated, $_.FullName)
@@ -199,6 +201,7 @@ try {
         throw 'Checked-in contract exports are stale; regenerate and review them.'
     }
     Invoke-Checked python ($uvRun + @('python', 'scripts/export_contracts.py'))
+    Invoke-Checked python ($uvRun + @('python', 'scripts/generate_tvt_types.py'))
     $second = @(Get-ChildItem -LiteralPath $generated -File -Recurse | ForEach-Object {
         [pscustomobject]@{
             Path = [IO.Path]::GetRelativePath($generated, $_.FullName)

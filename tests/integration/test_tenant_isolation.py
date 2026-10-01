@@ -668,6 +668,68 @@ def test_app_cannot_access_grant_internals_or_issuer(seeded, query) -> None:
         session.execute(text(query))
 
 
+# Every private table has an explicit owner; unknown additions fail this gate.
+PRIVATE_TABLE_OWNERS = {
+    **dict.fromkeys(
+        (
+            "tenant_grants",
+            "tenant_contexts",
+            "connection_secrets",
+            "connection_handles",
+            "connection_leases",
+            "connection_revocations",
+            "job_contexts",
+            "job_kinds",
+            "job_settings",
+            "asset_settings",
+            "asset_uploads",
+            "asset_tickets",
+            "asset_read_leases",
+            "asset_cleanup",
+            "asset_job_kinds",
+            "asset_audit_outbox",
+            "asset_reconciliation",
+        ),
+        "wso_migrator",
+    ),
+    "dispatch_ready": "wso_dispatch_owner",
+    **dict.fromkeys(
+        (
+            "tvt_identities",
+            "tvt_device_links",
+            "tvt_channels",
+            "tvt_device_store_links",
+            "tvt_identity_grants",
+            "tvt_upstream_grants",
+            "tvt_capability_snapshots",
+            "tyco_identities",
+            "tyco_panels",
+            "tyco_identity_grants",
+            "tyco_upstream_grants",
+            "tyco_capability_snapshots",
+            "domain_credential_capabilities",
+            "domain_credential_connections",
+            "tvt_user_preferences",
+            "tvt_user_consents",
+        ),
+        "wso_domain_owner",
+    ),
+}
+
+
+def _assert_private_table_owners(tables):
+    assert {"tenant_grants", "tenant_contexts"} <= {t.relname for t in tables}
+    for table in tables:
+        assert table.relname in PRIVATE_TABLE_OWNERS, "unexpected private table"
+        assert table.owner == PRIVATE_TABLE_OWNERS[table.relname], (
+            "unexpected private table owner"
+        )
+        assert table.relrowsecurity and table.relforcerowsecurity
+        assert not table.rolsuper and not table.rolbypassrls and not table.rolcreaterole
+        if table.owner in {"wso_domain_owner", "wso_dispatch_owner"}:
+            assert not table.rolcanlogin
+
+
 def test_runtime_roles_do_not_own_grant_tables_or_functions(live_db) -> None:
     admin, _, _ = live_db
     with admin.connect() as connection:
@@ -693,26 +755,14 @@ def test_runtime_roles_do_not_own_grant_tables_or_functions(live_db) -> None:
             )
         tables = connection.execute(
             text("""
-            SELECT c.relname, c.relrowsecurity, c.relforcerowsecurity, r.rolname AS owner
+            SELECT c.relname, c.relrowsecurity, c.relforcerowsecurity, r.rolname AS owner,
+                   r.rolsuper, r.rolbypassrls, r.rolcreaterole, r.rolcanlogin
             FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
             JOIN pg_roles r ON r.oid = c.relowner
             WHERE n.nspname = 'wso_private' AND c.relkind = 'r'
         """)
         ).all()
-        assert {"tenant_grants", "tenant_contexts"} <= {
-            table.relname for table in tables
-        }
-        assert all(
-            t.owner
-            == (
-                "wso_dispatch_owner"
-                if t.relname == "dispatch_ready"
-                else "wso_migrator"
-            )
-            and t.relrowsecurity
-            and t.relforcerowsecurity
-            for t in tables
-        )
+        _assert_private_table_owners(tables)
 
 
 def test_grant_secret_is_not_in_authorization_repr(seeded) -> None:

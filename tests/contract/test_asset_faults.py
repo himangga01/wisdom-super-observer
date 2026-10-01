@@ -1652,3 +1652,250 @@ def test_snapshot_refused_payload_close_retains_real_descriptor_and_poison(
         writer.close()
     finally:
         _best_effort_owned_snapshot_settlement(writer, probe)
+
+
+def identity_barrier(tmp_path, monkeypatch):
+    """Keep real control/publications; supply only Linux directory metadata on Windows."""
+    import os
+    from pathlib import Path
+
+    from tests.support import asset_faults as faults
+
+    tmp_path.chmod(0o700)
+    original_stat = Path.stat
+    if os.name != "posix":
+
+        def directory_stat(path, *args, **kwargs):
+            row = original_stat(path, *args, **kwargs)
+            if path == tmp_path:
+                fields = list(row)
+                fields[0] = (row.st_mode & ~0o777) | 0o700
+                return os.stat_result(fields)
+            return row
+
+        monkeypatch.setattr(Path, "stat", directory_stat)
+        monkeypatch.setattr(
+            os, "getuid", lambda: original_stat(tmp_path).st_uid, raising=False
+        )
+    return faults.BarrierControl(tmp_path, "00000000000000000000000000000001")
+
+
+def test_armed_callback_publishes_native_identity_and_waits_for_exact_release(
+    tmp_path, monkeypatch
+):
+    import json
+    import os
+    import time
+    from concurrent.futures import ThreadPoolExecutor
+
+    from wso_core.assets import AssetEvent
+
+    from tests.support import asset_faults as faults
+
+    control = identity_barrier(tmp_path, monkeypatch)
+    identity = faults.ProcessIdentity(
+        control.owner,
+        os.getpid(),
+        7,
+        11,
+        11,
+        37,
+        ("synthetic-python", "synthetic-worker"),
+    )
+    monkeypatch.setattr(faults, "process_identity", lambda pid, owner: identity)
+    cutoff = time.monotonic() + 1.0
+    control.arm("VALIDATED_BEFORE_FINALIZE", asset_id=UUID(int=3), cutoff=cutoff)
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        caller = executor.submit(
+            control.callback, AssetEvent("VALIDATED_BEFORE_FINALIZE", UUID(int=3))
+        )
+        try:
+            # Surface a producer refusal rather than conceal it behind a wait timeout.
+            while not (tmp_path / "reached.json").exists():
+                if caller.done():
+                    caller.result()
+                assert time.monotonic() < cutoff
+                time.sleep(0.005)
+            record = control.wait(cutoff)
+            assert not caller.done()
+            assert (record["owner"], record["event"], record["id"]) == (
+                control.owner,
+                "VALIDATED_BEFORE_FINALIZE",
+                str(UUID(int=3)),
+            )
+            assert record["identity"] == {
+                "owner": control.owner,
+                "pid": os.getpid(),
+                "uid": 7,
+                "ppid": 11,
+                "pgid": 11,
+                "start_ticks": 37,
+                "command": ["synthetic-python", "synthetic-worker"],
+            }
+            assert (
+                json.loads((tmp_path / "armed.json").read_bytes())["cutoff"] == cutoff
+            )
+        finally:
+            control.release(
+                {
+                    "owner": control.owner,
+                    "event": "VALIDATED_BEFORE_FINALIZE",
+                    "id": str(UUID(int=3)),
+                }
+            )
+        caller.result(timeout=1)
+    assert type(identity.command) is tuple
+
+
+@pytest.mark.parametrize("armed", [None, "other-event", "other-asset"])
+def test_callback_unarmed_or_nonmatching_never_looks_up_identity(
+    tmp_path, monkeypatch, armed
+):
+    import json
+    import time
+
+    from wso_core.assets import AssetEvent
+
+    from tests.support import asset_faults as faults
+
+    control = identity_barrier(tmp_path, monkeypatch)
+
+    def forbidden_lookup(*args):
+        raise AssertionError("nonmatching callback performed process lookup")
+
+    monkeypatch.setattr(faults, "process_identity", forbidden_lookup)
+    if armed is not None:
+        control.arm(
+            "UPLOAD_INTENT_COMMITTED"
+            if armed == "other-event"
+            else "VALIDATED_BEFORE_FINALIZE",
+            asset_id=UUID(int=4) if armed == "other-asset" else UUID(int=3),
+            cutoff=time.monotonic() + 1.0,
+        )
+    control.callback(AssetEvent("VALIDATED_BEFORE_FINALIZE", UUID(int=3)))
+    assert not (tmp_path / "reached.json").exists()
+    assert json.loads((tmp_path / "last-event.json").read_bytes())["id"] == str(
+        UUID(int=3)
+    )
+
+
+@pytest.mark.parametrize("identity", [None, {"command": ["synthetic-python"]}])
+def test_callback_malformed_identity_refuses_without_reached_record(
+    tmp_path, monkeypatch, identity
+):
+    import time
+
+    from wso_core.assets import AssetEvent
+
+    from tests.support import asset_faults as faults
+
+    control = identity_barrier(tmp_path, monkeypatch)
+    monkeypatch.setattr(faults, "process_identity", lambda pid, owner: identity)
+    control.arm(
+        "VALIDATED_BEFORE_FINALIZE", asset_id=UUID(int=3), cutoff=time.monotonic() + 1.0
+    )
+    with pytest.raises(faults.FixtureContractError, match="^invalid fixture contract$"):
+        control.callback(AssetEvent("VALIDATED_BEFORE_FINALIZE", UUID(int=3)))
+    assert not (tmp_path / "reached.json").exists()
+
+
+@pytest.mark.parametrize("release", [None, "owner", "event", "id"])
+def test_callback_native_identity_preserves_cutoff_and_release_validation(
+    tmp_path, monkeypatch, release
+):
+    import os
+    import time
+
+    from wso_core.assets import AssetEvent
+
+    from tests.support import asset_faults as faults
+
+    control = identity_barrier(tmp_path, monkeypatch)
+    identity = faults.ProcessIdentity(
+        control.owner, os.getpid(), 7, 11, 11, 37, ("synthetic-python",)
+    )
+    monkeypatch.setattr(faults, "process_identity", lambda pid, owner: identity)
+    control.arm(
+        "VALIDATED_BEFORE_FINALIZE",
+        asset_id=UUID(int=3),
+        cutoff=time.monotonic() - 0.1 if release is None else time.monotonic() + 1.0,
+    )
+    if release is None:
+        with pytest.raises(RuntimeError, match="^owned fixture barrier expired$"):
+            control.callback(AssetEvent("VALIDATED_BEFORE_FINALIZE", UUID(int=3)))
+    else:
+        value = {
+            "owner": control.owner,
+            "event": "VALIDATED_BEFORE_FINALIZE",
+            "id": str(UUID(int=3)),
+        }
+        value[release] = "foreign-value"
+        faults.snapshot_json(tmp_path / "release.json", value, owner=control.owner)
+        with pytest.raises(
+            faults.FixtureContractError, match="^invalid fixture contract$"
+        ):
+            control.callback(AssetEvent("VALIDATED_BEFORE_FINALIZE", UUID(int=3)))
+    assert (tmp_path / "reached.json").exists()
+
+
+def test_snapshot_writer_still_refuses_process_command_tuple(tmp_path):
+    from tests.support import asset_faults as faults
+
+    with (
+        faults.OwnedSnapshots(tmp_path, "synthetic-owner") as writer,
+        pytest.raises(faults.FixtureContractError),
+    ):
+        writer.write("identity.json", {"command": ("synthetic-python",)})
+    assert not (tmp_path / "identity.json").exists()
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("owner", True),
+        ("pid", True),
+        ("uid", -1),
+        ("ppid", -1),
+        ("pgid", 0),
+        ("start_ticks", 0),
+        ("command", ["synthetic-python"]),
+        ("command", ()),
+        ("command", ("synthetic-python\n",)),
+        ("command", (object(),)),
+    ],
+    ids=[
+        "owner-type",
+        "pid-type",
+        "uid-negative",
+        "ppid-negative",
+        "pgid-zero",
+        "ticks-zero",
+        "command-list",
+        "command-empty",
+        "command-control",
+        "command-object",
+    ],
+)
+def test_callback_corrupted_identity_refuses_before_reached_publication(
+    tmp_path, monkeypatch, field, value
+):
+    import os
+    import time
+
+    from wso_core.assets import AssetEvent
+
+    from tests.support import asset_faults as faults
+
+    control = identity_barrier(tmp_path, monkeypatch)
+    identity = faults.ProcessIdentity(
+        control.owner, os.getpid(), 7, 11, 11, 37, ("synthetic-python",)
+    )
+    # Simulate a compromised process lookup; ordinary identities remain frozen.
+    object.__setattr__(identity, field, value)
+    monkeypatch.setattr(faults, "process_identity", lambda pid, owner: identity)
+    control.arm(
+        "VALIDATED_BEFORE_FINALIZE", asset_id=UUID(int=3), cutoff=time.monotonic() + 1.0
+    )
+    with pytest.raises(faults.FixtureContractError, match="^invalid fixture contract$"):
+        control.callback(AssetEvent("VALIDATED_BEFORE_FINALIZE", UUID(int=3)))
+    assert not (tmp_path / "reached.json").exists()

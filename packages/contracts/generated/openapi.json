@@ -438,6 +438,30 @@
         "title": "ConnectionView",
         "type": "object"
       },
+      "ConsentUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "decision": {
+            "enum": [
+              "accepted",
+              "declined"
+            ],
+            "title": "Decision",
+            "type": "string"
+          },
+          "version": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,63}$",
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "decision"
+        ],
+        "title": "ConsentUpdate",
+        "type": "object"
+      },
       "DownloadTicket": {
         "additionalProperties": false,
         "properties": {
@@ -749,6 +773,54 @@
         "title": "MembershipView",
         "type": "object"
       },
+      "PolicyReference": {
+        "additionalProperties": false,
+        "properties": {
+          "source_reference": {
+            "enum": [
+              "agreement/ServiceTerms_en.html",
+              "agreement/PrivacyStatement_en.html",
+              "agreement/ServiceTerms_zh-Hans.html",
+              "agreement/PrivacyStatement_zh-Hans.html"
+            ],
+            "title": "Source Reference",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_reference",
+          "url"
+        ],
+        "title": "PolicyReference",
+        "type": "object"
+      },
+      "PreferenceUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "locale": {
+            "maxLength": 35,
+            "pattern": "^[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$",
+            "title": "Locale",
+            "type": "string"
+          },
+          "timezone": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Timezone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "locale",
+          "timezone"
+        ],
+        "title": "PreferenceUpdate",
+        "type": "object"
+      },
       "SessionCreated": {
         "properties": {
           "csrf_token": {
@@ -793,6 +865,238 @@
           "nonce"
         ],
         "title": "SessionExchange",
+        "type": "object"
+      },
+      "StartupAccount": {
+        "additionalProperties": false,
+        "properties": {
+          "brand": {
+            "title": "Brand",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "region": {
+            "title": "Region",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "brand",
+          "region"
+        ],
+        "title": "StartupAccount",
+        "type": "object"
+      },
+      "StartupBootstrap": {
+        "additionalProperties": false,
+        "properties": {
+          "brand": {
+            "const": "SuperLivePlus",
+            "title": "Brand",
+            "type": "string"
+          },
+          "consent": {
+            "$ref": "#/components/schemas/StartupConsent"
+          },
+          "identity": {
+            "$ref": "#/components/schemas/StartupIdentity"
+          },
+          "locale": {
+            "maxLength": 35,
+            "pattern": "^[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$",
+            "title": "Locale",
+            "type": "string"
+          },
+          "menu": {
+            "items": {
+              "$ref": "#/components/schemas/StartupMenuEntry"
+            },
+            "title": "Menu",
+            "type": "array"
+          },
+          "profile_id": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,63}$",
+            "title": "Profile Id",
+            "type": "string"
+          },
+          "region": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,63}$",
+            "title": "Region",
+            "type": "string"
+          },
+          "selected_tenant_id": {
+            "format": "uuid",
+            "title": "Selected Tenant Id",
+            "type": "string"
+          },
+          "supported_locales": {
+            "items": {
+              "maxLength": 35,
+              "pattern": "^[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$",
+              "type": "string"
+            },
+            "title": "Supported Locales",
+            "type": "array"
+          },
+          "timezone": {
+            "title": "Timezone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "selected_tenant_id",
+          "profile_id",
+          "brand",
+          "region",
+          "locale",
+          "timezone",
+          "supported_locales",
+          "consent",
+          "identity",
+          "menu"
+        ],
+        "title": "StartupBootstrap",
+        "type": "object"
+      },
+      "StartupConsent": {
+        "additionalProperties": false,
+        "properties": {
+          "decided_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          },
+          "privacy": {
+            "$ref": "#/components/schemas/PolicyReference"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "accepted",
+              "declined"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "terms": {
+            "$ref": "#/components/schemas/PolicyReference"
+          },
+          "version": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,63}$",
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "status",
+          "decided_at",
+          "terms",
+          "privacy"
+        ],
+        "title": "StartupConsent",
+        "type": "object"
+      },
+      "StartupErrorDetails": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "StartupErrorDetails",
+        "type": "object"
+      },
+      "StartupErrorEnvelope": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "$ref": "#/components/schemas/StartupErrorDetails"
+          },
+          "request_id": {
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "error",
+          "request_id"
+        ],
+        "title": "StartupErrorEnvelope",
+        "type": "object"
+      },
+      "StartupIdentity": {
+        "additionalProperties": false,
+        "properties": {
+          "accounts": {
+            "items": {
+              "$ref": "#/components/schemas/StartupAccount"
+            },
+            "title": "Accounts",
+            "type": "array"
+          },
+          "state": {
+            "enum": [
+              "unlinked",
+              "linked"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "accounts"
+        ],
+        "title": "StartupIdentity",
+        "type": "object"
+      },
+      "StartupMenuEntry": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "const": "local-settings",
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "const": "Settings",
+            "title": "Label",
+            "type": "string"
+          },
+          "path": {
+            "const": "/tvt/settings",
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "path"
+        ],
+        "title": "StartupMenuEntry",
         "type": "object"
       },
       "StoreList": {
@@ -2061,6 +2365,335 @@
         "summary": "Store",
         "tags": [
           "stores"
+        ]
+      }
+    },
+    "/api/v1/tvt/bootstrap": {
+      "get": {
+        "operationId": "tvtBootstrap",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StartupBootstrap"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StartupErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StartupErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StartupErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StartupErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StartupErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StartupErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StartupErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Bootstrap",
+        "tags": [
+          "tvt-startup"
+        ]
+      }
+    },
+    "/api/v1/tvt/consent": {
+      "post": {
+        "operationId": "tvtConsent",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConsentUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StartupConsent"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StartupErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StartupErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StartupErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StartupErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StartupErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StartupErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StartupErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Consent",
+        "tags": [
+          "tvt-startup"
+        ]
+      }
+    },
+    "/api/v1/tvt/preferences": {
+      "put": {
+        "operationId": "tvtPreferences",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreferenceUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreferenceUpdate"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StartupErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StartupErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StartupErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StartupErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StartupErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StartupErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StartupErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Preferences",
+        "tags": [
+          "tvt-startup"
         ]
       }
     },
