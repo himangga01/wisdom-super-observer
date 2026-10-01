@@ -105,12 +105,21 @@ and scoped mypy passing; fresh independent review is approved with 0 Critical,
 0 Important and 0 Minor findings. The original fixture source review first
 reported six Important findings; all six were addressed in one owner fix batch.
 Fresh scoped review is approved with 0 Critical, 0 Important and 0 Minor. The
-final fixture owner run passed 676 profile/safety cases in 4.98 seconds; the
-independent helper run passed 201 cases in 0.41 seconds. Root's single amended
-aggregate passed 1,093 cases in 7.26 seconds with no skips, comprising 676 +
-201 + 216. Ruff check/format across nine files, configured mypy across 40
-product files and explicit pure-checker mypy across two files passed. These are
-offline source/contract facts, not RustFS or sealed-fixture behavior.
+Before R13, the fixture owner passed 676 profile/safety cases in 4.98 seconds
+and the independent helper passed 201 in 0.41 seconds; the pre-R13 root
+aggregate passed 1,093 in 7.26 seconds with no skips. R13's exact two-source
+fix is READY and independently approved SpecPASS/QualityApproved with zero
+findings. The owner reports meaningful RED 22 failed / 14 passed / 161
+deselected in 1.03 seconds, focused 39 passed in 0.21 seconds and owned safety
+200 passed in 3.40 seconds; Ruff/format on both files passed. Root's post-R13
+integrated pytest aggregate passed 1,130 offline contracts in 7.15 seconds with
+no skips (513 profile + 200 safety + 201 helper + 216 checker), with ten source
+hashes unchanged; this aggregate ran pytest only. R13 Ruff/format was run only
+on the two changed files. Nine-file Ruff/format and configured mypy40 plus
+pure-checker mypy2 were earlier pre-R13 results; mypy40 was also freshly
+verified by foundation run 36821056354. No post-R13 nine-file static or mypy
+run is claimed. These remain offline source/contract evidence, not RustFS or
+sealed-fixture behavior.
 
 The frozen profile specifies 63 private-effect checks, the exact 24-control
 table, four true public-access-block readbacks, synthetic ACL characterization,
@@ -137,19 +146,38 @@ hex credential pairs. These remain design/source gates pending actual execution.
 The provider phase budget remains twelve minutes split into 6/3/3-minute phases,
 with three minutes for cleanup and one minute for the API/HTTP reserve; all
 existing call caps remain unchanged and new calls must fit them.
-The full fourteen-case aging plan is gated and not activated. The 11th MinIO
-attempt remains the latest actual provider run and failed setup as recorded
-below. No RustFS acceptance, authenticated HTTP, genuine sealed-656 RED,
-full14 GREEN, W02 reopening or APK parity is established.
-
-Root has defined one conditional RustFS probe12, but has not activated it. Its
-condition requires final four-doc spec/quality approval, the staged private18
-guard, exact 14-file no-drift/whitespace/source-hash checks, one reviewed
-curated commit and one combined push, then verified remote SHA equality. If
-activated after those gates, it permits at most one automatic cold probe using
-the existing 20-minute sealed656 overlay12 workflow and foundation workflow.
-There is no manual retry, product overlay or budget increase. The cold runtime
-assertions must pass before an authenticated missing-route RED can count.
+The latest completed [Linux foundation run 36821056354](linux-ci.md#linux-foundation-run-36821056354)
+passed 2,272 ordinary Python cases and ten actual Celery/Valkey recovery cases,
+both with zero skips, plus its recorded static, frontend and browser gates.
+This foundation result is not provider or lifecycle acceptance. The full
+fourteen-case aging plan remains gated. The single conditional RustFS
+cold probe12 ran and failed setup in 9.94 seconds at the first pre-start
+credential-free version-container assertion. In published source `aa63`,
+`verify_server_version` at line 451 called `assert_version_container` at line
+552, which raised the fixed refusal at line 626. These are source locations;
+no actual inspect values or exact failed predicate were retained. Bounded
+extraction found zero public-proof and zero native-pagination records. Close
+diagnostics returned categories `[IMAGE, UNKNOWN, VOLUME]`, with relay
+unavailable; no cleanup or resource absence is inferred. See the [actual
+probe record](linux-ci.md#rustfs-cold-probe12--2026-10-01).
+Its one-attempt authority is consumed; no retry of probe12 is authorized.
+Source diagnosis found that the supported Docker/BuildKit path adds a
+public default `PATH` to scratch image metadata, inherited at container create
+and returned by inspect; the fixture's empty-environment guard conflicts with
+this behavior. The actual failed inspect predicate, value and selected builder
+metadata remain unknown, so this source-supported incompatibility does not
+reconstruct the unique run failure. Root R13 authorizes an explicit canonical
+`PATH` plus exact-singleton validation in two source files. The source fix is
+READY and independently approved with zero findings. Owner results: meaningful
+RED 22 failed / 14 passed / 161 deselected in 1.03 seconds; focused 39 passed
+in 0.21 seconds; owned safety 200 passed in 3.40 seconds; Ruff/format on both
+files passed. R14 defines conditional probe13 but does not activate it;
+`runtime_authorized=false`. Exact source/review/root-aggregate, final docs,
+private18, six-stage no-drift, reviewed commit/push and remote-SHA gates remain.
+No unchanged or diagnostic-only retry is authorized.
+No RustFS provider receipt, authenticated sealed656 RED or full14 GREEN was
+reached. W02 remains closed, APK `MATCHED` remains zero, six G-P1 families
+remain blocked and `release_ready=false`.
 
 The two actual SeaweedFS 4.47 probes failed setup; neither is meaningful
 missing-feature RED. At that earlier stage, the proposed replacement was an

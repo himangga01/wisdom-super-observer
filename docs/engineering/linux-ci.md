@@ -311,6 +311,23 @@ The complete private log was 90,067 bytes with SHA-256 `31854f67b53460a782b74906
 
 The complete private log was 89,980 bytes, SHA-256 `935a412757df60a0fe7cf848ad3117836c052a454206cfc73854b3e8d42f56c2`. This run covers reviewed idle-retirement source commit `52343d4` and the docs at `d5aaba8`; ordinary collection excluded the private fourteen-case acceptance file. It is foundation evidence, not provider acceptance. Both relevant workflow watches completed; no workflow is currently running.
 
+### Linux foundation run 36821056354
+
+[Run 36821056354, job 110236506535](https://github.com/himangga01/wisdom-super-observer/actions/runs/36821056354/job/110236506535)
+at published HEAD `aa63cebb6282204d2c50125a3d7cc7762d945545` succeeded. It
+passed 2,272 ordinary Python cases with zero skips in 143.01 seconds and all
+ten actual Celery/Valkey recovery cases with zero skips in 249.94 seconds.
+Ruff and configured mypy on 40 files passed. Frontend passed 15 unit cases and
+typecheck/lint/build; twenty canonical exports were verified twice. The TVT
+checker reported 77 audit cases, 77 ledger rows and zero errors (not 77 tests).
+HTTPS Chrome passed 26 cases in 56.2 seconds. Valkey 9.1.2 smoke and PostgreSQL
+17.11 provision/removal succeeded.
+
+The complete private log was 92,115 bytes, SHA-256
+`6cea3c852b6479e07d440a93f1dd20b6e5d224b0217a720d7a968712fe39ac40`. Both
+workflow watches are closed and no CI is active. This remains foundation
+evidence, not private-provider or lifecycle acceptance.
+
 ### Third private asset probe: data volume verification failed
 
 [Run 36749047523](https://github.com/himangga01/wisdom-super-observer/actions/runs/36749047523)
@@ -400,38 +417,81 @@ The fixed error combines four checks over installed-prefix objects and multipart
 
 Independent source inspection of the pinned MinIO release used by this run (`RELEASE.2025-04-22T22-12-26Z`, commit `0d7408fc9969caf07de6a8c3a84f9fbb10a6739e`) establishes a native capability mismatch. Its [multipart-upload listing implementation (`ListMultipartUploads`)](https://github.com/minio/minio/blob/0d7408fc9969caf07de6a8c3a84f9fbb10a6739e/cmd/erasure-sets.go#L881) treats its nonempty `Prefix` as one exact object. Its [multipart listing](https://github.com/minio/minio/blob/0d7408fc9969caf07de6a8c3a84f9fbb10a6739e/cmd/erasure-multipart.go#L254) visits only that exact object’s multipart directory, rather than enumerating multipart uploads on arbitrary installed child keys. Its [server-pool implementation](https://github.com/minio/minio/blob/0d7408fc9969caf07de6a8c3a84f9fbb10a6739e/cmd/erasure-server-pool.go#L1696) does not provide durable, bounded cross-key pagination through its empty-prefix cache path. Thus this pinned candidate cannot satisfy installed-prefix multipart enumeration, continuation across child keys, and durable restart/orphan discovery. The actual four-way predicate remains unknown; this capability rejection is based on pinned source semantics, not invented run counts.
 
-Root rejected this MinIO candidate for the required contract. No same-provider diagnostic retry, manual or twelfth run is authorized; do not weaken pagination, filtering, set equality or privacy assertions, substitute known database rows, or patch the vendor. The conditional eleventh authority was consumed. Read-only primary-source investigations are complete. RustFS 1.0.0 is the approved transition design and source implementation is underway; no provider is selected for acceptance and no retry authority exists. T05A remains in progress; provider acceptance, authenticated sealed656 RED, full14 and APK parity remain unproved.
+Root rejected this MinIO candidate for the required contract. No same-provider diagnostic retry, manual or twelfth run is authorized; do not weaken pagination, filtering, set equality or privacy assertions, substitute known database rows, or patch the vendor. The conditional eleventh authority was consumed. Read-only primary-source investigations are complete. RustFS 1.0.0 is the approved transition design; its source/checker reviews and offline aggregate passed. The later probe12 result and the narrow R13 PATH correction are recorded below. No provider is selected for acceptance. T05A remains in progress; provider acceptance, authenticated sealed656 RED, full14 and APK parity remain unproved.
 
 ### RustFS transition implementation status — 2026-10-01
 
 The approved RustFS 1.0.0 design and exact archive/member hashes, profile,
 receipt ABI, role boundaries, restart proof, containment and budget are recorded
 in the [private asset transition status](private-assets.md#rustfs-transition-status--2026-10-01).
-This design does not change the actual-run record above. The latest completed
-Linux foundation remains run 36801780609 / job 110177504261 at d5aaba8, with
-1726 ordinary Python cases and ten actual Celery/Valkey recovery cases, both
-zero skips; the full foundation receipt remains recorded above. No CI is
-currently active and no RustFS runtime or provider run has occurred.
+The actual-run record remains separate from the design and source checks. The
+latest completed foundation is [run 36821056354](#linux-foundation-run-36821056354);
+the earlier d5aaba8 receipt is preserved above. RustFS cold probe12 and its
+setup failure are recorded below; no provider acceptance followed.
 
 The independent receipt-checker component is READY: 216 focused contracts
 passed in 1.31 seconds, Ruff, formatting and scoped mypy passed, and fresh
 independent review approved with zero Critical, Important or Minor findings.
 The original fixture review found six Important findings; one owner fix batch
-addressed all six, and fresh scoped review approved with zero findings. The
-fixture owner passed 676 profile/safety cases in 4.98 seconds; the helper owner
-passed 201 cases in 0.41 seconds. Root's one amended aggregate passed 1,093
-cases in 7.26 seconds with no skips. Ruff check/format across nine files,
-configured mypy across 40 product files and explicit pure-checker mypy across
-two files passed. These are source/contract gates, not provider acceptance.
+addressed all six, and fresh scoped review approved with zero findings. Before
+R13, the fixture owner passed 676 profile/safety cases in 4.98 seconds and the
+helper owner passed 201 in 0.41 seconds. The pre-R13 root aggregate passed
+1,093 in 7.26 seconds with no skips. R13's source review is SpecPASS and
+QualityApproved with zero findings. The source owner reports initial RED of
+22 failed / 14 passed / 161 deselected in 1.03 seconds, focused 39 passed in
+0.21 seconds and owned safety 200 passed in 3.40 seconds; Ruff and formatting
+on both changed files passed. The post-R13 integrated five-contract pytest
+aggregate passed 1,130 in 7.15 seconds, no skips (513 profile + 200 safety +
+201 helper + 216 checker), with all ten source hashes unchanged. That aggregate
+ran pytest only. The nine-file Ruff/format and mypy40 + pure-checker mypy2
+results belong to the earlier pre-R13 1,093 gate; mypy40 was also freshly
+verified by foundation run 36821056354. No nine-file static or mypy run is
+claimed after R13. These are source/contract gates, not provider acceptance.
 
-Root defined but has not activated one conditional RustFS probe12. Activation
-requires final four-doc review, private18, staged no-drift/whitespace/source
-hash gates, one reviewed curated commit and combined push, and verified remote
-SHA equality. If activated, at most one automatic cold run uses the existing
-20-minute sealed656 overlay12 workflow and foundation workflow; no manual retry
-or budget increase is authorized. The 11th MinIO attempt remains the latest
-actual provider run. No RustFS execution/acceptance, authenticated HTTP, genuine
-sealed-656 RED, full14 GREEN, W02 reopening or APK parity is established.
+Root's one conditional RustFS probe12 ran and failed as recorded below; its
+single-attempt authority is consumed. R14 defines a conditional probe13 but
+does not activate it or authorize runtime. No retry of probe12 is authorized.
+No RustFS acceptance, authenticated HTTP, genuine sealed-656 RED, full14 GREEN,
+W02 reopening or APK parity is established.
+
+### RustFS cold probe12 — 2026-10-01
+
+[Run 36821056328, job 110236505879](https://github.com/himangga01/wisdom-super-observer/actions/runs/36821056328/job/110236505879)
+failed with one setup error in 9.94 seconds. In published source `aa63`,
+`verify_server_version` at line 451 called `assert_version_container` at line
+552, which raised the fixed refusal at line 626. These are historical source
+locations, not runtime values. No actual
+inspect values or exact failed predicate were retained. Bounded extraction
+found zero public-proof records and zero native pagination records. The close
+diagnostic categories were `[IMAGE, UNKNOWN, VOLUME]`, with relay unavailable;
+these do not establish resource cleanup or absence. The private log was 58,886 bytes, SHA-256
+`7fad5063294b6f6eae62dcff8ab719c0f26af96b6b19fcecb69fa660412453df`.
+
+No provider receipt, authenticated sealed656 RED or full14 GREEN was reached.
+The source diagnosis found a supported Docker/BuildKit compatibility defect:
+the Dockerfile frontend supplies a public default `PATH` in `FROM scratch`
+image metadata, container creation inherits image `Env`, and inspect returns
+that configuration. The fixture's empty-`Env` guard conflicts with this path.
+Primary evidence includes the [runner image inventory](https://github.com/actions/runner-images/blob/ubuntu24/20260920.314/images/ubuntu/Ubuntu2404-Readme.md#L69-L74),
+[Docker CLI buildx routing](https://github.com/docker/cli/blob/v28.0.4/cmd/docker/builder.go#L41-L122),
+[BuildKit scratch `PATH` handling](https://github.com/moby/moby/blob/v28.0.4/vendor/github.com/moby/buildkit/frontend/dockerfile/dockerfile2llb/convert.go#L424-L431),
+[BuildKit's pinned Linux `PATH`](https://github.com/moby/buildkit/blob/v0.20.2/util/system/path.go#L11-L24),
+[Moby create configuration inheritance](https://github.com/moby/moby/blob/v28.0.4/daemon/create.go#L123-L150)
+and [inspect behavior](https://github.com/moby/moby/blob/v28.0.4/daemon/inspect.go#L83-L88).
+This mechanism is source-supported, but the actual failed inspect predicate,
+value and selected builder metadata were not retained; it does not reconstruct
+the unique runtime failure.
+
+Root R13's exact public singleton `PATH` correction is source READY and
+independently approved SpecPASS/QualityApproved with zero findings. The owner
+reports the RED and focused results summarized above. R14 defines one
+conditional probe13, but its authority record says it is not activated and
+`runtime_authorized=false`. It requires exact two-source READY/review/root-
+aggregate gates, final four-doc review, private18, exact-six-stage/no-drift/
+whitespace, reviewed commit, one authorized push and verified remote SHA. No
+unchanged or diagnostic-only retry is authorized. This
+failure supplements, and does not replace, the historical MinIO11 failure and
+d5 foundation receipt above.
 
 ## Evidence handling
 

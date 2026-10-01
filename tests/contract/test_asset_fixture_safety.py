@@ -1903,6 +1903,9 @@ def test_scratch_build_copies_private_data_as_child_with_explicit_metadata(
         provider.start()
     context = provider.work / "image"
     instructions = (context / "Dockerfile").read_text().splitlines()
+    assert [line for line in instructions if line.startswith("ENV ")] == [
+        "ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+    ]
     copies = [line.split() for line in instructions if line.startswith("COPY ")]
     assert len(copies) == 2
     data_copy = next(line for line in copies if "--chown=65532:65532" in line)
@@ -2335,7 +2338,11 @@ def version_container_state(provider):
     state = owned_container_state(provider)
     state["Id"] = "a" * 64
     state["Name"] = "/owned-version"
-    state["Config"].update(Cmd=["--version"], Env=None, Labels={LABEL: provider.owner})
+    state["Config"].update(
+        Cmd=["--version"],
+        Env=["PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"],
+        Labels={LABEL: provider.owner},
+    )
     state["HostConfig"].update(NetworkMode="none", Tmpfs={})
     state["NetworkSettings"]["Networks"] = {
         "none": {
@@ -2352,7 +2359,7 @@ def version_container_state(provider):
     return state
 
 
-def test_credential_free_version_mapping_accepts_empty_builtin_none(tmp_path):
+def test_credential_free_version_mapping_accepts_public_path_builtin_none(tmp_path):
     provider = AssetProvider(tmp_path)
     state = version_container_state(provider)
     provider.assert_version_container(state, "owned-version", state["Id"])
@@ -2710,3 +2717,232 @@ def test_readiness_retains_original_sixty_seconds_inside_phase(
         provider.wait_authenticated_ready()
     assert calls.call_count == 1
     assert now[0] < provider.budget.cutoff
+
+
+def public_path_image_state(provider):
+    provider.image = "sha256:" + "a" * 64
+    return {
+        "Id": provider.image,
+        "Os": "linux",
+        "Architecture": "amd64",
+        "Config": {
+            "User": "65532:65532",
+            "Entrypoint": ["/rustfs"],
+            "WorkingDir": "/data",
+            "Env": [
+                "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+            ],
+            "Labels": {
+                LABEL: provider.owner,
+                "wso.assets.source": "d47f54bfb2f39f48bd1adda334bd27e151fe85b8",
+                "wso.assets.binary": "222eedc3d9baabf6516702d9fbf230270c3ca49b50f562d3461c96e2cc6ae6ad",
+            },
+        },
+    }
+
+
+@pytest.mark.parametrize("guard", ["image", "version"])
+def test_public_path_mapping_requires_only_exact_native_singleton(
+    tmp_path, capsys, guard
+):
+    provider = AssetProvider(tmp_path)
+    if guard == "image":
+        provider.assert_image(public_path_image_state(provider))
+    else:
+        state = version_container_state(provider)
+        provider.assert_version_container(state, "owned-version", state["Id"])
+    assert capsys.readouterr() == ("", "")
+
+
+@pytest.mark.parametrize("guard", ["image", "version"])
+@pytest.mark.parametrize(
+    "case",
+    [
+        "missing",
+        "null",
+        "empty",
+        "text",
+        "mapping",
+        "tuple",
+        "number",
+        "nested",
+        "modified",
+        "duplicate",
+        "other",
+        "bootstrap",
+        "gateway",
+        "cleanup",
+        "list-subclass",
+        "str-subclass",
+    ],
+)
+def test_public_path_mapping_refuses_missing_extra_or_malformed_environment(
+    tmp_path, capsys, guard, case
+):
+    provider = AssetProvider(tmp_path)
+    state = (
+        public_path_image_state(provider)
+        if guard == "image"
+        else version_container_state(provider)
+    )
+    config = state["Config"]
+    path = "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+    class ListSubclass(list):
+        pass
+
+    class StrSubclass(str):
+        pass
+
+    variants = {
+        "null": None,
+        "empty": [],
+        "text": path,
+        "mapping": {"PATH": path},
+        "tuple": (path,),
+        "number": [17],
+        "nested": [[path]],
+        "modified": ["PATH=DO_NOT_EMIT_private_path"],
+        "duplicate": [path, path],
+        "other": [path, "OTHER=DO_NOT_EMIT_private"],
+        "bootstrap": [
+            path,
+            "RUSTFS_SECRET_KEY=" + provider.credentials["bootstrap"][1],
+        ],
+        "gateway": [path, "GATEWAY_KEY=" + provider.credentials["gateway"][1]],
+        "cleanup": [path, "CLEANUP_KEY=" + provider.credentials["cleanup"][1]],
+        "list-subclass": ListSubclass([path]),
+        "str-subclass": [StrSubclass(path)],
+    }
+    if case == "missing":
+        del config["Env"]
+    else:
+        config["Env"] = variants[case]
+    with pytest.raises(RuntimeError, match="mapping mismatch") as error:
+        if guard == "image":
+            provider.assert_image(state)
+        else:
+            provider.assert_version_container(state, "owned-version", state["Id"])
+    assert "DO_NOT_EMIT" not in str(error.value)
+    assert all(
+        pair[1] not in str(error.value) for pair in provider.credentials.values()
+    )
+    assert capsys.readouterr() == ("", "")
+    assert provider.receipt is None
+
+
+@pytest.mark.parametrize("post_env_wrong", [False, True])
+def test_public_path_version_orchestration_checks_before_and_after_execution(
+    tmp_path, monkeypatch, post_env_wrong
+):
+    provider = AssetProvider(tmp_path)
+    state = version_container_state(provider)
+    name = "wso-assets-version-" + provider.owner
+    state["Name"] = "/" + name
+    state["State"] = {"Running": False, "ExitCode": 0}
+    events = []
+    provider.budget = Mock(allowance=Mock(return_value=20), check=Mock())
+
+    def docker(*args):
+        if args[0] == "create":
+            events.append("create")
+            assert args == (
+                "create",
+                "--name",
+                name,
+                "--label",
+                f"{LABEL}={provider.owner}",
+                "--network=none",
+                "--log-driver=none",
+                "--cap-drop=ALL",
+                "--security-opt=no-new-privileges:true",
+                "--read-only",
+                "--memory=2g",
+                "--cpus=2",
+                "--pids-limit=128",
+                "--mount",
+                f"type=volume,src={provider.volume},dst=/data,readonly",
+                provider.image,
+                "--version",
+            )
+            return state["Id"]
+        if args == ("inspect", name):
+            events.append("inspect")
+            return json.dumps([state])
+        assert args == ("container", "rm", name)
+        events.append("remove")
+        return ""
+
+    def execute(command, environment, allowance, **kwargs):
+        assert events == ["create", "inspect"]
+        assert command == ["owned-docker", "start", "--attach", name]
+        assert environment == {} and allowance == 20
+        assert kwargs == {"binary": True, "output_limit": 16384}
+        events.append("execute")
+        if post_env_wrong:
+            state["Config"]["Env"].append("OTHER=DO_NOT_EMIT")
+        return (
+            b"rustfs 1.0.0\nbuild time   : public\nbuild profile: release\n"
+            b"build os     : linux\nrust version : public\nrust channel : stable\n"
+            b"git branch   : release\n"
+            b"git commit   : d47f54bfb2f39f48bd1adda334bd27e151fe85b8\n"
+            b"git tag      : 1.0.0\ngit status   : clean\n"
+        )
+
+    monkeypatch.setattr(provider, "docker", docker)
+    monkeypatch.setattr(
+        provider,
+        "docker_invocation",
+        lambda *args: (["owned-docker", *args], {}),
+    )
+    monkeypatch.setattr(provider.commands, "run", execute)
+    if post_env_wrong:
+        with pytest.raises(RuntimeError, match="version mapping"):
+            provider.verify_server_version()
+        assert events == ["create", "inspect", "execute", "inspect"]
+        assert provider.created == [("version-container", name)]
+    else:
+        provider.verify_server_version()
+        assert events == ["create", "inspect", "execute", "inspect", "remove"]
+        assert provider.created == []
+    provider.budget.check.assert_called_once_with()
+    assert provider.receipt is None
+
+
+def test_public_path_final_cleanup_revalidates_helper_and_image(tmp_path, monkeypatch):
+    provider = AssetProvider(tmp_path)
+    image = public_path_image_state(provider)
+    state = version_container_state(provider)
+    provider.created = [
+        ("image", provider.image_tag),
+        ("volume", provider.volume),
+        ("version-container", "owned-version"),
+    ]
+    calls = []
+
+    def docker(*args):
+        calls.append(args)
+        if args == ("inspect", "owned-version"):
+            return json.dumps([state])
+        if args == ("volume", "inspect", provider.volume):
+            return json.dumps([{"Labels": {LABEL: provider.owner}}])
+        if args == ("image", "inspect", provider.image_tag):
+            return json.dumps([image])
+        assert args in {
+            ("container", "rm", "--force", "owned-version"),
+            ("volume", "rm", provider.volume),
+            ("image", "rm", provider.image),
+        }
+        return ""
+
+    monkeypatch.setattr(provider, "docker", docker)
+    provider.close()
+    assert calls == [
+        ("inspect", "owned-version"),
+        ("container", "rm", "--force", "owned-version"),
+        ("volume", "inspect", provider.volume),
+        ("volume", "rm", provider.volume),
+        ("image", "inspect", provider.image_tag),
+        ("image", "rm", provider.image),
+    ]
+    assert provider.receipt is None

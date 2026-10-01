@@ -378,6 +378,7 @@ class AssetProvider:
         shutil.copyfile(self.work / "rustfs", context / "rustfs")
         dockerfile = (
             "FROM scratch\n"
+            "ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\n"
             f'LABEL {LABEL}="{self.owner}" wso.assets.source="{SERVER_COMMIT}" wso.assets.binary="{SERVER_SHA}"\n'
             "COPY --chmod=0555 rustfs /rustfs\n"
             # BuildKit preserves the top-level copy destination's metadata.
@@ -601,7 +602,11 @@ class AssetProvider:
             or config["Entrypoint"] != ["/rustfs"]
             or config["Cmd"] != ["--version"]
             or config["Labels"].get(LABEL) != self.owner
-            or config.get("Env") not in (None, [])
+            or type(config.get("Env")) is not list
+            or len(config["Env"]) != 1
+            or type(config["Env"][0]) is not str
+            or config["Env"][0]
+            != "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
             or host["NetworkMode"] != "none"
             or not empty_none
             or host.get("Binds")
@@ -647,6 +652,11 @@ class AssetProvider:
             config["User"] != "65532:65532"
             or config["Entrypoint"] != ["/rustfs"]
             or config.get("WorkingDir") != "/data"
+            or type(config.get("Env")) is not list
+            or len(config["Env"]) != 1
+            or type(config["Env"][0]) is not str
+            or config["Env"][0]
+            != "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
             or config["Labels"].get("wso.assets.source") != SERVER_COMMIT
             or config["Labels"].get("wso.assets.binary") != SERVER_SHA
             or image["Os"] != "linux"

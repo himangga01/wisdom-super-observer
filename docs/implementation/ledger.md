@@ -14,7 +14,7 @@ This ledger tracks executable service work. The separate [parity ledger](../inte
 | W00 atomic parity ledger | Static 77-case seed and desktop API preflight implemented; false-positive paths closed | 31 focused tests passed; checker 77/77 rows, zero errors; headless Chrome/Edge API probe 2/2 | Trusted W24 run registry and comparator; runtime reachability, Android/iOS/media/permission checks, support matrix sign-off; no `MATCHED` rows and `release_ready=false` |
 | W01 TVT bridge feasibility | Static handoff, frozen 199-operation manifest and declaration inventories implemented | 10 schema tests passed; 77 cases / 199 candidate operations; 281 request classes and 299 native declarations inventoried | Vendor rights, runtime fixtures and pilot; all six remote G-P1 families `BLOCKED` |
 | T05 durable jobs | Database-owned requests, outbox/inbox, restricted dispatcher/worker, fencing, cancellation, external uncertainty, status/items API and job-bound secret primitives implemented; task and milestone integration/fix reviews approved | [Actual Linux run 36716200713](https://github.com/himangga01/wisdom-super-observer/actions/runs/36716200713): 537 Python cases and all ten required real process/broker recovery cases, zero skips; no remaining Critical/Important review findings | Generic credential handlers fail CAPABILITY_UNSUPPORTED until the owning executor exists; no production IMPORT/REGISTRATION handler. Deployment and vendor effects remain pending |
-| T05A private assets | In progress; reviewed idle-retirement source/docs published; MinIO pin rejected for native installed-prefix multipart inventory and durable restart/orphan discovery; RustFS source/checker reviews and offline aggregate approved | [Latest foundation receipt](../engineering/linux-ci.md#linux-foundation-run-36801780609); [eleventh provider attempt](../engineering/linux-ci.md#eleventh-sealed-private-asset-baseline-native-listing-contract-failure) failed setup at forced-pagination/filter checkpoint; actual predicate/counts unretained; RustFS source status in [transition record](../engineering/linux-ci.md#rustfs-transition-implementation-status--2026-10-01) | Approved design/source are not runtime acceptance. Final documentation, private18, staged no-drift, reviewed combined publication and remote-SHA gates remain before conditional probe12 activation. No RustFS execution or provider receipt. Provider privacy/IAM receipt, authenticated HTTP, sealed656 genuine RED, full14 GREEN, whole APK parity remain open |
+| T05A private assets | In progress; reviewed idle-retirement source/docs published; MinIO pin rejected for native installed-prefix multipart inventory and durable restart/orphan discovery; RustFS R13 source/checker reviews and offline aggregate approved | [Latest completed foundation receipt](../engineering/linux-ci.md#linux-foundation-run-36821056354); [MinIO11 setup failure](../engineering/linux-ci.md#eleventh-sealed-private-asset-baseline-native-listing-contract-failure); [RustFS probe12](../engineering/linux-ci.md#rustfs-cold-probe12--2026-10-01) failed before provider checks; actual predicate/value unretained | Source diagnosis identified a Docker/BuildKit public-PATH metadata incompatibility with the former empty-Env guard; actual run predicate/value unknown. R13's exact two-source fix and review are approved; root's 1,130-case aggregate passed. R14 defines one conditional probe13 but it is not activated and runtime is not authorized. Probe12 consumed; cleanup unestablished; no provider receipt/authenticated RED/full14. W02 remains closed, `MATCHED=0`, six G-P1 families `BLOCKED`, `release_ready=false` |
 | W02–W25 service features | W02 remains closed; W03–W25 pending | No private provider acceptance; no APK `MATCHED` rows and `release_ready=false` | T05A provider capability remains unresolved; all six remote G-P1 families remain `BLOCKED` |
 
 ## Previous integrated verification — 2026-09-30
@@ -109,19 +109,29 @@ The independent receipt-checker component is READY with 216 focused contracts
 passed in 1.31 seconds plus Ruff, formatting and scoped mypy; fresh independent
 review is approved with zero Critical, Important or Minor findings. The
 fixture's original six Important review findings were addressed in one owner
-fix batch; fresh scoped review is approved with zero findings. The final
-fixture owner run passed 676 profile/safety cases in 4.98 seconds, and the
-helper owner run passed 201 cases in 0.41 seconds. Root's single amended
-aggregate passed 1,093 cases in 7.26 seconds with no skips; Ruff check/format
-across nine files, configured mypy across 40 product files and explicit
-pure-checker mypy across two files passed. These are offline source/contract
-gates. The d5 foundation run and eleventh MinIO setup error remain the latest
-actual Linux and provider evidence respectively. Root defined but has not
-activated one conditional RustFS probe12; the required documentation, private18,
-no-drift, reviewed commit/push and remote-equality gates remain before it can
-run. No RustFS receipt, authenticated HTTP, genuine sealed-656 RED, full14
-GREEN, APK `MATCHED` row or release readiness is established; T05A remains in
-progress and W02 remains closed.
+fix batch; fresh scoped review is approved with zero findings. Before R13, the
+fixture owner passed 676 profile/safety cases in 4.98 seconds and the helper
+owner passed 201 in 0.41 seconds; that root aggregate passed 1,093 in 7.26
+seconds without skips. R13's two-source fix is READY and independently approved
+with zero findings. The post-R13 integrated aggregate passed 1,130 in 7.15
+seconds without skips (513 profile + 200 safety + 201 helper + 216 checker),
+with all ten source hashes unchanged; that aggregate ran pytest only. R13
+Ruff/format covered only the two changed files. Nine-file Ruff/format and
+configured mypy40 plus explicit pure-checker mypy2 are earlier pre-R13 results;
+mypy40 was also fresh in foundation run 36821056354. No post-R13 nine-file
+static or mypy rerun is claimed. These are offline source/contract gates.
+Foundation run 36821056354 is the latest completed Linux evidence; the
+RustFS probe12 setup error is the latest actual provider attempt, following the
+historical MinIO11 failure. Source diagnosis identifies a supported
+Docker/BuildKit public-PATH metadata conflict with the former empty-Env guard,
+but the actual failed predicate/value were not retained. R13's two-file
+exact-singleton-PATH correction is READY and approved. R14 defines one
+conditional probe13 but leaves it not activated and runtime unauthorized; the
+source READY/review/aggregate, final docs, private18, six-stage no-drift,
+reviewed commit/push and remote-equality gates remain. No RustFS receipt,
+authenticated HTTP, genuine sealed-656 RED, full14 GREEN, APK `MATCHED` row or
+release readiness is established; T05A remains in progress and W02 remains
+closed.
 
 T05A is in progress: private upload contracts, bounded S3/crypto/image adapters
 and the real Linux S3/HTTP fixture are being implemented in separate owned files.
