@@ -515,6 +515,7 @@ class LoopbackRelay:
     def _worker(self, client, accepted):
         upstream = None
         phase = "VALIDATION"
+        forwarding = False
         try:
             absolute = accepted + self.ABSOLUTE_SECONDS
             initial_idle = accepted + self.IDLE_SECONDS
@@ -534,23 +535,43 @@ class LoopbackRelay:
                 if self.state != "RUNNING" or self.stop.is_set():
                     raise RuntimeError("relay stopped before forwarding")
                 self.sockets.add(upstream)
+            forwarding = True
             self._pump(client, upstream, absolute, initial_idle)
         except Exception as error:  # noqa: BLE001 -- poison transport and settle exact handles
             if not self.stop.is_set() and not isinstance(error, RelayPoisonRefusal):
-                stage, kind = (
-                    error.origin
-                    if isinstance(error, RelayOriginFailure)
-                    else (phase, exception_kind(error))
+                retiring = (
+                    forwarding
+                    and isinstance(error, RelayOriginFailure)
+                    and error.origin == ("PUMP_CUTOFF", "IDLE_CUTOFF")
                 )
-                self._record_failure(stage, kind)
+                if not retiring:
+                    stage, kind = (
+                        error.origin
+                        if isinstance(error, RelayOriginFailure)
+                        else (phase, exception_kind(error))
+                    )
+                    self._record_failure(stage, kind)
         finally:
+            settled = True
             for stream in (client, upstream):
-                if stream:
-                    stream.close()
-                    with self.lock:
-                        self.sockets.discard(stream)
-            with self.lock:
-                self.connections -= 1
+                if stream is not None:
+                    try:
+                        stream.close()
+                    except Exception as error:  # noqa: BLE001 -- retain exact unresolved ownership
+                        settled = False
+                        if (
+                            self.state == "RUNNING"
+                            and not self.stop.is_set()
+                            and not self.failed
+                        ):
+                            # An already-published pending fatal owns the first origin.
+                            self._record_failure("CONTROL", exception_kind(error))
+                    else:
+                        with self.lock:
+                            self.sockets.discard(stream)
+            if settled:
+                with self.lock:
+                    self.connections -= 1
 
     def _pump(self, client, upstream, absolute, idle):
         streams = [client, upstream]

@@ -1,5 +1,6 @@
 """Offline fixture safety tests are not S3/HTTP lifecycle acceptance."""
 
+import http.client
 import json
 import socket
 import subprocess
@@ -40,6 +41,507 @@ def receive_eof(stream):
     while block := stream.recv(65536):
         result.extend(block)
     return bytes(result)
+
+
+def settle_owned_test(*operations):
+    primary = sys.exception()
+    first_cleanup_error = None
+    for operation in operations:
+        try:
+            operation()
+        except Exception as error:  # noqa: BLE001 -- attempt all cleanup and retain primary failure
+            if first_cleanup_error is None:
+                first_cleanup_error = error
+    if primary is None and first_cleanup_error is not None:
+        raise first_cleanup_error
+
+
+def join_owned_thread(thread):
+    if thread is not None and thread.ident is not None:
+        thread.join(1)
+        assert not thread.is_alive()
+
+
+def receive_request_line(stream):
+    deadline = time.monotonic() + 1
+    result = bytearray()
+    while b"\r\n" not in result:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError("owned request line exceeded its one-second allowance")
+        assert len(result) < 4096, "owned request line exceeded its fixed size cap"
+        stream.settimeout(remaining)
+        block = stream.recv(4096 - len(result))
+        assert block, "owned stream ended before its request-line terminator"
+        result.extend(block)
+    return bytes(result).split(b"\r\n", 1)[0]
+
+
+@pytest.mark.parametrize("primary", [False, True])
+def test_owned_teardown_attempts_all_and_preserves_first_failure(primary):
+    seen = []
+    cleanup_error = OSError("owned cleanup failure")
+    primary_error = AssertionError("primary test failure")
+
+    def fail():
+        seen.append("close")
+        raise cleanup_error
+
+    def join():
+        seen.append("join")
+        raise AssertionError("secondary termination failure")
+
+    expected = primary_error if primary else cleanup_error
+    with pytest.raises(type(expected)) as captured:
+        try:
+            if primary:
+                raise primary_error
+        finally:
+            settle_owned_test(fail, join)
+    assert seen == ["close", "join"]
+    assert captured.value is expected
+
+
+def test_owned_http_request_line_accepts_bounded_fragmentation():
+    stream = Mock()
+    stream.recv.side_effect = [
+        b"GET /pending-",
+        b"owned-test HTTP/1.1\r",
+        b"\nHost: owned",
+    ]
+    assert receive_request_line(stream) == b"GET /pending-owned-test HTTP/1.1"
+
+
+class OwnedTcpRelay:
+    """Only local test sockets; original registration/connect executes for each pair."""
+
+    def __init__(self, tmp_path, monkeypatch, *, idle=0.2):
+        from tests.support import asset_minio
+
+        self.socket_type = socket.socket
+        self.listener = self.socket_type(socket.AF_INET, socket.SOCK_STREAM)
+        self.listener.bind(("127.0.0.1", 0))
+        self.listener.listen(16)
+        self.listener.settimeout(2)
+        self.peers, self.targets, self.validations = [], [], []
+        self.completed, self.errors = [], []
+        self.condition = threading.Condition()
+        self.tracked = []
+        original_connect = asset_minio.LoopbackRelay._connect
+        original_worker = asset_minio.LoopbackRelay._worker
+
+        def validate(*_):
+            self.validations.append(True)
+            return "127.0.0.1"
+
+        def connect(relay, target, deadline):
+            self.targets.append(target)
+            assert target == ("127.0.0.1", 9000)
+            # Only the test's fixed owned numeric port changes; all real guards run.
+            return original_connect(relay, self.listener.getsockname(), deadline)
+
+        def worker(relay, client, accepted):
+            try:
+                original_worker(relay, client, accepted)
+            except Exception as error:  # noqa: BLE001 -- retain every test worker failure for assertion
+                self.errors.append(error)
+            finally:
+                with self.condition:
+                    self.completed.append(client)
+                    self.condition.notify_all()
+
+        monkeypatch.setattr(asset_minio.LoopbackRelay, "_connect", connect)
+        monkeypatch.setattr(asset_minio.LoopbackRelay, "_worker", worker)
+        self.relay = asset_minio.LoopbackRelay(validate, tmp_path)
+        self.relay.IDLE_SECONDS = idle
+        self.relay.start(deadline=time.monotonic() + 2)
+
+    def open(self):
+        client = self.socket_type(socket.AF_INET, socket.SOCK_STREAM)
+        self.peers.append(client)
+        client.settimeout(1)
+        client.connect(self.relay.address)
+        backend, _ = self.listener.accept()
+        self.peers.append(backend)
+        backend.settimeout(1)
+        return client, backend
+
+    def wait_completed(self, count):
+        with self.condition:
+            assert self.condition.wait_for(lambda: len(self.completed) >= count, 2)
+
+    @staticmethod
+    def exchange(client, backend, payload=b"owned-request"):
+        def exact(stream, size):
+            result = bytearray()
+            while len(result) < size:
+                block = stream.recv(size - len(result))
+                assert block, "owned stream ended before its fixed bytes"
+                result.extend(block)
+            return bytes(result)
+
+        client.sendall(payload)
+        assert exact(backend, len(payload)) == payload
+        backend.sendall(b"owned-response")
+        assert exact(client, 14) == b"owned-response"
+
+    def fault_close(self, monkeypatch, *, failed_role, after):
+        from tests.support import asset_minio
+
+        owner = self
+
+        class TrackedSocket(self.socket_type):
+            def __init__(self, *args, role, **kwargs):
+                super().__init__(*args, **kwargs)
+                self.role = role
+                self.attempts = 0
+
+            def close(self):
+                self.attempts += 1
+                if self.role == failed_role and self.attempts == 1:
+                    if after:
+                        super().close()
+                    raise OSError("controlled owned close failure")
+                super().close()
+
+        def create(*args, **kwargs):
+            name = threading.current_thread().name
+            role = (
+                "client"
+                if name == "owned-asset-relay"
+                else "backend"
+                if name == "owned-asset-connection"
+                else None
+            )
+            if role is None:
+                return owner.socket_type(*args, **kwargs)
+            stream = TrackedSocket(*args, role=role, **kwargs)
+            owner.tracked.append(stream)
+            return stream
+
+        monkeypatch.setattr(asset_minio.socket, "socket", create)
+
+    def close(self):
+        settle_owned_test(
+            self.relay.close, *(peer.close for peer in self.peers), self.listener.close
+        )
+
+
+def test_idle_retirement_preserves_active_pair_and_fresh_real_replacement(
+    tmp_path, monkeypatch
+):
+    owned = OwnedTcpRelay(tmp_path, monkeypatch)
+    stop, progressed = threading.Event(), threading.Event()
+    cycles, active_errors = [], []
+    active_worker = None
+    try:
+        retired, retired_backend = owned.open()
+        active, active_backend = owned.open()
+
+        def transfer():
+            try:
+                while not stop.is_set():
+                    owned.exchange(active, active_backend)
+                    cycles.append(True)
+                    progressed.set()
+                    stop.wait(0.02)
+            except (OSError, AssertionError) as error:
+                active_errors.append(error)
+
+        active_worker = threading.Thread(target=transfer)
+        active_worker.start()
+        assert progressed.wait(1)
+        owned.wait_completed(1)
+        assert retired.recv(1) == b"" and retired_backend.recv(1) == b""
+        assert owned.completed[0].fileno() == -1
+        assert owned.relay.connections == 1
+        owned.relay.assert_healthy()
+        previous = len(cycles)
+        progressed.clear()
+        assert progressed.wait(1) and len(cycles) > previous
+        replacement, replacement_backend = owned.open()
+        owned.exchange(replacement, replacement_backend, b"fresh-authorized-pair")
+        assert owned.validations == [True, True, True]
+        assert owned.targets == [("127.0.0.1", 9000)] * 3
+        assert not active_errors and not owned.errors
+        assert owned.relay.first_origin is None and owned.relay.failed is False
+    finally:
+        stop.set()
+        settle_owned_test(owned.close, lambda: join_owned_thread(active_worker))
+    assert not owned.relay.live_threads and not owned.relay.active_sockets
+    assert owned.relay.connections == 0
+
+
+def test_idle_retirement_exposes_real_pending_http_failure_before_caller_timeout(
+    tmp_path, monkeypatch
+):
+    owned = OwnedTcpRelay(tmp_path, monkeypatch)
+    finished = threading.Event()
+    errors = []
+    connection = http.client.HTTPConnection(*owned.relay.address, timeout=3)
+
+    def request():
+        try:
+            connection.request("GET", "/pending-owned-test")
+            connection.getresponse()
+        except (http.client.HTTPException, OSError) as error:
+            errors.append(error)
+        finally:
+            finished.set()
+            connection.close()
+
+    caller = threading.Thread(target=request)
+    try:
+        caller.start()
+        backend, _ = owned.listener.accept()
+        owned.peers.append(backend)
+        backend.settimeout(1)
+        assert receive_request_line(backend) == b"GET /pending-owned-test HTTP/1.1"
+        assert finished.wait(1)  # Less than the independent caller's three seconds.
+        owned.wait_completed(1)
+        assert len(errors) == 1
+        assert isinstance(errors[0], (http.client.RemoteDisconnected, OSError))
+        assert not isinstance(errors[0], TimeoutError)
+        owned.relay.assert_healthy()
+        assert not owned.errors and owned.relay.connections == 0
+    finally:
+        settle_owned_test(
+            connection.close, owned.close, lambda: join_owned_thread(caller)
+        )
+
+
+@pytest.mark.parametrize("failed_role", ["client", "backend"])
+@pytest.mark.parametrize("after", [False, True])
+def test_retirement_close_failure_attempts_both_and_retains_owned_slot(
+    tmp_path, monkeypatch, failed_role, after
+):
+    owned = OwnedTcpRelay(tmp_path, monkeypatch)
+    owned.fault_close(monkeypatch, failed_role=failed_role, after=after)
+    try:
+        owned.open()
+        owned.wait_completed(1)
+        handles = {stream.role: stream for stream in owned.tracked}
+        assert set(handles) == {"client", "backend"}
+        assert all(stream.attempts == 1 for stream in handles.values())
+        assert handles[failed_role] in owned.relay.sockets
+        assert (
+            handles["backend" if failed_role == "client" else "client"]
+            not in owned.relay.sockets
+        )
+        assert owned.relay.connections == 1
+        assert owned.relay.first_origin == ("CONTROL", "OS_OTHER")
+        assert owned.relay.failed is True and not owned.errors
+        with pytest.raises(RuntimeError, match="transport failed"):
+            owned.relay.assert_healthy()
+        owned.relay.close()
+        assert owned.relay.connections == 1
+        assert owned.relay.failed and owned.relay.first_origin == (
+            "CONTROL",
+            "OS_OTHER",
+        )
+    finally:
+        owned.close()
+
+
+@pytest.mark.parametrize("pending", [False, True])
+def test_idle_close_failure_preserves_prior_or_pending_fatal_origin(
+    tmp_path, monkeypatch, pending
+):
+    owned = OwnedTcpRelay(tmp_path, monkeypatch)
+    owned.fault_close(monkeypatch, failed_role="client", after=False)
+    entered, release = threading.Event(), threading.Event()
+    causal = None
+    try:
+        owned.open()
+        if pending:
+            lock = owned.relay.lock
+
+            class PendingMetadata:
+                def __enter__(self):
+                    if threading.current_thread() is causal:
+                        entered.set()
+                        assert release.wait(2)
+                    lock.acquire()
+
+                def __exit__(self, *_):
+                    lock.release()
+
+                def acquire(self, blocking=True):
+                    return lock.acquire(blocking=blocking)
+
+                def release(self):
+                    lock.release()
+
+            owned.relay.lock = PendingMetadata()
+            causal = threading.Thread(
+                target=owned.relay._record_failure, args=("RECV", "OS_OTHER")
+            )
+            causal.start()
+            assert entered.wait(1)
+            assert owned.relay.failed and owned.relay.first_origin is None
+        else:
+            owned.relay._record_failure("RECV", "OS_OTHER")
+        owned.wait_completed(1)
+        assert owned.relay.first_origin == (None if pending else ("RECV", "OS_OTHER"))
+        assert all(stream.attempts == 1 for stream in owned.tracked)
+        assert owned.relay.connections == 1 and owned.relay.failed
+        release.set()
+        if causal:
+            causal.join(1)
+            assert not causal.is_alive()
+        assert owned.relay.first_origin == ("RECV", "OS_OTHER")
+        assert not owned.errors
+    finally:
+        release.set()
+        if causal:
+            causal.join(1)
+        owned.close()
+
+
+def test_stopping_retirement_close_failure_retains_slot_without_failure_metadata(
+    tmp_path, monkeypatch
+):
+    from tests.support import asset_minio
+
+    owned = OwnedTcpRelay(tmp_path, monkeypatch)
+    owned.fault_close(monkeypatch, failed_role="client", after=True)
+
+    def stopping_pump(relay, *_):
+        with relay.lock:
+            relay.state = "STOPPING"
+            relay.stop.set()
+        raise asset_minio.RelayOriginFailure(
+            "PUMP_CUTOFF", "IDLE_CUTOFF", "controlled cutoff"
+        )
+
+    monkeypatch.setattr(asset_minio.LoopbackRelay, "_pump", stopping_pump)
+    try:
+        owned.open()
+        owned.wait_completed(1)
+        assert all(stream.attempts == 1 for stream in owned.tracked)
+        assert owned.relay.connections == 1
+        assert owned.relay.failed is False and owned.relay.first_origin is None
+        assert (
+            next(stream for stream in owned.tracked if stream.role == "client")
+            in owned.relay.sockets
+        )
+        assert not owned.errors
+    finally:
+        owned.close()
+
+
+@pytest.mark.parametrize("phase", ["validation", "connect"])
+def test_forged_idle_before_forwarding_remains_globally_fatal(
+    tmp_path, monkeypatch, phase
+):
+    from tests.support import asset_minio
+
+    owned = OwnedTcpRelay(tmp_path, monkeypatch)
+
+    def forged(*_):
+        raise asset_minio.RelayOriginFailure(
+            "PUMP_CUTOFF", "IDLE_CUTOFF", "forged pre-forwarding marker"
+        )
+
+    monkeypatch.setattr(
+        owned.relay, "validate" if phase == "validation" else "_connect", forged
+    )
+    try:
+        client = owned.socket_type(socket.AF_INET, socket.SOCK_STREAM)
+        owned.peers.append(client)
+        client.settimeout(1)
+        client.connect(owned.relay.address)
+        owned.wait_completed(1)
+        assert client.recv(1) == b""
+        assert owned.relay.failed and owned.relay.first_origin == (
+            "PUMP_CUTOFF",
+            "IDLE_CUTOFF",
+        )
+        assert owned.relay.connections == 0 and not owned.errors
+    finally:
+        owned.close()
+
+
+@pytest.mark.parametrize(
+    "failure", ["matching_text", "unknown", "recv", "send", "half_close", "control"]
+)
+def test_nonidle_forwarding_faults_remain_globally_fatal(
+    tmp_path, monkeypatch, failure
+):
+    from tests.support import asset_minio
+
+    owned = OwnedTcpRelay(tmp_path, monkeypatch)
+
+    def fault(relay, client, upstream, *_):
+        if failure == "matching_text":
+            raise RuntimeError("PUMP_CUTOFF IDLE_CUTOFF relay control cutoff")
+        if failure == "unknown":
+            raise asset_minio.RelayOriginFailure(
+                "PUMP_CUTOFF", "UNKNOWN", "controlled unknown cutoff"
+            )
+        upstream.close()
+        stage, operation = {
+            "recv": ("RECV", lambda: upstream.recv(1)),
+            "send": ("SEND", lambda: upstream.send(b"owned")),
+            "half_close": ("HALF_CLOSE", lambda: upstream.shutdown(socket.SHUT_WR)),
+            "control": ("CONTROL", lambda: upstream.setblocking(False)),
+        }[failure]
+        asset_minio.relay_call(stage, operation)
+
+    monkeypatch.setattr(asset_minio.LoopbackRelay, "_pump", fault)
+    try:
+        owned.open()
+        owned.wait_completed(1)
+        expected = (
+            ("CONTROL", "BUILTIN_RUNTIME")
+            if failure == "matching_text"
+            else ("PUMP_CUTOFF", "UNKNOWN")
+            if failure == "unknown"
+            else (
+                {
+                    "recv": "RECV",
+                    "send": "SEND",
+                    "half_close": "HALF_CLOSE",
+                    "control": "CONTROL",
+                }[failure],
+                "OS_OTHER",
+            )
+        )
+        assert owned.relay.failed and owned.relay.first_origin == expected
+        assert owned.relay.connections == 0 and not owned.errors
+        with pytest.raises(RuntimeError, match="transport failed"):
+            owned.relay.assert_healthy()
+    finally:
+        owned.close()
+
+
+@pytest.mark.parametrize("bound", ["absolute", "tie", "bytes"])
+def test_real_owned_absolute_tie_and_byte_bounds_remain_fatal(
+    tmp_path, monkeypatch, bound
+):
+    owned = OwnedTcpRelay(tmp_path, monkeypatch)
+    if bound == "absolute":
+        owned.relay.ABSOLUTE_SECONDS = 0.1
+    elif bound == "tie":
+        owned.relay.ABSOLUTE_SECONDS = owned.relay.IDLE_SECONDS
+    else:
+        owned.relay.MAX_BYTES = 3
+    try:
+        client, backend = owned.open()
+        if bound == "bytes":
+            client.sendall(b"overflow")
+        owned.wait_completed(1)
+        assert client.recv(1) == backend.recv(1) == b""
+        expected = (
+            ("RECV", "BYTE_LIMIT")
+            if bound == "bytes"
+            else ("PUMP_CUTOFF", "ABSOLUTE_CUTOFF")
+        )
+        assert owned.relay.failed and owned.relay.first_origin == expected
+        assert owned.relay.connections == 0 and not owned.errors
+        assert owned.targets == [("127.0.0.1", 9000)]
+    finally:
+        owned.close()
 
 
 def test_relay_validation_failure_retains_first_origin(tmp_path, monkeypatch):
@@ -627,8 +1129,12 @@ def test_relay_transport_bounds_close_owned_sockets(tmp_path, monkeypatch, bound
         if bound == "bytes":
             client.sendall(b"over")
         assert client.recv(1) == b""
-        with pytest.raises(RuntimeError, match="relay transport failed"):
+        if bound == "idle":
             relay.assert_healthy()
+            assert relay.first_origin is None
+        else:
+            with pytest.raises(RuntimeError, match="relay transport failed"):
+                relay.assert_healthy()
     finally:
         client.close()
         backend.close()
