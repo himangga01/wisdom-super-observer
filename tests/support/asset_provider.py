@@ -2095,11 +2095,8 @@ class AssetProvider:
         self.exact_absence(key)
         self.native_inventory("NATIVE_CLEANUP", set(), set())
         self.verify_foreign_inventory()
-        admin.abort_multipart_upload(
-            Bucket=bucket, Key=foreign, UploadId=foreign_upload
-        )
-        admin.delete_object(Bucket=bucket, Key=foreign)
-        admin.delete_bucket(Bucket=foreign_bucket)
+        # Preserve these original witnesses for the harness. Guarded final
+        # destruction of the owned provider removes them after all readers settle.
         self.assert_container_mapping(self.inspect("container", self.container))
         if self.relay is None:
             raise RuntimeError("owned relay unavailable at acceptance")

@@ -239,6 +239,21 @@ class JobWorker:
         except DBAPIError as exc:
             raise db_error(exc) from None
 
+    def publish_operation_readback(self, lease: JobLease, evidence: object) -> None:
+        """Trusted backend evidence only; SQL verifies the current lease and domain."""
+        from wso_core.tvt.domain_jobs import AuthoritativeReadback
+
+        if JOB_STEP_ACTIVE.get() or type(evidence) is not AuthoritativeReadback:
+            raise JobFailure(403, "INVALID_READBACK")
+        self._call(
+            "SELECT public.wso_operation_readback(:id,:token,:generation,:outcome,:reference)",
+            lease.job_id,
+            lease.token,
+            generation=lease.generation,
+            outcome=evidence.outcome,
+            reference=evidence.reference,
+        )
+
     def execute(self, reference: DispatchReference | dict[str, Any]) -> None:
         reference = DispatchReference.model_validate(reference)
         lease = self.claim(reference.job_id, reference=reference)

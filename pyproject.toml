@@ -2,10 +2,13 @@
 name = "wso-workspace"
 version = "0.1.0"
 requires-python = ">=3.12,<3.13"
-dependencies = ["wso-api", "wso-contracts", "wso-core"]
+dependencies = ["wso-api", "wso-contracts", "wso-core", "wso-tvt-bridge"]
 
 [dependency-groups]
 dev = [
+  "grpcio-tools==1.84.0",
+  "types-protobuf>=7.34,<8",
+  "grpc-stubs>=1.53,<2",
   "httpx>=0.28,<1",
   "httpx2>=2,<3",
   "mypy>=1.15,<2",
@@ -15,9 +18,10 @@ dev = [
 ]
 
 [tool.uv.workspace]
-members = ["services/api", "packages/contracts", "packages/core"]
+members = ["services/tvt-bridge", "services/api", "packages/contracts", "packages/core"]
 
 [tool.uv.sources]
+wso-tvt-bridge = { workspace = true }
 wso-api = { workspace = true }
 wso-contracts = { workspace = true }
 wso-core = { workspace = true }
@@ -37,4 +41,4 @@ line-length = 88
 [tool.mypy]
 python_version = "3.12"
 strict = true
-mypy_path = ["services/api/src", "packages/contracts/src", "packages/core/src"]
+mypy_path = ["services/tvt-bridge/src","services/api/src", "packages/contracts/src", "packages/core/src"]

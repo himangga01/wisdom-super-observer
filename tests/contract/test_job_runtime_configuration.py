@@ -44,7 +44,18 @@ def runtime_probe(monkeypatch):
         pass
 
     class CaptureDispatcher:
-        def __init__(self, database_url, publisher):
+        def __init__(self, database_url, publisher, *, registry):
+            expected = {
+                "IMPORT": ("TENANT", "READ"),
+                "REGISTRATION": ("STORE", "EXTERNAL_WRITE"),
+                "TVT_ACCOUNT_OPERATION": ("TENANT", "EXTERNAL_WRITE"),
+                "TVT_DEVICE_OPERATION": ("STORE", "EXTERNAL_WRITE"),
+                "TYCO_OPERATION": ("TENANT", "EXTERNAL_WRITE"),
+            }
+            assert {
+                name: (registry.get(name).scope_kind, registry.get(name).effect_mode)
+                for name in expected
+            } == expected
             starts.append(("dispatch", database_url, publisher.app))
 
         def run_once(self):

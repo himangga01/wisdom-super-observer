@@ -17,6 +17,232 @@ from tests.support.asset_harness import AssetHarness
 from tests.support.asset_provider import LABEL, AssetProvider
 
 
+def test_bootstrap_retains_original_foreign_sentinel_for_harness_reader(
+    tmp_path, monkeypatch
+):
+    """Deleting the accepted sentinel makes the real downstream reader fail."""
+    from types import SimpleNamespace
+
+    from botocore.exceptions import ClientError
+
+    from tests.support import asset_provider
+
+    provider = AssetProvider(tmp_path)
+    provider.work = tmp_path / ("rustfs-" + provider.owner)
+    provider.work.mkdir()
+    (provider.work / "owner.json").write_text(json.dumps({"owner": provider.owner}))
+    objects, uploads, buckets = {}, set(), set()
+    seeds = []
+
+    class Storage:
+        def __init__(self, role):
+            self.role = role
+
+        def __getattr__(self, name):
+            def operation(**kw):
+                bucket, key = kw.get("Bucket"), kw.get("Key")
+                foreign = provider.foreign_inventory
+                denied = self.role != "bootstrap" and (
+                    bucket != provider.bucket
+                    or (foreign and key == foreign["key"])
+                    or kw.get("Prefix") == "wso-assets/v1/"
+                    or (
+                        self.role == "cleanup"
+                        and name in {"get_object", "head_object", "put_object"}
+                    )
+                )
+                if denied:
+                    raise ClientError(
+                        {
+                            "Error": {"Code": "AccessDenied"},
+                            "ResponseMetadata": {"HTTPStatusCode": 403},
+                        },
+                        name,
+                    )
+                if name == "create_bucket":
+                    buckets.add(bucket)
+                elif name == "put_object":
+                    objects[bucket, key] = kw["Body"]
+                    if kw["Body"] == b"foreign-preserved":
+                        seeds.append((bucket, key))
+                elif name == "get_object":
+                    return {"Body": BytesIO(objects[bucket, key])}
+                elif name == "head_object":
+                    return {"ContentLength": len(objects[bucket, key])}
+                elif name == "create_multipart_upload":
+                    uploads.add((bucket, key, "original-upload"))
+                    return {"UploadId": "original-upload"}
+                elif name == "list_multipart_uploads":
+                    return {
+                        "IsTruncated": False,
+                        "Uploads": [
+                            {"Key": k, "UploadId": u}
+                            for b, k, u in uploads
+                            if b == bucket and k.startswith(kw["Prefix"])
+                        ],
+                    }
+                elif name == "head_bucket":
+                    assert bucket in buckets
+                    return {"ResponseMetadata": {"HTTPStatusCode": 200}}
+                elif name == "delete_object":
+                    objects.pop((bucket, key), None)
+                elif name == "abort_multipart_upload":
+                    uploads.remove((bucket, key, kw["UploadId"]))
+                elif name == "delete_bucket":
+                    buckets.remove(bucket)
+                elif name == "generate_presigned_url":
+                    return "http://localhost/synthetic"
+                return {}
+
+            return operation
+
+        def generate_presigned_url(self, *args, **kwargs):
+            return "http://localhost/synthetic"
+
+        def close(self):
+            pass
+
+    provider.clients = {
+        role: Storage(role) for role in ("bootstrap", "gateway", "cleanup")
+    }
+    provider.image = "sha256:" + "a" * 64
+    provider.budget = SimpleNamespace(
+        cutoff=time.monotonic() + 10, outer=time.monotonic() + 10, check=lambda: None
+    )
+    provider.relay = SimpleNamespace(
+        VALIDATION_SECONDS=1,
+        stop=None,
+        commands=None,
+        assert_healthy=lambda: None,
+        close=lambda **kw: None,
+        failed=False,
+    )
+    provider.relay_pin = "owned-pin"
+    monkeypatch.setattr(provider, "read_relay_identity", lambda *args: "owned-pin")
+    monkeypatch.setattr(provider, "require_pab", lambda: None)
+    monkeypatch.setattr(provider, "native_checkpoint", lambda *args: None)
+    monkeypatch.setattr(provider, "privacy_profile", lambda *args: None)
+    monkeypatch.setattr(provider, "native_inventory", lambda *args: None)
+    monkeypatch.setattr(
+        provider, "exact_absence", lambda key: (provider.bucket, key) not in objects
+    )
+    monkeypatch.setattr(provider, "assert_container_mapping", lambda state: None)
+    monkeypatch.setattr(provider, "inspect", lambda *args: {})
+    signed_reads = [0]
+
+    def raw_get(_):
+        signed_reads[0] += 1
+        return (
+            (200, next(v for v in objects.values() if v != b"foreign-preserved"))
+            if signed_reads[0] == 1
+            else (403, b"")
+        )
+
+    monkeypatch.setattr(provider, "raw_get", raw_get)
+    monkeypatch.setattr(asset_provider.time, "sleep", lambda _: None)
+    provider.preflight()
+    harness = object.__new__(AssetHarness)
+    harness.provider = provider
+    harness.access = SimpleNamespace(clients=provider.clients)
+    harness.assert_foreign_preserved()
+    assert len(seeds) == 1
+    assert uploads == {(provider.bucket, seeds[0][1], "original-upload")}
+    assert objects == {seeds[0]: b"foreign-preserved"}
+    # The real close path still removes only its recorded, inspected resource.
+    provider.created = [("volume", provider.volume)]
+    removed = []
+    monkeypatch.delattr(provider, "inspect")  # Exercise the real ownership guard.
+
+    def destroy(*args):
+        if args == ("volume", "inspect", provider.volume):
+            return json.dumps([{"Labels": {LABEL: provider.owner}}])
+        assert args == ("volume", "rm", provider.volume)
+        removed.append(args)
+        objects.clear()
+        uploads.clear()
+        buckets.clear()
+
+    monkeypatch.setattr(provider, "docker", destroy)
+    provider.close()
+    assert removed and not objects and not uploads and not buckets
+    assert not provider.work.exists()
+
+
+@pytest.mark.parametrize(
+    "observation", ["refusal-then-healthy", "exited", "perpetual-refusal"]
+)
+def test_endpoint_restart_uses_owned_child_bounded_readiness(monkeypatch, observation):
+    from types import SimpleNamespace
+
+    import httpx
+
+    from tests.support import asset_harness
+
+    h = object.__new__(AssetHarness)
+    now, probes = [10.0], []
+    monkeypatch.setattr(asset_harness.time, "monotonic", lambda: now[0])
+    monkeypatch.setattr(
+        asset_harness.time,
+        "sleep",
+        lambda seconds: now.__setitem__(0, now[0] + seconds),
+    )
+    h.phase = "test"
+    h.deadlines = SimpleNamespace(allowance=lambda cap, phase: min(cap, 0.12))
+    h.stop_current_api = lambda: None
+    h.start_api = lambda: None
+    h.process_spec = lambda **kw: kw
+    h.start_mode = lambda *args: SimpleNamespace(
+        process=SimpleNamespace(poll=lambda: 1 if observation == "exited" else None),
+        log=None,
+        command=("owned",),
+        identity=SimpleNamespace(start_ticks=1),
+    )
+
+    def request(*args, **kw):
+        probes.append(now[0])
+        if observation == "refusal-then-healthy" and len(probes) == 2:
+            return SimpleNamespace(status_code=200)
+        raise httpx.ConnectError("synthetic refusal")
+
+    h.request = request
+    if observation == "refusal-then-healthy":
+        h.restart_api(endpoint="http://127.0.0.1:1")
+        assert len(probes) == 2 and now[0] < 10.12
+    else:
+        with pytest.raises(
+            RuntimeError,
+            match="failed to boot"
+            if observation == "exited"
+            else "observation deadline",
+        ):
+            h.restart_api(endpoint="http://127.0.0.1:1")
+        assert probes == [] if observation == "exited" else len(probes) == 3
+        assert now[0] <= 10.12
+
+
+@pytest.mark.parametrize("change", ["extra", "changed", "missing"])
+def test_inventory_diagnostic_distinguishes_seed_metadata_from_whole_inventory(
+    capsys, change
+):
+    from tests.support.asset_faults import FixtureContractError
+
+    h = object.__new__(AssetHarness)
+    original = ({"seed": ("metadata", "digest")}, {("multipart", "upload"): ("time",)})
+    current = (dict(original[0]), dict(original[1]))
+    current[0]["extra"] = ("extra",)
+    if change == "changed":
+        current[0]["seed"] = ("changed", "digest")
+    if change == "missing":
+        del current[0]["seed"]
+    h.seed_inventory = original
+    h.physical_inventory = lambda: current
+    with pytest.raises(FixtureContractError):
+        h.reconcile_epoch(expected_counts=(6, 5))
+    diagnostic = json.loads(capsys.readouterr().out.split("=", 1)[1])
+    assert diagnostic["original_metadata_matches"] is (change == "extra")
+    assert diagnostic["whole_inventory_matches"] is False
+
+
 def relay_fixture(tmp_path, monkeypatch, validate=None):
     from tests.support import asset_minio
 

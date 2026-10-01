@@ -11,6 +11,179 @@ OBJECT_PATH = (
 )
 
 
+@pytest.mark.parametrize("method", ["PUT", "GET"])
+def test_complete_raw_frame_reads_actual_asgi_response_without_write_eof(method):
+    """An injected EOF closes uvicorn while its real gateway validation awaits DB."""
+    import asyncio
+    import json
+    import socket
+    import threading
+    import time
+    from types import SimpleNamespace
+
+    import uvicorn
+    from wso_core.assets import AssetAdmissionController, AssetFailure, AssetGateway
+    from wso_core.storage import IOBudget
+
+    from tests.support.asset_faults import raw_http_exchange
+
+    admission = AssetAdmissionController(upload_slots=1, read_slots=1)
+    controls, results, errors = [], [], []
+
+    def control(scope, operation, *args, **kwargs):
+        controls.append(operation)
+        assert scope == "assets:write" and operation == "prepare_write"
+        time.sleep(
+            0.05
+        )  # Actual asynchronous preparation gives TCP EOF time to arrive.
+        return SimpleNamespace(
+            aad=SimpleNamespace(content_type="image/png", byte_size=32)
+        )
+
+    store = SimpleNamespace(
+        admission=admission,
+        _control=control,
+        budget=IOBudget(time.monotonic() + 5),
+        objects=SimpleNamespace(local_cleanup_complete=lambda: True),
+    )
+    gateway = AssetGateway(store=store)
+
+    async def app(scope, receive, send):
+        try:
+            if scope["method"] == "PUT":
+
+                async def chunks():
+                    while True:
+                        message = await receive()
+                        if message["type"] == "http.disconnect":
+                            return
+                        yield message["body"]
+                        if not message.get("more_body"):
+                            return
+
+                headers = dict(scope["headers"])
+                try:
+                    await gateway.put_content(
+                        UUID(int=3),
+                        UUID(int=4),
+                        chunks(),
+                        content_type=headers[b"content-type"].decode(),
+                        content_length=int(headers[b"content-length"]),
+                        content_encoding=None,
+                    )
+                except AssetFailure as failure:
+                    status, body = (
+                        failure.status,
+                        json.dumps({"code": failure.code}).encode(),
+                    )
+                else:
+                    raise AssertionError("size mismatch was accepted")
+            else:
+                await asyncio.sleep(0.05)
+                status, body = 200, scope["path"].encode()
+            results.append(status)
+            await send(
+                {
+                    "type": "http.response.start",
+                    "status": status,
+                    "headers": [
+                        (b"content-type", b"application/json"),
+                        (b"content-length", str(len(body)).encode()),
+                    ],
+                }
+            )
+            await send({"type": "http.response.body", "body": body})
+        except BaseException as error:
+            errors.append(error)
+            raise
+
+    listener = socket.socket()
+    listener.bind(("127.0.0.1", 0))
+    listener.listen(8)
+    port = listener.getsockname()[1]
+    server = uvicorn.Server(
+        uvicorn.Config(app, lifespan="off", http="h11", log_level="critical")
+    )
+    thread = threading.Thread(target=server.run, kwargs={"sockets": [listener]})
+    thread.start()
+    cutoff = time.monotonic() + 5
+    try:
+        while not server.started and thread.is_alive() and time.monotonic() < cutoff:
+            time.sleep(0.005)
+        assert server.started
+        header = (
+            f"{method} /synthetic HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\n"
+            "Content-Type: image/png\r\nContent-Length: "
+            + ("33" if method == "PUT" else "0")
+            + "\r\nConnection: close\r\n\r\n"
+        ).encode()
+        response = raw_http_exchange(
+            f"http://127.0.0.1:{port}",
+            header,
+            (b"x" * 33,) if method == "PUT" else (),
+            cutoff,
+        )
+        assert response.status_code == (422 if method == "PUT" else 200)
+        assert not response.disconnected and not response.headers[
+            "content-type"
+        ].startswith("image/")
+        assert (
+            response.json() == {"code": "ASSET_LENGTH"}
+            if method == "PUT"
+            else response.content == b"/synthetic"
+        )
+    finally:
+        server.should_exit = True
+        thread.join(max(0, cutoff - time.monotonic()))
+        listener.close()
+    assert not thread.is_alive() and not errors
+    assert results == [422 if method == "PUT" else 200]
+    assert controls == (["prepare_write"] if method == "PUT" else [])
+    assert admission.active_count == 0  # No begin_write/seal/READY or storage dispatch.
+
+
+def test_deliberate_raw_eof_delivers_truncated_frame_to_actual_socket():
+    import socket
+    import threading
+    import time
+
+    from tests.support.asset_faults import raw_http_exchange
+
+    listener = socket.socket()
+    listener.bind(("127.0.0.1", 0))
+    listener.listen(1)
+    listener.settimeout(3)
+    observed, errors = [], []
+
+    def serve():
+        try:
+            with listener.accept()[0] as stream:
+                stream.settimeout(3)
+                frame = b""
+                while chunk := stream.recv(4096):
+                    frame += chunk
+                header, body = frame.split(b"\r\n\r\n", 1)
+                observed.append((b"Content-Length: 64" in header, len(body)))
+        except BaseException as error:  # noqa: BLE001 -- preserve worker error after joining.
+            errors.append(error)
+
+    thread = threading.Thread(target=serve)
+    thread.start()
+    try:
+        response = raw_http_exchange(
+            f"http://127.0.0.1:{listener.getsockname()[1]}",
+            b"PUT / HTTP/1.1\r\nHost: localhost\r\nContent-Length: 64\r\nConnection: close\r\n\r\n",
+            (b"x" * 32,),
+            time.monotonic() + 3,
+            write_eof=True,
+        )
+        assert response.status_code is None and response.disconnected
+    finally:
+        thread.join(3.5)
+        listener.close()
+    assert not thread.is_alive() and not errors and observed == [(True, 32)]
+
+
 def test_create_multipart_selector_dispatches_complete_owned_request() -> None:
     from wso_core.storage import InstallationNamespace, ObjectLocator
 

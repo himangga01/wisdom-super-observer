@@ -1,17 +1,20 @@
 [project]
-name = "wso-api"
+name = "wso-tvt-bridge"
 version = "0.1.0"
 requires-python = ">=3.12,<3.13"
-dependencies = ["fastapi>=0.115,<1", "uvicorn>=0.35,<1", "PyJWT[crypto]>=2.10.1,<3", "wso-contracts", "wso-core", "wso-tvt-bridge"]
+dependencies = ["cryptography>=50,<51", "grpcio==1.84.0", "protobuf==7.36.2", "wso-contracts", "wso-core"]
+
+[project.optional-dependencies]
+worker = ["wso-api"]
 
 [tool.uv.sources]
 wso-contracts = { workspace = true }
 wso-core = { workspace = true }
-wso-tvt-bridge = { workspace = true }
+wso-api = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/wso_api"]
+packages = ["src/wso_tvt_bridge"]

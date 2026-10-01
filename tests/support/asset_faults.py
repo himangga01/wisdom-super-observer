@@ -1512,7 +1512,7 @@ class RawResponse:
         return json.loads(self.content)
 
 
-def raw_http_exchange(origin, headers, chunks, cutoff):
+def raw_http_exchange(origin, headers, chunks, cutoff, *, write_eof=False):
     parsed = urlsplit(origin)
     require(
         parsed.scheme == "http"
@@ -1522,6 +1522,7 @@ def raw_http_exchange(origin, headers, chunks, cutoff):
     )
     require(type(headers) is bytes and b"\r\n\r\n" in headers and len(headers) <= 65536)
     native_float(cutoff)
+    require(type(write_eof) is bool)
     data = bytearray()
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client:
         client.settimeout(max(0.001, min(2, cutoff - time.monotonic())))
@@ -1533,7 +1534,8 @@ def raw_http_exchange(origin, headers, chunks, cutoff):
             client.settimeout(max(0.001, cutoff - time.monotonic()))
             client.sendall(chunk)
             require(time.monotonic() < cutoff)
-        client.shutdown(socket.SHUT_WR)
+        if write_eof:
+            client.shutdown(socket.SHUT_WR)
         while True:
             require(time.monotonic() < cutoff)
             client.settimeout(max(0.001, cutoff - time.monotonic()))

@@ -725,3 +725,332 @@ def test_child_init_malformed_identity_never_publishes_or_starts_helpers(
     assert not (tmp_path / f"child-{os.getpid()}.json").exists()
     assert not (tmp_path / "helpers.json").exists()
     assert not (tmp_path / "last-event.json").exists()
+
+
+@pytest.fixture
+def diagnostic_jobs(tmp_path, monkeypatch):
+    import threading
+    from types import SimpleNamespace
+
+    from tests.support import asset_broker as broker
+
+    monkeypatch.setattr(broker.time, "monotonic", lambda: 100.0)
+    harness = SimpleNamespace(
+        directory=tmp_path,
+        owner="synthetic-owner",
+        provider=SimpleNamespace(docker_target=None),
+        deadlines=SimpleNamespace(start=0.0, cutoffs={"WORK": 260.0}),
+        phase="WORK",
+        callers=[],
+        modes={},
+        jobs_context=None,
+    )
+    jobs = broker.AssetJobs(harness)
+    jobs.child_lock = threading.Lock()
+    return jobs
+
+
+def test_diagnostic_first_cause_survives_cleanup_and_retains_custody(
+    diagnostic_jobs, monkeypatch
+):
+    from types import SimpleNamespace
+
+    jobs = diagnostic_jobs
+    first = ValueError("synthetic-secret-first")
+    later = OSError("synthetic-secret-cleanup")
+    parents = [SimpleNamespace(spec=None), SimpleNamespace(spec=None)]
+    jobs.processes = parents.copy()
+    attempted = []
+
+    def stop(parent, **kwargs):
+        attempted.append(parent)
+        raise later
+
+    jobs.h.stop_mode = stop
+    jobs.h.phase = SimpleNamespace(value="WORK")
+    closed = []
+    jobs.broker.close = lambda cutoff: closed.append(cutoff)
+    with pytest.raises(
+        RuntimeError, match="^owned prefork settlement refused$"
+    ) as caught:
+        jobs.__exit__(ValueError, first, None)
+    assert getattr(caught.value, "diagnostic", None) is not None
+    diagnostic = caught.value.diagnostic
+    assert diagnostic.cause is first
+    assert diagnostic.public()["stage"] == "BODY"
+    assert diagnostic.public()["exception"] == "VALUE"
+    assert attempted == list(reversed(parents))
+    assert jobs.processes == parents and not closed
+    assert "synthetic-secret" not in repr(caught.value)
+    assert "synthetic-secret" not in repr(diagnostic)
+    assert "synthetic-secret" not in json.dumps(diagnostic.public())
+    assert jobs.cleanup_diagnostics[0].cause is later
+
+
+@pytest.mark.parametrize(
+    "ready,proc,remaining,want",
+    [
+        (False, "R", 160.0, "CHILD_PIDFD"),
+        (True, "Z", 160.0, "CHILD_PROC"),
+        (True, "ABSENT", 0.0, "CHILD_CUTOFF"),
+    ],
+)
+def test_diagnostic_distinguishes_original_child_cutoff_pidfd_and_proc(
+    diagnostic_jobs, monkeypatch, ready, proc, remaining, want
+):
+    from types import SimpleNamespace
+
+    from tests.support import asset_broker as broker
+
+    jobs = diagnostic_jobs
+    identity = SimpleNamespace(pid=123, start_ticks=19)
+    jobs.children = {123: (identity, 45, None)}
+    jobs.h.stop_mode = lambda *a, **k: None
+
+    def timeout(*a, **k):
+        raise TimeoutError("synthetic-private-timeout")
+
+    jobs.h.await_owned_cleanup = timeout
+    monkeypatch.setattr(broker, "select_pidfd", lambda fd: ready)
+    monkeypatch.setattr(broker, "observed_proc_state", lambda item: proc, raising=False)
+    with pytest.raises(RuntimeError) as caught:
+        jobs.stop_processes(cleanup_cutoff=100.0 + remaining)
+    assert getattr(caught.value, "diagnostic", None) is not None
+    public = caught.value.diagnostic.public()
+    assert public["stage"] == want
+    assert public["pidfd_ready"] is ready
+    assert public["proc_state"] == proc
+    assert public["cutoff"] == ("EXPIRED" if remaining == 0 else "GT_3S")
+    assert public["children"] == 1
+    assert jobs.children == {123: (identity, 45, None)}
+
+
+def test_diagnostic_observer_preserves_original_exception(diagnostic_jobs, tmp_path):
+    from types import SimpleNamespace
+
+    from tests.support.asset_process import ProcessMode
+
+    jobs = diagnostic_jobs
+    (tmp_path / "child-1.json").write_text("invalid-synthetic-secret", encoding="utf-8")
+    jobs.processes = [
+        SimpleNamespace(
+            mode=ProcessMode.JOB_WORKER, spec=SimpleNamespace(control_path=tmp_path)
+        )
+    ]
+    jobs.observe_children()
+    assert jobs.child_failure is not None
+    assert getattr(jobs.child_failure, "diagnostic", None) is not None
+    assert isinstance(jobs.child_failure.diagnostic.cause, json.JSONDecodeError)
+    assert jobs.child_failure.diagnostic.public()["stage"] == "OBSERVER_PUBLICATION"
+    assert "invalid-synthetic-secret" not in repr(jobs.child_failure)
+
+
+@pytest.mark.parametrize(
+    "state,start,want",
+    [
+        ("Z", 19, "Z"),
+        ("R", 19, "R"),
+        ("S", 20, "IDENTITY_CHANGED"),
+        ("secret", 19, "UNKNOWN"),
+    ],
+)
+def test_diagnostic_proc_snapshot_reports_observation_without_granting_custody(
+    tmp_path, monkeypatch, state, start, want
+):
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    from tests.support import asset_broker as broker
+
+    path = tmp_path / "stat"
+    path.write_bytes(
+        (
+            "123 (private command) " + " ".join([state] + ["0"] * 18 + [str(start)])
+        ).encode()
+    )
+    original = Path.open
+
+    def open_stat(self, *args, **kwargs):
+        assert str(self).replace("\\", "/") == "/proc/123/stat"
+        return original(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", open_stat)
+    assert broker.observed_proc_state(SimpleNamespace(pid=123, start_ticks=19)) == want
+
+
+def test_diagnostic_observer_join_failure_still_attempts_child_cleanup(diagnostic_jobs):
+    from types import SimpleNamespace
+
+    jobs = diagnostic_jobs
+    failure = OSError("synthetic-join-secret")
+
+    def join(timeout):
+        raise failure
+
+    jobs.child_thread = SimpleNamespace(join=join, is_alive=lambda: True)
+    jobs.children = {123: (SimpleNamespace(pid=123, start_ticks=19), 45, None)}
+    attempted = []
+
+    def settle(predicate, cutoff):
+        attempted.append(cutoff)
+        raise TimeoutError()
+
+    jobs.h.await_owned_cleanup = settle
+    with pytest.raises(RuntimeError) as caught:
+        jobs.stop_processes(cleanup_cutoff=260.0)
+    assert attempted == [103.0]
+    assert caught.value.diagnostic.cause is failure
+    assert caught.value.diagnostic.public()["stage"] == "OBSERVER_JOIN"
+    assert jobs.children and jobs.child_thread is not None
+
+
+def test_native_diagnostic_optin_skips_before_provider_import(tmp_path, monkeypatch):
+    import builtins
+
+    from tests.integration import test_private_asset_diagnostics as native
+
+    original = builtins.__import__
+
+    def guarded(name, *args, **kwargs):
+        assert name != "tests.support.asset_harness"
+        return original(name, *args, **kwargs)
+
+    monkeypatch.delenv("WSO_TEST_PRIVATE_ASSET_DIAGNOSTICS", raising=False)
+    monkeypatch.setattr(builtins, "__import__", guarded)
+    with pytest.raises(pytest.skip.Exception):
+        native._execute("parent-delete", tmp_path, lambda *a: pytest.fail("launched"))
+    assert not list(tmp_path.iterdir())
+
+
+@pytest.mark.parametrize(
+    "status,code,want",
+    [(409, "ASSET_CONFLICT", "ASSET_CONFLICT"), (404, "private-secret", "OTHER")],
+)
+def test_native_parent_response_exposes_only_allowlisted_facts(status, code, want):
+    import httpx
+
+    from tests.integration import test_private_asset_diagnostics as native
+
+    response = httpx.Response(
+        status, json={"error": {"code": code, "message": "synthetic-private-message"}}
+    )
+    facts = native.response_facts(response)
+    assert facts == {
+        "http_status": status,
+        "code": want,
+        "image": False,
+        "bytes": "LE_4K",
+    }
+    assert "synthetic-private-message" not in json.dumps(facts)
+
+
+def test_native_checker_rejects_contract_mismatch_even_with_zero_wrapper_exit(
+    tmp_path, capsys
+):
+    from tests.integration import test_private_asset_diagnostics as native
+
+    for case in native.CASES:
+        row = native._receipt(case)
+        row.update(
+            outcome="PASSED",
+            cleanup="SETTLED",
+            inventory="ORIGINAL_6_5",
+            physical_cleanup=True,
+        )
+        if case == "parent-delete":
+            row.update(
+                outcome="CONTRACT_MISMATCH", http_status=409, code="ASSET_CONFLICT"
+            )
+        (tmp_path / (case + ".json")).write_text(json.dumps(row), encoding="utf-8")
+    assert (
+        native.check_results(
+            tmp_path, pytest_exit=0, postgres_cleanup="success", source="a" * 40
+        )
+        == 1
+    )
+    output = capsys.readouterr().out
+    assert "status=FAILED" in output and '"http_status": 409' in output
+
+
+def test_native_checker_rejects_injected_public_fields_before_output(tmp_path, capsys):
+    from tests.integration import test_private_asset_diagnostics as native
+
+    row = native._receipt("after-read")
+    row["raw_exception"] = "synthetic-private-secret"
+    (tmp_path / "after-read.json").write_text(json.dumps(row), encoding="utf-8")
+    with pytest.raises(ValueError, match="invalid diagnostic receipt"):
+        native.check_results(
+            tmp_path, pytest_exit=1, postgres_cleanup="success", source="a" * 40
+        )
+    assert capsys.readouterr().out == ""
+
+
+def test_native_checker_independently_refuses_parent_409_labeled_passed(
+    tmp_path, capsys
+):
+    from tests.integration import test_private_asset_diagnostics as native
+
+    row = native._receipt("parent-delete")
+    row.update(
+        outcome="PASSED",
+        stage="SCENARIO",
+        cleanup="SETTLED",
+        inventory="ORIGINAL_6_5",
+        physical_cleanup=True,
+        http_status=409,
+        code="ASSET_CONFLICT",
+    )
+    (tmp_path / "parent-delete.json").write_text(json.dumps(row), encoding="utf-8")
+    assert (
+        native.check_results(
+            tmp_path,
+            pytest_exit=0,
+            postgres_cleanup="success",
+            source="a" * 40,
+            cases=("parent-delete",),
+        )
+        == 1
+    )
+    assert "status=FAILED" in capsys.readouterr().out
+
+
+def test_native_runner_keeps_scenario_cause_separate_from_cleanup(
+    tmp_path, monkeypatch
+):
+    from tests.integration import test_private_asset_diagnostics as native
+    from tests.support import asset_harness
+
+    class Harness:
+        def __init__(self, directory):
+            self.jobs_context = None
+            self.age_seeds = []
+
+        def __enter__(self):
+            return self
+
+        def prepare_case(self):
+            return None
+
+        def assert_foreign_preserved(self):
+            raise OSError("synthetic-private-cleanup")
+
+        def __exit__(self, *error):
+            return None
+
+    monkeypatch.setenv("WSO_TEST_PRIVATE_ASSET_DIAGNOSTICS", "1")
+    monkeypatch.setattr(native, "RECEIPT_DIR", tmp_path / "receipts")
+    monkeypatch.setattr(asset_harness, "AssetHarness", Harness)
+
+    def scenario(*args):
+        raise ValueError("synthetic-private-body")
+
+    with pytest.raises(RuntimeError, match="native asset diagnostic failed") as caught:
+        native._execute("parent-delete", tmp_path, scenario)
+    row = json.loads((tmp_path / "receipts/parent-delete.json").read_text())
+    assert row["first_exception"] == "VALUE"
+    assert row["cleanup_exception"] == "OS"
+    assert isinstance(caught.value.initiating_cause, ValueError)
+    assert isinstance(caught.value.cleanup_cause, OSError)
+    assert row["outcome"] == "DEFECT" and row["cleanup"] == "FAILED"
+    assert "synthetic-private" not in json.dumps(row) + str(caught.value)
+    native.validate_receipt(row, "parent-delete")

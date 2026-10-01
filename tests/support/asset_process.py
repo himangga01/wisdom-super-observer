@@ -724,7 +724,7 @@ def main():
                 count = int(sys.argv[2])
                 require(1 <= count <= 100)
                 result = (
-                    service.reconcile_once(limit=1)
+                    service.reconcile_once(limit=count)
                     if mode is ProcessMode.RECONCILE
                     else service.run_once(limit=count)
                 )

@@ -1,0 +1,110 @@
+name: Private asset bounded native diagnostics
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ['codex/**']
+    paths:
+      - '.github/workflows/private-asset-diagnostics.yml'
+      - 'tests/support/asset_broker.py'
+      - 'tests/contract/test_asset_job_fixture.py'
+      - 'tests/integration/test_private_asset_diagnostics.py'
+      - 'docs/integrations/private-asset-diagnostics.md'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: private-asset-diagnostics-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  native-diagnostic:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 100
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - case: after-read
+            test: test_native_prefork_after_read
+          - case: after-commit
+            test: test_native_prefork_after_commit
+          - case: parent-delete
+            test: test_native_parent_delete_child_read
+    env:
+      CI: 'true'
+      WSO_CI_DISPOSABLE_POSTGRES: '1'
+      WSO_TEST_PRIVATE_ASSET_DIAGNOSTICS: '1'
+      WSO_TEST_PYTHON: ${{ github.workspace }}/.venv/bin/python
+      WSO_TEST_RECOVERY_DATABASE_NAME: wso_ci_test
+      WSO_TEST_RECOVERY_DATABASE_OWNER: postgres
+    steps:
+      - name: Anchor this independent diagnostic allocation
+        working-directory: ${{ runner.workspace }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import math
+          import os
+          import time
+          started = time.monotonic()
+          if not math.isfinite(started) or started < 0:
+              raise SystemExit("Host monotonic clock is unavailable")
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as stream:
+              stream.write(f"WSO_TEST_ASSET_SUITE_STARTED_MONOTONIC={started:.9f}\n")
+          PY
+      - name: Check out reviewed source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Python 3.12.10
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12.10'
+      - name: Synchronize immutable dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install uv==0.12.19
+          python -m uv sync --locked --all-packages --group dev
+      - name: Provision owned PostgreSQL 17.11
+        shell: bash
+        run: bash scripts/dev/owned-ci-postgres.sh start
+      - name: Execute one real native diagnostic
+        id: fixture-tests
+        shell: bash
+        env:
+          WSO_DIAGNOSTIC_TEST: ${{ matrix.test }}
+          WSO_DIAGNOSTIC_CASE: ${{ matrix.case }}
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p .superpowers/verification/private-asset-diagnostics
+          rm -f -- ".superpowers/verification/private-asset-diagnostics/$WSO_DIAGNOSTIC_CASE.json"
+          # Raw logs remain private; only the checked receipt is printed later.
+          set +e
+          .venv/bin/python -m pytest \
+            "tests/integration/test_private_asset_diagnostics.py::$WSO_DIAGNOSTIC_TEST" \
+            -q --tb=no > .superpowers/verification/private-asset-diagnostics/pytest-private.log 2>&1
+          task_pytest_exit=$?
+          set -e
+          printf 'pytest_exit=%s\n' "$task_pytest_exit" >> "$GITHUB_OUTPUT"
+      - name: Remove owned PostgreSQL fixture
+        id: postgres-cleanup
+        if: always()
+        shell: bash
+        run: bash scripts/dev/owned-ci-postgres.sh cleanup
+      - name: Check actual result and emit bounded source-bound evidence
+        if: always() && steps.fixture-tests.outputs.pytest_exit != ''
+        shell: bash
+        env:
+          WSO_PYTEST_EXIT: ${{ steps.fixture-tests.outputs.pytest_exit }}
+          WSO_POSTGRES_CLEANUP_OUTCOME: ${{ steps.postgres-cleanup.outcome }}
+          WSO_DIAGNOSTIC_CASE: ${{ matrix.case }}
+        run: |
+          set -euo pipefail
+          .venv/bin/python -m tests.integration.test_private_asset_diagnostics \
+            --check --case "$WSO_DIAGNOSTIC_CASE" --pytest-exit "$WSO_PYTEST_EXIT"
+      # No artifact upload: raw logs, private paths, URLs, keys and media stay private.

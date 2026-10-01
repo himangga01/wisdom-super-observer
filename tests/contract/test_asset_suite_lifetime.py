@@ -6,6 +6,390 @@ from dataclasses import replace
 import pytest
 
 
+def test_validation_loop_refreshes_only_after_previous_scenario_settles(monkeypatch):
+    from datetime import UTC, datetime, timedelta
+    from types import SimpleNamespace
+    from uuid import UUID
+
+    from tests.integration.test_private_assets import (
+        test_upload_validation_rejects_truncation_checksum_and_type as run_validation,
+    )
+    from tests.support import asset_harness
+    from tests.support.asset_harness import AssetHarness, BrowserActor
+
+    now = [datetime.now(UTC)]
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return now[0]
+
+    monkeypatch.setattr(asset_harness, "datetime", Clock)
+    h = object.__new__(AssetHarness)
+    h.phase, h.callers = "test", []
+    h.deadlines = SimpleNamespace(check=lambda phase: None)
+    issued = []
+
+    def new_actor(*, tenant_id=None, user_id=None):
+        actor = BrowserActor(
+            tenant_id or UUID(int=1),
+            user_id or UUID(int=2),
+            str(len(issued)),
+            "csrf",
+            now[0] + timedelta(seconds=600),
+        )
+        issued.append(actor)
+        h.actors.append(actor)
+        return actor
+
+    h.actors = []
+    new_actor()
+    new_actor(user_id=UUID(int=3))
+    h.new_actor = new_actor
+    pending, completed = [], []
+    h.image = lambda **kw: b"synthetic image" * 8
+
+    def begin(*args, **kw):
+        assert not pending
+        assert h.actors[0].expires_at > now[0], "expired session reached next BEGIN"
+        pending.append(h.actors[0])
+        return {"asset_id": "synthetic"}
+
+    h.require_begin = begin
+
+    def response(*args, **kw):
+        assert h.actors[0] is pending[0], "session rotated inside upload"
+        return SimpleNamespace(status_code=204)
+
+    h.put = h.raw_put = h.complete = response
+    h.chunks = lambda body: (body,)
+    h.row = lambda _: {"failure_code": "DECODE"}
+    h.assert_error = h.assert_parser_disconnect = h.assert_never_ready = lambda *args: (
+        None
+    )
+
+    def recover(*args):
+        assert h.actors[0] is pending.pop()
+        completed.append(True)
+        now[0] += timedelta(seconds=600)
+
+    h.recover_rejected = recover
+    run_validation(h)
+    assert len(completed) == 7 and not pending
+    assert len(issued) == 14  # Both default actors refresh at six later boundaries.
+
+
+@pytest.mark.parametrize(
+    "remaining,required,refresh",
+    [
+        (700, 190, False),
+        (301, 190, False),
+        (300, 190, True),
+        (-1, 190, True),
+        (504, 505, True),
+        (506, 505, False),
+    ],
+)
+def test_settled_scenario_creates_protected_session_without_mutating_old_or_negative_actors(
+    monkeypatch, remaining, required, refresh
+):
+    from contextlib import contextmanager
+    from datetime import UTC, datetime, timedelta
+    from types import SimpleNamespace
+    from uuid import UUID
+
+    from sqlalchemy import orm
+    from starlette.requests import Request
+    from wso_api.auth import (
+        SESSION_COOKIE,
+        AuthFailure,
+        AuthService,
+        PostgresSessionStore,
+        token_digest,
+    )
+
+    from tests.support import asset_harness
+    from tests.support.asset_harness import AssetHarness, BrowserActor
+
+    now = datetime.now(UTC)
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return now
+
+    monkeypatch.setattr(asset_harness, "datetime", Clock)
+    actors = [
+        BrowserActor(
+            UUID(int=1),
+            UUID(int=index + 2),
+            f"token-{index}",
+            f"csrf-{index}",
+            now + timedelta(seconds=seconds),
+        )
+        for index, seconds in enumerate((remaining, 700, -5, 700))
+    ]
+    rows = {
+        token_digest(a.token): SimpleNamespace(
+            issuer="https://issuer.test",
+            subject=str(a.user_id),
+            user_id=a.user_id,
+            csrf_digest=token_digest(a.csrf),
+            expires_at=a.expires_at,
+        )
+        for a in actors
+    }
+    revoked = {token_digest(actors[3].token)}
+    protected_creates, statements, disposed = [], [], []
+
+    class Database:
+        def execute(self, sql, parameters=None):
+            statement = str(sql)
+            statements.append(statement)
+            if statement == "SELECT current_user":
+                return SimpleNamespace(scalar_one=lambda: "wso_web_session")
+            if statement.startswith("SELECT public.wso_create_web_session("):
+                assert parameters["digest"] not in rows
+                protected_creates.append(dict(parameters))
+                rows[parameters["digest"]] = SimpleNamespace(
+                    issuer=parameters["issuer"],
+                    subject=parameters["subject"],
+                    user_id=parameters["user_id"],
+                    csrf_digest=parameters["csrf"],
+                    expires_at=parameters["expires_at"],
+                )
+                return SimpleNamespace(scalar_one=lambda: True)
+            assert statement == "SELECT * FROM public.wso_get_web_session(:digest)"
+            return SimpleNamespace(
+                first=lambda: (
+                    None
+                    if parameters["digest"] in revoked
+                    else rows.get(parameters["digest"])
+                )
+            )
+
+    class Factory:
+        @contextmanager
+        def begin(self):
+            yield Database()
+
+    factory = Factory()
+    monkeypatch.setattr(orm, "sessionmaker", lambda engine: factory)
+    monkeypatch.setattr(
+        asset_harness,
+        "create_engine",
+        lambda *args, **kw: SimpleNamespace(dispose=lambda: disposed.append(True)),
+    )
+    monkeypatch.setenv(
+        "WSO_TEST_SESSION_DATABASE_URL",
+        "postgresql+psycopg://synthetic.invalid/fixture",
+    )
+    store = PostgresSessionStore(
+        "postgresql+psycopg://synthetic.invalid/fixture", session_factory=factory
+    )
+    service = object.__new__(AuthService)
+    service.sessions = store
+
+    def authenticate(actor):
+        return service.authenticate(
+            Request(
+                {
+                    "type": "http",
+                    "headers": [
+                        (b"cookie", f"{SESSION_COOKIE}={actor.token}".encode())
+                    ],
+                }
+            )
+        )
+
+    h = object.__new__(AssetHarness)
+    h.actors, h.callers, h.phase = list(actors), [], "test"
+    h.deadlines = SimpleNamespace(check=lambda phase: None)
+    h.admin = None  # Same-user refresh must never create/restore membership.
+    original_expiry = actors[0].expires_at
+    if remaining < 0:
+        with pytest.raises(AuthFailure):
+            authenticate(actors[0])
+    # An in-flight caller prevents a boundary, including credential rotation.
+    h.callers = [object()]
+    from tests.support.asset_faults import FixtureContractError
+
+    with pytest.raises(FixtureContractError):
+        h.prepare_scenario(required_seconds=required)
+    assert not protected_creates and h.actors[0] is actors[0]
+    h.callers.clear()
+    h.prepare_scenario(required_seconds=required)
+    current = h.actors[0]
+    assert authenticate(current).user_id == actors[0].user_id
+    assert current.tenant_id == actors[0].tenant_id
+    assert actors[0].expires_at == original_expiry
+    assert rows[token_digest(actors[0].token)].expires_at == original_expiry
+    if refresh:
+        assert current.token != actors[0].token and current.csrf != actors[0].csrf
+        assert current.expires_at == now + timedelta(seconds=600)
+        assert len(protected_creates) == 1 and disposed == [True]
+    else:
+        assert current is actors[0] and protected_creates == []
+    assert h.actors[1:4] == actors[1:4]
+    for actor in actors[2:4]:
+        with pytest.raises(AuthFailure):
+            authenticate(actor)
+    assert all(s.startswith("SELECT ") for s in statements)
+
+
+@pytest.mark.parametrize("resumed", [False, True])
+@pytest.mark.parametrize("sizes", [(6, 5), (201, 101)])
+def test_transient_recovery_traverses_unequal_streams_and_inherited_tail(
+    monkeypatch, capsys, resumed, sizes
+):
+    import json
+    from types import SimpleNamespace
+
+    from tests.support import asset_faults, asset_process
+    from tests.support.asset_harness import AssetHarness
+    from tests.support.asset_process import ProcessMode
+
+    cursors = {
+        "object_cursor": 4 if resumed else None,
+        "multipart_cursor": 3 if resumed else None,
+    }
+    populations = {
+        "object_cursor": list(range(sizes[0])),
+        "multipart_cursor": list(range(sizes[1])),
+    }
+    seen = {key: set() for key in cursors}
+    limits, records, cleanup = [], [], []
+    journals = []
+
+    def reconcile_once(*, limit):
+        limits.append(limit)
+        for name, items in populations.items():
+            start = cursors[name] or 0
+            page = items[start : start + limit]
+            seen[name].update(page)
+            cursors[name] = (
+                start + len(page) if start + len(page) < len(items) else None
+            )
+            journals[-1]["pages"].append(
+                [
+                    name,
+                    {"cursor": start, "limit": limit},
+                    {"items": page, "next_cursor": cursors[name]},
+                ]
+            )
+        return 0
+
+    service = SimpleNamespace(
+        reconcile_once=reconcile_once,
+        objects=SimpleNamespace(local_cleanup_complete=lambda: True),
+    )
+    monkeypatch.setattr(asset_process.sys, "platform", "linux")
+    for key, value in {
+        "CI": "true",
+        "WSO_CI_DISPOSABLE_POSTGRES": "1",
+        "WSO_ASSET_FIXTURE_CONTROL": ".",
+        "WSO_ASSET_FIXTURE_OWNER": "synthetic",
+    }.items():
+        monkeypatch.setenv(key, value)
+    from pathlib import Path
+
+    monkeypatch.setattr(
+        asset_process,
+        "BarrierControl",
+        lambda *args: SimpleNamespace(directory=Path("."), owner="synthetic"),
+    )
+
+    def create_service(env, observer, control):
+        journals.append(observer)
+        return service
+
+    monkeypatch.setattr(asset_process, "create_fixture_maintenance", create_service)
+    helper = SimpleNamespace(close=lambda: None)
+    monkeypatch.setattr(
+        asset_process,
+        "HelperObserver",
+        lambda *args: SimpleNamespace(start=lambda: helper),
+    )
+    monkeypatch.setattr(
+        asset_faults, "snapshot_json", lambda path, value: records.append(value)
+    )
+    h = object.__new__(AssetHarness)
+    h.row = lambda _: {"state": "DELETED", "lease_expires_at": None}
+    h.phase = "test"
+    h.deadlines = SimpleNamespace(
+        allowance=lambda cap, phase: cap, check=lambda phase: None
+    )
+    h.cursor_state = lambda: dict(cursors)
+
+    def run_mode(mode, *, limit=1, **kwargs):
+        assert mode is ProcessMode.RECONCILE
+        monkeypatch.setattr(
+            asset_process.sys, "argv", ["fixture", mode.value, str(limit)]
+        )
+        asset_process.main()
+        return records[-2]
+
+    h.run_mode = run_mode
+    h.drain_cleanup = lambda ids, cutoff: cleanup.append((ids, cutoff))
+    h._recover_rejected({"asset_id": "synthetic"})
+    assert seen == {
+        "object_cursor": set(range(sizes[0])),
+        "multipart_cursor": set(range(sizes[1])),
+    }
+    expected_calls = (2 if resumed else 1) if sizes == (6, 5) else (5 if resumed else 3)
+    assert limits == [100] * expected_calls
+    diagnostic = json.loads(capsys.readouterr().out.split("=", 1)[1])
+    assert diagnostic["provider_pages"] == 2 * expected_calls
+    assert set(diagnostic) == {
+        "schema",
+        "reconcile_calls",
+        "provider_pages",
+        "page_limit",
+        "wait_ms",
+        "traversal_ms",
+        "cleanup_ms",
+    }
+    assert all(
+        type(value) is int and 0 <= value <= 600000 for value in diagnostic.values()
+    )
+    assert len(cleanup) == 1 and cleanup[0][0] == ["synthetic"]
+    assert len(records) == 2 * len(limits)
+    # Fixed-epoch callers retain their default one-item page/restart witness.
+    cursors.update(object_cursor=None, multipart_cursor=None)
+    run_mode(ProcessMode.RECONCILE)
+    assert limits[-1] == 1 and cursors == {"object_cursor": 1, "multipart_cursor": 1}
+
+
+def test_transient_recovery_keeps_sixty_four_call_ceiling_and_original_phase(
+    monkeypatch,
+):
+    from types import SimpleNamespace
+
+    from tests.support.asset_harness import AssetHarness
+
+    h = object.__new__(AssetHarness)
+    h.row = lambda _: {"state": "DELETED", "lease_expires_at": None}
+    calls, checks = [], []
+    h.phase = "original"
+    h.deadlines = SimpleNamespace(
+        allowance=lambda cap, phase: cap, check=lambda phase: checks.append(phase)
+    )
+    h.cursor_state = lambda: {"object_cursor": "stuck", "multipart_cursor": None}
+
+    def run_mode(mode, **kw):
+        calls.append(kw)
+        return {"pages": [[], []]}
+
+    h.run_mode = run_mode
+    h.drain_cleanup = lambda *args: pytest.fail(
+        "incomplete traversal cannot earn cleanup"
+    )
+    with pytest.raises(RuntimeError, match="transient reconciliation bound"):
+        h._recover_rejected({"asset_id": "synthetic"})
+    assert len(calls) == 64
+    assert checks and set(checks) == {"original"}
+
+
 def test_setup_allowance_clips_to_original_phase_and_expires_exactly():
     from tests.support.asset_harness import (
         FixtureDeadlineError,

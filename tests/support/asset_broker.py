@@ -280,6 +280,102 @@ class AssetBroker:
         self.close()
 
 
+DIAGNOSTIC_STAGES = frozenset(
+    {
+        "BODY",
+        "PARENT_STOP",
+        "OBSERVER_PUBLICATION",
+        "OBSERVER_PIDFD",
+        "OBSERVER_IDENTITY",
+        "OBSERVER_JOIN",
+        "CHILD_CUTOFF",
+        "CHILD_PIDFD",
+        "CHILD_PROC",
+        "CHILD_WAIT",
+        "CRASH_SETUP",
+        "CRASH_CHECKPOINT",
+        "CRASH_HELPERS",
+        "CRASH_IDENTITY",
+        "CRASH_SIGNAL",
+        "CRASH_READINESS",
+        "RECOVERY",
+        "BROKER_CLOSE",
+    }
+)
+PROC_STATES = frozenset(
+    {
+        "R",
+        "S",
+        "D",
+        "Z",
+        "T",
+        "t",
+        "X",
+        "x",
+        "K",
+        "W",
+        "P",
+        "I",
+        "ABSENT",
+        "UNKNOWN",
+        "IDENTITY_CHANGED",
+        "NOT_OBSERVED",
+    }
+)
+
+
+def observed_proc_state(identity):
+    """Read a bounded stat snapshot; observation never grants signal/reap authority."""
+    try:
+        with Path(f"/proc/{identity.pid}/stat").open("rb") as stream:
+            data = stream.read(4097)
+        if len(data) > 4096:
+            return "UNKNOWN"
+        fields = data[data.rindex(b")") + 2 :].split()
+        if int(fields[19]) != identity.start_ticks:
+            return "IDENTITY_CHANGED"
+        state = fields[0].decode("ascii")
+        return state if state in PROC_STATES else "UNKNOWN"
+    except FileNotFoundError:
+        return "ABSENT"
+    except Exception:  # noqa: BLE001 -- observation cannot replace initiating cause.
+        return "UNKNOWN"
+
+
+def exception_category(error):
+    from tests.support.asset_faults import FixtureContractError
+    from tests.support.asset_harness import FixtureDeadlineError
+
+    for kind, category in (
+        (FixtureDeadlineError, "DEADLINE"),
+        (FixtureContractError, "CONTRACT"),
+        (TimeoutError, "TIMEOUT"),
+        (OSError, "OS"),
+        (ValueError, "VALUE"),
+        (AssertionError, "ASSERTION"),
+        (RuntimeError, "RUNTIME"),
+    ):
+        if isinstance(error, kind):
+            return category
+    return "OTHER"
+
+
+@dataclass(frozen=True, slots=True, repr=False)
+class PreforkDiagnostic:
+    cause: BaseException
+    identity: object
+    facts: tuple
+
+    def public(self):
+        return dict(self.facts)
+
+
+class PreforkSettlementError(RuntimeError):
+    def __init__(self, diagnostic):
+        super().__init__("owned prefork settlement refused")
+        self.diagnostic = diagnostic
+
+
 class AssetJobs:
     def __init__(self, harness):
         self.h = harness
@@ -296,6 +392,83 @@ class AssetJobs:
         self.child_lock = threading.Lock()
         self.child_thread, self.child_failure = None, None
         self.seen_children = set()
+        self.diagnostic = None
+        self.cleanup_diagnostics = []
+        self.diagnostic_lock = threading.Lock()
+        self.diagnostic_stage = "CRASH_SETUP"
+        self.diagnostic_cutoff = harness.deadlines.cutoffs[harness.phase]
+
+    def record_diagnostic(
+        self, stage, error, cutoff, *, identity=None, descriptor=None
+    ):
+        require(stage in DIAGNOSTIC_STAGES)
+        ready, proc = None, "NOT_OBSERVED"
+        if descriptor is not None:
+            try:
+                ready = select_pidfd(descriptor)
+            except Exception:  # noqa: BLE001 -- bounded diagnostic only.
+                ready = None
+        if identity is not None:
+            proc = observed_proc_state(identity)
+        if stage == "CHILD_WAIT":
+            stage = (
+                "CHILD_CUTOFF"
+                if time.monotonic() >= cutoff
+                else "CHILD_PIDFD"
+                if ready is False
+                else "CHILD_PROC"
+                if ready is True and proc != "ABSENT"
+                else "CHILD_WAIT"
+            )
+        remaining = cutoff - time.monotonic()
+        with self.child_lock:
+            children = len(self.children)
+        helpers, helper_complete = 0, True
+        for parent in tuple(self.processes):
+            try:
+                with (parent.spec.control_path / "helpers.json").open("rb") as stream:
+                    raw = stream.read(4097)
+                require(len(raw) <= 4096)
+                value = json.loads(raw)
+                require(
+                    value["owner"] == self.h.owner
+                    and type(value["pids"]) is list
+                    and all(type(pid) is int and pid > 0 for pid in value["pids"])
+                    and type(value["complete"]) is bool
+                )
+                helpers += len(value["pids"])
+                helper_complete = helper_complete and value["complete"]
+            except Exception:  # noqa: BLE001 -- unknown is not settled.
+                helpers, helper_complete = -1, None
+                break
+        facts = {
+            "stage": stage,
+            "exception": exception_category(error),
+            "pidfd_ready": ready,
+            "proc_state": proc,
+            "cutoff": "EXPIRED"
+            if remaining <= 0
+            else "LE_3S"
+            if remaining <= 3
+            else "GT_3S",
+            "children": min(children, 999),
+            "parents": min(len(self.processes), 999),
+            "observers": int(self.child_thread is not None),
+            "callers": min(len(self.h.callers), 999),
+            "helpers": min(helpers, 999),
+            "helpers_complete": helper_complete,
+        }
+        diagnostic = getattr(error, "diagnostic", None)
+        if not isinstance(diagnostic, PreforkDiagnostic):
+            diagnostic = PreforkDiagnostic(error, identity, tuple(facts.items()))
+        with self.diagnostic_lock:
+            if self.diagnostic is None:
+                self.diagnostic = diagnostic
+            elif (
+                diagnostic is not self.diagnostic and len(self.cleanup_diagnostics) < 16
+            ):
+                self.cleanup_diagnostics.append(diagnostic)
+        return diagnostic
 
     def __enter__(self):
         self.broker.start()
@@ -476,6 +649,8 @@ class AssetJobs:
         return owned
 
     def observe_children(self):
+        stage = "OBSERVER_PUBLICATION"
+        observed_identity = None
         try:
             while not self.child_stop.is_set():
                 for parent in tuple(self.processes):
@@ -487,11 +662,16 @@ class AssetJobs:
                             or path in self.seen_children
                         ):
                             continue
+                        stage = "OBSERVER_PUBLICATION"
+                        observed_identity = None
                         value = json.loads(path.read_bytes())
                         value["command"] = tuple(value["command"])
                         identity = ProcessIdentity(**value)
+                        observed_identity = identity
+                        stage = "OBSERVER_PIDFD"
                         descriptor = os.pidfd_open(identity.pid, 0)
                         try:
+                            stage = "OBSERVER_IDENTITY"
                             validate_process_identity(
                                 identity, process_identity(identity.pid, self.h.owner)
                             )
@@ -513,10 +693,11 @@ class AssetJobs:
                             self.children[identity.pid] = (identity, descriptor, parent)
                             self.seen_children.add(path)
                 self.child_stop.wait(0.025)
-        except BaseException:  # noqa: BLE001 -- retain owned settlement failures without raw exception output.
-            self.child_failure = RuntimeError(
-                "owned prefork identity observation refused"
+        except BaseException as error:  # noqa: BLE001 -- private first cause, fixed public failure.
+            diagnostic = self.record_diagnostic(
+                stage, error, self.diagnostic_cutoff, identity=observed_identity
             )
+            self.child_failure = PreforkSettlementError(diagnostic)
 
     def launch_dispatch(self):
         owned = self.h.start_mode(
@@ -606,12 +787,24 @@ class AssetJobs:
             try:
                 self.h.stop_mode(process, cleanup_cutoff=cleanup_cutoff)
             except Exception as error:  # noqa: BLE001 -- settle all exact parent handles
+                self.record_diagnostic(
+                    "PARENT_STOP",
+                    error,
+                    cutoff,
+                    identity=getattr(process, "identity", None),
+                )
                 first = first or error
         self.child_stop.set()
         if self.child_thread is not None:
-            self.child_thread.join(max(0, min(3, cutoff - time.monotonic())))
-            if self.child_thread.is_alive() or self.child_failure is not None:
-                first = first or RuntimeError("prefork observer unsettled")
+            try:
+                self.child_thread.join(max(0, min(3, cutoff - time.monotonic())))
+                if self.child_thread.is_alive() or self.child_failure is not None:
+                    raise self.child_failure or RuntimeError(
+                        "prefork observer unsettled"
+                    )
+            except Exception as error:  # noqa: BLE001 -- still attempt every retained child.
+                self.record_diagnostic("OBSERVER_JOIN", error, cutoff)
+                first = first or error
             else:
                 self.child_thread = None
         children_cutoff = min(time.monotonic() + 3, cutoff)
@@ -627,15 +820,33 @@ class AssetJobs:
                 else:
                     self.h.await_owned_cleanup(predicate, children_cutoff)
             except Exception as error:  # noqa: BLE001 -- retain unresolved descriptors
+                self.record_diagnostic(
+                    "CHILD_WAIT",
+                    error,
+                    cutoff,
+                    identity=identity,
+                    descriptor=descriptor,
+                )
                 first = first or error
             else:
                 os.close(descriptor)
                 self.children.pop(pid)
         if first is not None:
-            raise RuntimeError("owned prefork settlement refused") from None
+            raise PreforkSettlementError(self.diagnostic) from None
         self.processes.clear()
 
     def crash_and_recover(self, asset, position, *, recovery_seconds):
+        self.diagnostic_stage = "CRASH_SETUP"
+        self.diagnostic_cutoff = self.h.deadlines.cutoffs[self.h.phase]
+        try:
+            return self._crash_and_recover(
+                asset, position, recovery_seconds=recovery_seconds
+            )
+        except BaseException as error:  # noqa: BLE001 -- retain exact initiating stage.
+            self.record_diagnostic(self.diagnostic_stage, error, self.diagnostic_cutoff)
+            raise PreforkSettlementError(self.diagnostic) from None
+
+    def _crash_and_recover(self, asset, position, *, recovery_seconds):
         require(position in {"after-read", "after-commit"} and recovery_seconds == 160)
         result = self.enqueue(asset, checkpoint=position)
         require(result["accepted"])
@@ -648,8 +859,14 @@ class AssetJobs:
         )
         control.arm(event, asset_id=UUID(job_id), cutoff=checkpoint_cutoff)
         self.launch_dispatch()
+        self.diagnostic_stage, self.diagnostic_cutoff = (
+            "CRASH_CHECKPOINT",
+            checkpoint_cutoff,
+        )
         control.wait(checkpoint_cutoff)
+        self.diagnostic_stage = "CRASH_HELPERS"
         self.h.assert_helpers_settled(worker)
+        self.diagnostic_stage = "CRASH_IDENTITY"
         child = next(
             identity
             for identity, _fd, parent in self.children.values()
@@ -695,20 +912,35 @@ class AssetJobs:
             require(value > 0)
             return value
 
+        self.diagnostic_cutoff = recovery_cutoff
+        self.diagnostic_stage = "CRASH_IDENTITY"
         parent_fd = os.pidfd_open(worker.process.pid)
         try:
             validate_process_identity(
                 worker.identity, process_identity(worker.process.pid, self.h.owner)
             )
+            self.diagnostic_stage = "CRASH_SIGNAL"
             signal.pidfd_send_signal(descriptor, signal.SIGKILL, None, 0)
             signal.pidfd_send_signal(parent_fd, signal.SIGKILL, None, 0)
-            self.h.await_fact(
-                lambda: select_pidfd(descriptor) and select_pidfd(parent_fd), cap=3
-            )
+            self.diagnostic_stage = "CRASH_READINESS"
+            try:
+                self.h.await_fact(
+                    lambda: select_pidfd(descriptor) and select_pidfd(parent_fd), cap=3
+                )
+            except BaseException as error:
+                self.record_diagnostic(
+                    "CRASH_READINESS",
+                    error,
+                    recovery_cutoff,
+                    identity=child,
+                    descriptor=descriptor,
+                )
+                raise
         finally:
             os.close(parent_fd)
         self.stop_processes(cleanup_cutoff=recovery_cutoff)
         remaining()
+        self.diagnostic_stage = "RECOVERY"
         control.reset()
         if position == "after-read":
             self.last_lease = json.loads(
@@ -778,8 +1010,14 @@ class AssetJobs:
             cutoff = min(self.h.deadlines.start + 94 * 60, time.monotonic() + 8 * 60)
         if self.h.phase.value == "TEARDOWN":
             cutoff = min(cutoff, self.h.deadlines.cutoffs[self.h.phase])
+        if len(_exc) > 1 and _exc[1] is not None:
+            self.record_diagnostic("BODY", _exc[1], self.diagnostic_cutoff)
         self.stop_processes(cleanup_cutoff=cutoff)
-        self.broker.close(cutoff)
+        try:
+            self.broker.close(cutoff)
+        except BaseException as error:  # noqa: BLE001 -- preserve prior body failure.
+            self.record_diagnostic("BROKER_CLOSE", error, cutoff)
+            raise PreforkSettlementError(self.diagnostic) from None
         self.h.jobs_context = None
 
 

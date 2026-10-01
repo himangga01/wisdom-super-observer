@@ -1,0 +1,41 @@
+# Bounded native private-asset diagnostics
+
+Analysis date: 2026-10-02. Source status: `SOURCE_READY_FOR_ROOT_REVIEW_NOT_LINUX_ACCEPTANCE`. `MATCHED=0`; `release_ready=false`.
+
+The dedicated workflow gathers evidence for two unresolved failures in the real private-asset service fixture: prefork process settlement after a crash, and the public child-download response after deleting its parent. The prior actual14 run at `ea5d94e9c49fee8f86e195a1db0a52330e094aaa` recorded 10 failures, four passes and one teardown error. Its result is unchanged by host tests or this diagnostic source.
+
+## Execution and ownership
+
+`.github/workflows/private-asset-diagnostics.yml` has three independent Ubuntu 24.04 matrix jobs, with fail-fast disabled. Each job owns its PostgreSQL 17.11 allocation through `scripts/dev/owned-ci-postgres.sh`; cleanup runs with `always()`. The existing RustFS and Valkey fixtures retain their version, digest, Docker target, private prefix, role and ownership validation. Each job starts from the reviewed source SHA with pinned checkout/setup-python actions, Python 3.12.10 and uv 0.12.19, then synchronizes the locked dependency tree.
+
+The independent database per case is necessary: the concrete `ASSET_FIXTURE_*` registry setup rejects a nonempty prior fixture registry. Isolation also lets the other cases collect evidence when one case retains unsettled custody. No shared database reset or in-process provider replacement is used.
+
+| Case | Actual path | Required observation |
+| --- | --- | --- |
+| `after-read` | Owned Celery prefork, Valkey reservation, protected asset read, crash and recovery | First failed custody stage, pidfd readiness, observed process state and original cutoff category; normal recovery assertions still apply |
+| `after-commit` | Same real path after committed job/read effects | Same custody facts; existing redelivery, effect equality and no duplicate effects assertions remain |
+| `parent-delete` | Protected parent and crop upload, ticket issuance, parent DELETE, actual child GET | Numeric HTTP status, allowlisted code, image content-type flag, bounded length category and child row state |
+
+The case module is `tests/integration/test_private_asset_diagnostics.py`. Each workflow job runs exactly one explicit test node with `WSO_TEST_PRIVATE_ASSET_DIAGNOSTICS=1`. Without that value, all three cases skip before importing or constructing the private provider harness. Running the entire opted-in module against one already populated PostgreSQL allocation is not the workflow: use a fresh owned allocation for each case.
+
+## Bounds and custody
+
+Each job anchors the host monotonic clock before checkout/setup. Existing fixture limits remain 12 minutes for setup, 86 minutes for total work, 94 minutes through teardown, and a 100-minute workflow ceiling. Recovery retains its original 160-second cutoff; parent/child readiness, request and cleanup checks retain their existing clipped allowances. These are three separate bounded allocations, with at most three concurrent 100-minute job ceilings. No polling or process deadline is extended by diagnostics.
+
+The common harness still creates the original six objects and five multipart uploads. Cases do not wait for or claim the 62-minute age witness. On settled custody, cleanup deletes only known scenario assets through the protected API and normal maintenance, verifies their physical absence and exactly one cleanup success, then compares the entire original inventory and its metadata and preserves the foreign sentinel. The original seeds are not deleted early or reseeded. Guarded final provider teardown removes the owned fixture. When process or helper custody remains unresolved, existing harness teardown retains the provider target and reports refusal.
+
+`AssetJobs` now retains a typed `PreforkDiagnostic` with the original exception object and private identity, where available. The first record is stable across later cleanup; at most 16 separate subsequent records are retained. The fixed public exception text remains `owned prefork settlement refused`. Parent, observer and child cleanup still runs; an observer join exception no longer prevents attempts for retained children. Broker/provider destruction remains blocked by unsettled process cleanup.
+
+Public fields are finite stage/exception/cutoff enums, `/proc` state letters or `ABSENT`, `UNKNOWN`, `IDENTITY_CHANGED`, `NOT_OBSERVED`, nullable pidfd/helper booleans, and bounded custody counts. Unknown helper inventory is `-1`, not zero. Counts saturate at 999. The process stat observation reads at most 4097 bytes and compares the retained start ticks. A `Z` observation identifies a observed zombie at that instant; it does not grant reap or signal authority. None of these observations replaces the existing UID, PPID, PGID, command, owner, start-tick, publication or retained-pidfd fences.
+
+## Result interpretation and privacy
+
+Raw pytest output is redirected to a private runner file. No JUnit, media, log or other artifact upload is configured. Public output includes the source SHA, actual pytest exit, PostgreSQL cleanup status and strictly validated diagnostic receipts. Every enum, number, boolean and field name is checked before the receipt is printed. Unknown fields and oversized/missing receipts fail closed without echoing their values. Raw exceptions, SQL, URLs, credentials, keys, commands, paths, asset IDs and process IDs are not printed by this checker.
+
+The first scenario exception and first cleanup exception have separate categorical fields. Cleanup failures cannot overwrite a recorded parent contract mismatch. A failing test, malformed or absent receipt, unsettled target, unsuccessful PostgreSQL cleanup, inventory mismatch, or physical cleanup failure makes the checker return nonzero. A shell execution step merely recording pytest's exit does not mean the diagnostic passed.
+
+A parent-read 409 with no image is reported as `CONTRACT_MISMATCH`; the declared denial set remains 401/403/404/410 with no image content type. The checker independently applies that status rule even to a receipt labeled passed. No blanket 409 acceptance or global SQLSTATE 55000 mapping is introduced. The intended product response can be decided after actual evidence is available.
+
+`FOCUSED_PASS` refers only to the selected native diagnostic case and cleanup, never full14, aged-storage, release, APK or device acceptance. On Windows, host tests establish cause retention, selection, bounded serialization, opt-in behavior and checker decisions with synthetic process boundaries. They do not establish Linux pidfd behavior, actual reaping, RustFS/Valkey service behavior or the actual parent response. Native results remain pending coordinator review/publication and CI execution.
+
+The source packet is recorded in `.superpowers/sdd/2026-09-27-superlive-plus-web-parity-implementation-plan/T05A-native-asset-diagnostics-report.md`. The frozen deterministic fixture corrections and product authorization/lifecycle files are outside this diagnostic edit scope.

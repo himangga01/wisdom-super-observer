@@ -190,6 +190,10 @@ class JobService:
         payload: BaseModel | dict[str, Any],
         idempotency_key: str,
     ) -> JobView:
+        from wso_core.tvt.domain_jobs import DOMAIN_KINDS
+
+        if kind in DOMAIN_KINDS:
+            raise JobFailure(403, "CHECKED_OPERATION_REQUIRED")
         definition = self.registry.get(kind)
         if (
             scope.scope_kind != definition.scope_kind

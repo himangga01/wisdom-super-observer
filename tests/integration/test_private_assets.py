@@ -64,6 +64,7 @@ def test_upload_validation_rejects_truncation_checksum_and_type(asset_harness):
         (png[:32], None, {}, "decode", 503, "ASSET_UNAVAILABLE"),
     )
     for registered, body, overrides, transport, status, code in trials:
+        h.prepare_scenario()  # Previous rejected upload and cleanup have settled.
         session = h.require_begin(registered, **overrides)
         body = registered if body is None else body
         response = (
@@ -92,6 +93,7 @@ def test_upload_enforces_byte_pixel_dimension_and_frame_limits(asset_harness):
         _roundtrip(h, boundary, data)
         h.assert_error(h.begin(data + b"x"), 413, "ASSET_LIMIT")
         for chunked in (False, True):
+            h.prepare_scenario()
             session = h.require_begin(data)
             response = h.put(session, h.chunks(data + b"x") if chunked else data + b"x")
             h.assert_error(
@@ -100,9 +102,11 @@ def test_upload_enforces_byte_pixel_dimension_and_frame_limits(asset_harness):
                 "ASSET_LIMIT" if chunked else "ASSET_LENGTH",
             )
             h.recover_rejected(session)
+        h.prepare_scenario()  # The ready boundary asset has no live upload/ticket.
         h.erase(boundary)
     with h.policy(max_dimension=128, max_pixels=4096):
         for width, height in ((128, 1), (64, 64)):
+            h.prepare_scenario()
             valid = h.image(width=width, height=height)
             asset = h.upload(valid)
             _roundtrip(h, asset, valid)
@@ -114,6 +118,7 @@ def test_upload_enforces_byte_pixel_dimension_and_frame_limits(asset_harness):
             (h.animated_image(), 503, "FRAMES"),
             (h.image()[:32], 503, "DECODE"),
         ):
+            h.prepare_scenario()
             session = h.require_begin(data)
             assert h.put(session, data).status_code == 204
             h.assert_error(
@@ -227,10 +232,13 @@ def test_upload_crash_recovery_and_abandoned_expiry(asset_harness):
         "OBJECT_COMPLETED_BEFORE_SEAL",
         "VALIDATED_BEFORE_FINALIZE",
     ):
+        h.prepare_scenario()
         h.gateway_crash_trial(position)
     for operation in ("CREATE_MULTIPART", "UPLOAD_PART", "COMPLETE_MULTIPART"):
         for hold in ("HOLD_REQUEST", "HOLD_RESPONSE"):
+            h.prepare_scenario()
             h.live_helper_crash_trial(operation, hold)
+    h.prepare_scenario()
     abandoned = h.require_begin(h.image())
     h.recover_rejected(abandoned, natural_expiry=True)
 
@@ -251,7 +259,9 @@ def test_parent_crop_scope_retention_and_cleanup(asset_harness):
     h.prepare_case()
     stores = h.create_stores(2)
     for store in (None, stores[0]):
+        h.prepare_scenario()
         parent = h.upload(h.image(), store_id=store)
+        h.prepare_scenario()  # Parent upload is complete before starting the child.
         child = h.upload(
             h.image(),
             purpose="IMPORT_CROP",
@@ -263,21 +273,29 @@ def test_parent_crop_scope_retention_and_cleanup(asset_harness):
             parent["expires_at"]
         )
         h.prove_invalid_parents(parent, child, other_store=stores[1])
+        h.prepare_scenario()  # Invalid-parent uploads have completed recovery.
         h.erase(parent, child)
+    h.prepare_scenario()
     parent = h.upload(h.image())
-    crops = [
-        h.upload(h.image(), purpose="IMPORT_CROP", parent_asset_id=parent["id"])
-        for _ in range(100)
-    ]
+    crops = []
+    for _ in range(100):
+        h.prepare_scenario()  # Each prior crop is READY; no session-bound ticket.
+        crops.append(
+            h.upload(h.image(), purpose="IMPORT_CROP", parent_asset_id=parent["id"])
+        )
     assert len(crops) == 100 and h.ready_child_count(parent["id"]) == 100
     before = h.asset_count()
     assert h.begin(
         h.image(), purpose="IMPORT_CROP", parent_asset_id=parent["id"]
     ).status_code in (409, 429)
     assert h.asset_count() == before
+    h.prepare_scenario(required_seconds=505)  # 101 settled assets, 5s per DELETE.
     h.erase(parent, *crops)
+    h.prepare_scenario()
     h.parent_overlap_trial("crop-first")
+    h.prepare_scenario()
     h.parent_overlap_trial("delete-first")
+    h.prepare_scenario()
     h.natural_parent_expiry_trial()
 
 
@@ -325,9 +343,12 @@ def test_delete_during_upload_and_retryable_provider_failure(asset_harness):
     h = asset_harness
     h.prepare_case()
     h.delete_during_complete_trial("callback")
+    h.prepare_scenario()
     h.delete_during_complete_trial("HOLD_RESPONSE")
+    h.prepare_scenario()
     h.absence_only_uncertainty_trial()
     for fault in ("DELETE_OBJECT", "LIST_OBJECTS", "LIST_MULTIPART"):
+        h.prepare_scenario()
         asset = h.upload(h.image())
         before = h.row(asset["id"])
         assert h.delete(asset["id"]).status_code == 202

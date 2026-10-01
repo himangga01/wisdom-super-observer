@@ -1,6 +1,8 @@
+import asyncio
 import os
 from collections.abc import AsyncIterator, Callable, Mapping
 from contextlib import asynccontextmanager
+from threading import Event, Thread
 from uuid import uuid4
 
 from fastapi import FastAPI, Request
@@ -10,6 +12,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.base import RequestResponseEndpoint
 from wso_core.assets import AssetFailure
 from wso_core.db_budget import SqlAlchemyBudgetedSessionProvider
+from wso_tvt_bridge import client as account_rpc
 
 from wso_api.assets.bootstrap import (
     AssetRuntime,
@@ -43,6 +46,24 @@ def _error_response(
     )
 
 
+async def _close_account_client(client: account_rpc.AccountRpcClient) -> None:
+    """Bound shutdown even if the channel dependency fails to return from close."""
+    closed = Event()
+
+    def close() -> None:
+        try:
+            client.close()
+        except Exception:  # noqa: BLE001, S110 - teardown must not disclose TLS paths
+            pass
+        finally:
+            closed.set()
+
+    Thread(target=close, name="account-rpc-close", daemon=True).start()
+    end = asyncio.get_running_loop().time() + 1.0
+    while not closed.is_set() and asyncio.get_running_loop().time() < end:
+        await asyncio.sleep(0.01)
+
+
 def create_app(
     readiness_checks: Mapping[str, Callable[[], bool]] | None = None,
     *,
@@ -51,25 +72,40 @@ def create_app(
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         owned: AssetRuntime | None = None
-        if asset_runtime is None:
-            try:
-                owned = start_asset_runtime(settings=load_asset_settings(os.environ))
-            except (AssetFailure, ValueError):
-                owned = None
-            configure_assets(app, runtime=owned)
+        account_client: account_rpc.AccountRpcClient | None = None
         try:
+            try:
+                account_client = account_rpc.create_account_worker_client()
+            except Exception:  # noqa: BLE001 - redact deployment configuration errors
+                # A missing client is canonical ACCOUNT_UNAVAILABLE. Once a real
+                # channel dispatches, its own UNKNOWN_OUTCOME contract applies.
+                account_client = None
+            app.state.tvt_account_worker = account_client
+            if asset_runtime is None:
+                try:
+                    owned = start_asset_runtime(
+                        settings=load_asset_settings(os.environ)
+                    )
+                except (AssetFailure, ValueError):
+                    owned = None
+                configure_assets(app, runtime=owned)
             yield
         finally:
-            if owned is not None:
-                owned.admission.close_admission()
-                for provider in (
-                    owned.authorization.web_session,
-                    owned.authorization.identity,
-                    owned.authorization.tenant,
-                    owned.authorization.redemption,
-                ):
-                    if isinstance(provider, SqlAlchemyBudgetedSessionProvider):
-                        provider.dispose()
+            app.state.tvt_account_worker = None
+            try:
+                if account_client is not None:
+                    await _close_account_client(account_client)
+            finally:
+                if owned is not None:
+                    owned.admission.close_admission()
+                    for provider in (
+                        owned.authorization.web_session,
+                        owned.authorization.identity,
+                        owned.authorization.tenant,
+                        owned.authorization.redemption,
+                    ):
+                        if isinstance(provider, SqlAlchemyBudgetedSessionProvider):
+                            provider.dispose()
 
     app = FastAPI(lifespan=lifespan)
     checks = dict(readiness_checks or {})

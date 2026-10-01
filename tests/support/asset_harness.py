@@ -427,18 +427,18 @@ class AssetHarness:
         )
         self.start_time = owned.identity.start_ticks
 
-        def ready():
-            if self.process.poll() is not None:
-                raise RuntimeError("actual asset API subprocess failed to boot")
-            try:
-                return (
-                    self.request("GET", "/health/live", authenticated=False).status_code
-                    == 200
-                )
-            except httpx.HTTPError:
-                return False
+        self.await_fact(self.api_ready, cap=30)
 
-        self.await_fact(ready, cap=30)
+    def api_ready(self):
+        if self.process.poll() is not None:
+            raise RuntimeError("actual asset API subprocess failed to boot")
+        try:
+            return (
+                self.request("GET", "/health/live", authenticated=False).status_code
+                == 200
+            )
+        except httpx.HTTPError:
+            return False
 
     @staticmethod
     def process_identity(pid):
@@ -1109,6 +1109,7 @@ class AssetHarness:
                 header,
                 (body,),
                 time.monotonic() + self.deadlines.allowance(120.0, self.phase),
+                write_eof=mode == "premature-eof",
             ),
             actor=actor,
         )
@@ -1255,6 +1256,7 @@ class AssetHarness:
         )
 
     def _recover_rejected(self, session, *, natural_expiry=False):
+        started = time.monotonic()
         row = self.row(session["asset_id"])
         if natural_expiry or row["state"] == "PENDING":
             self.wait_until_utc(datetime.fromisoformat(session["expires_at"]), cap=180)
@@ -1266,15 +1268,51 @@ class AssetHarness:
             require(self.delete(session["asset_id"]).status_code == 202)
         # Real normal reconciliation recovers unrecorded create/part gaps. These
         # transient populations are deliberately outside the fixed aging epochs.
-        for _ in range(64):
-            self.run_mode(ProcessMode.RECONCILE, limit=1)
-            if all(value is None for value in self.cursor_state().values()):
+        waited = time.monotonic()
+        names = ("object_cursor", "multipart_cursor")
+        # A persisted tail is not a complete traversal. Each stream must start
+        # at null and reach its own committed null; a completed stream must not
+        # hold the other hostage to a simultaneous-null least common multiple.
+        started_full = {name: False for name in names}
+        completed = {name: False for name in names}
+        provider_pages = 0
+        for calls in range(1, 65):
+            self.deadlines.check(self.phase)
+            before = self.cursor_state()
+            for name in names:
+                started_full[name] |= before[name] is None
+            result = self.run_mode(ProcessMode.RECONCILE, limit=100)
+            provider_pages += len(result["pages"])
+            after = self.cursor_state()
+            for name in names:
+                completed[name] |= started_full[name] and after[name] is None
+            if all(completed.values()):
                 break
         else:
             raise RuntimeError("transient reconciliation bound")
+        traversed = time.monotonic()
         self.drain_cleanup(
             [session["asset_id"]],
             time.monotonic() + self.deadlines.allowance(180.0, self.phase),
+        )
+        print(
+            "WSO_ASSET_RECOVERY_DIAGNOSTIC="
+            + json.dumps(
+                {
+                    "schema": 1,
+                    "reconcile_calls": calls,
+                    "provider_pages": min(128, provider_pages),
+                    "page_limit": 100,
+                    "wait_ms": min(600000, max(0, int((waited - started) * 1000))),
+                    "traversal_ms": min(
+                        600000, max(0, int((traversed - waited) * 1000))
+                    ),
+                    "cleanup_ms": min(
+                        600000, max(0, int((time.monotonic() - traversed) * 1000))
+                    ),
+                },
+                sort_keys=True,
+            )
         )
 
     def stop_current_api(self, *, force=False):
@@ -1302,13 +1340,7 @@ class AssetHarness:
                 owned.log,
                 list(owned.command),
             )
-            self.await_fact(
-                lambda: (
-                    self.request("GET", "/health/live", authenticated=False).status_code
-                    == 200
-                ),
-                cap=30,
-            )
+            self.await_fact(self.api_ready, cap=30)
 
     @contextmanager
     def policy(self, **changes):
@@ -1459,11 +1491,23 @@ class AssetHarness:
     def prepare_case(self):
         self.deadlines.check(self.phase)
         self._upload_trial, self._upload_diagnostic_count = 0, 0
+        self.prepare_scenario()
+
+    def prepare_scenario(self, *, required_seconds=190):
+        """Call only between settled independent scenarios, with no live tickets.
+
+        BEGIN 5 + PUT 120 + COMPLETE 30 + ticket 5 + download 30 = 190s.
+        Keep the existing five-minute safety threshold and protected 600s TTL.
+        Explicit expiry/revocation actors (beyond the default pair) are untouched.
+        """
+        self.deadlines.check(self.phase)
+        require(not self.callers)
+        require(type(required_seconds) is int and 1 <= required_seconds <= 600)
         for index in (0, 1):
             actor = self.actors[index]
             if actor.expires_at is None or actor.expires_at <= datetime.now(
                 UTC
-            ) + timedelta(minutes=5):
+            ) + timedelta(seconds=max(300, required_seconds)):
                 self.actors[index] = self.new_actor(
                     tenant_id=actor.tenant_id, user_id=actor.user_id
                 )
@@ -1774,6 +1818,7 @@ class AssetHarness:
             )
             require(self.asset_count() == before)
         self.recover_rejected(pending)
+        self.prepare_scenario()  # Prior upload fully recovered; next upload is independent.
         failed = self.require_begin(data)
         wrong = data[:-1] + bytes([data[-1] ^ 1])
         self.assert_error(self.put(failed, wrong), 422, "ASSET_INTEGRITY")
@@ -2980,7 +3025,12 @@ class AssetHarness:
                         "extra_multiparts": min(
                             len(set(inventory[1]) - set(original[1])), 4096
                         ),
-                        "original_metadata_matches": inventory == original,
+                        "original_metadata_matches": all(
+                            key in current and current[key] == metadata
+                            for current, seeded in zip(inventory, original)
+                            for key, metadata in seeded.items()
+                        ),
+                        "whole_inventory_matches": inventory == original,
                     },
                     sort_keys=True,
                 )

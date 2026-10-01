@@ -13,7 +13,8 @@ from urllib.parse import urlsplit
 
 from wso_contracts.jobs import DispatchReference
 
-from wso_core.jobs import DEFAULT_REGISTRY, JobRegistry
+from wso_core.jobs import JobRegistry
+from wso_core.tvt.domain_jobs import OPERATION_REGISTRY
 
 
 def _validate_broker_configuration(broker_url: str) -> None:
@@ -82,7 +83,7 @@ def _create_celery_app(broker_url: str, name: str) -> Any:
 def create_app(
     broker_url: str,
     job_database_url: str,
-    registry: JobRegistry = DEFAULT_REGISTRY,
+    registry: JobRegistry = OPERATION_REGISTRY,
     *,
     worker_id: str = "worker",
     after_execute: Callable[[DispatchReference], None] | None = None,
@@ -128,6 +129,7 @@ def main() -> None:
         dispatcher = Dispatcher(
             os.environ["WSO_DISPATCH_DATABASE_URL"],
             CeleryPublisher(_create_celery_app(broker, "wso-dispatch")),
+            registry=OPERATION_REGISTRY,
         )
         while True:
             dispatcher.run_once()

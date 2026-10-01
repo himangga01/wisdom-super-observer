@@ -1,0 +1,30 @@
+syntax = "proto3";
+package wso.tvt.account.v1;
+
+// v1 numbers are permanent. Future removed fields MUST be reserved by number
+// and name. 5..15 are reserved for authority fields that must remain in SQL.
+message RpcContext {
+  uint32 protocol_version = 1;
+  string ticket = 2;
+  uint32 deadline_ms = 3;
+  string correlation_id = 4;
+  reserved 5 to 15;
+  reserved "tenant_id", "actor_id", "kind", "generation", "authority";
+}
+message LoginRequest { RpcContext context = 1; bytes account_login_json = 2; }
+message ImageChallengeRequest { RpcContext context = 1; }
+message CheckImageRequest { RpcContext context = 1; bytes image_check_json = 2; }
+message ProfileRequest { RpcContext context = 1; }
+message RenewRequest { RpcContext context = 1; bytes account_refresh_json = 2; }
+message LogoutRequest { RpcContext context = 1; }
+// Only the exact method's public Pydantic output is carried here.
+// Failure is a fixed code from the transport allowlist, never an exception.
+message AccountReply { bytes public_json = 1; string failure_code = 2; }
+service AccountBridgeV1 {
+  rpc Login(LoginRequest) returns (AccountReply);
+  rpc ImageChallenge(ImageChallengeRequest) returns (AccountReply);
+  rpc CheckImage(CheckImageRequest) returns (AccountReply);
+  rpc Profile(ProfileRequest) returns (AccountReply);
+  rpc Renew(RenewRequest) returns (AccountReply);
+  rpc Logout(LogoutRequest) returns (AccountReply);
+}
