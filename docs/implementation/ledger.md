@@ -14,8 +14,8 @@ This ledger tracks executable service work. The separate [parity ledger](../inte
 | W00 atomic parity ledger | Static 77-case seed and desktop API preflight implemented; false-positive paths closed | 31 focused tests passed; checker 77/77 rows, zero errors; headless Chrome/Edge API probe 2/2 | Trusted W24 run registry and comparator; runtime reachability, Android/iOS/media/permission checks, support matrix sign-off; no `MATCHED` rows and `release_ready=false` |
 | W01 TVT bridge feasibility | Static handoff, frozen 199-operation manifest and declaration inventories implemented | 10 schema tests passed; 77 cases / 199 candidate operations; 281 request classes and 299 native declarations inventoried | Vendor rights, runtime fixtures and pilot; all six remote G-P1 families `BLOCKED` |
 | T05 durable jobs | Database-owned requests, outbox/inbox, restricted dispatcher/worker, fencing, cancellation, external uncertainty, status/items API and job-bound secret primitives implemented; task and milestone integration/fix reviews approved | [Actual Linux run 36716200713](https://github.com/himangga01/wisdom-super-observer/actions/runs/36716200713): 537 Python cases and all ten required real process/broker recovery cases, zero skips; no remaining Critical/Important review findings | Generic credential handlers fail CAPABILITY_UNSUPPORTED until the owning executor exists; no production IMPORT/REGISTRATION handler. Deployment and vendor effects remain pending |
-| T05A private assets | In progress; MinIO v2 fixture source, strict consumers, optional public-proof source and cutoff/request-boundary diagnostic amendment received scoped approval; accepted idle-retirement design implemented and approved in two fixture files, locally committed | [Latest completed foundation receipt](../engineering/linux-ci.md#linux-foundation-run-36795275636); [tenth provider attempt](../engineering/linux-ci.md#tenth-sealed-private-asset-baseline-attempt-anonymous-head-read-error) ended during setup with original-object anonymous-HEAD transport error and fixture-local RELAY_TRANSPORT close refusal | Publish source with final four docs; actual provider privacy/IAM and HTTP preflight, sealed656 genuine RED, complete fourteen-case GREEN acceptance, actual relay connectivity and whole APK parity; conditional eleventh cold workflow remains gated |
-| W02–W25 service features | Pending | None | Private storage prerequisite and family-specific gates |
+| T05A private assets | In progress; reviewed idle-retirement source and docs are published; pinned MinIO candidate rejected for native installed-prefix multipart enumeration and durable restart/orphan discovery | [Latest foundation receipt](../engineering/linux-ci.md#linux-foundation-run-36801780609); [eleventh provider attempt](../engineering/linux-ci.md#eleventh-sealed-private-asset-baseline-native-listing-contract-failure) failed setup at forced-pagination/filter checkpoint; actual predicate/counts unretained | Read-only primary-source investigations are complete; RustFS 1.0.0 is a transition-design candidate under review only. No provider is selected for acceptance and no runtime/source implementation or retry is authorized. Provider privacy/IAM receipt, authenticated HTTP, sealed656 genuine RED, full14 GREEN, whole APK parity remain open |
+| W02–W25 service features | W02 remains closed; W03–W25 pending | No private provider acceptance; no APK `MATCHED` rows and `release_ready=false` | T05A provider capability remains unresolved; all six remote G-P1 families remain `BLOCKED` |
 
 ## Previous integrated verification — 2026-09-30
 
@@ -146,6 +146,17 @@ cleanup passed. It covers reviewed source `3048067` and published docs at
 `0a033bc`; it predates and excludes the later idle-retirement implementation and this
 draft. This aggregate foundation receipt does not establish provider acceptance.
 
+The latest [d5aaba8 Linux foundation receipt](../engineering/linux-ci.md#linux-foundation-run-36801780609)
+passed 1726 ordinary Python cases with zero skips in 134.54 seconds and ten
+actual Celery/Valkey recovery cases with zero skips in 250.61 seconds; the
+exact-ten gate passed. Ruff, configured mypy40, frontend 15/typecheck/lint/build,
+twenty exports twice, TVT checker 77 audit cases / 77 ledger rows / zero errors,
+HTTPS Chrome 26, Valkey smoke and owned PostgreSQL cleanup succeeded. Its
+89,980-byte private log SHA-256 is
+`935a412757df60a0fe7cf848ad3117836c052a454206cfc73854b3e8d42f56c2`. It covers
+reviewed source `52343d4` and docs at `d5aaba8`; it is foundation evidence and
+does not establish provider acceptance.
+
 The v2 producer and strict-consumer changes each received independent scoped
 approval with zero findings; the producer passed 251 focused cases and the root
 rerun passed 251, while the consumer preserves the original 77-case surface.
@@ -269,12 +280,11 @@ formatting reported two unchanged files, and configured mypy40 remained valid
 because the fix changed untyped tests only. Root confirmed the whole normalized
 module unchanged outside `_worker`, eight unchanged gates, exact two-file stage,
 final source hashes, private18/no-drift/whitespace checks. Source commit
-`52343d410755ceb1190e979557d0bc6bcb0b153f` is local and unpublished. Root
-conditionally authorizes one automatic eleventh cold workflow only after final
-documentation approval, curated staging, private18/no-drift/whitespace checks,
-local documentation commit, and remote-SHA verification. No eleventh attempt
-has run; an intermediate source-only push or manual retry is not authorized.
-The tenth result does not establish provider acceptance or a cause.
+`52343d410755ceb1190e979557d0bc6bcb0b153f` and the reviewed docs were pushed
+together as `d5aaba84fd1f456bb93e0d40b600203c1ee6877f`; the remote SHA matched
+and the worktree was clean. The conditional eleventh authority was consumed by
+run `36801780564`, recorded below. No manual or twelfth run is authorized.
+Neither the tenth nor eleventh result establishes provider acceptance.
 
 The [tenth sealed baseline attempt](../engineering/linux-ci.md#tenth-sealed-private-asset-baseline-attempt-anonymous-head-read-error)
 used source `0a033bc` and ended with one setup error in 22.79 seconds. Gateway
@@ -291,6 +301,10 @@ receipt, authenticated HTTP, sealed656 genuine RED or full14 acceptance was
 reached. The private log was 59,653 bytes, SHA-256
 `5d7a911e121a6345d7a6993fcf8c853eccc346fbe36088cd8e841a99a335a56a`.
 
+
+The [eleventh sealed baseline attempt](../engineering/linux-ci.md#eleventh-sealed-private-asset-baseline-native-listing-contract-failure) at run `36801780564` / job `110177497442` used source/document commit `d5aaba8` and ended with one setup error in 36.28 seconds. Checkout, overlay, dependency sync, PostgreSQL provision and workflow PostgreSQL removal succeeded. The combined forced-pagination/filter checkpoint failed; actual page counts, row counts, set equality and failing predicate were not retained. Bounded extraction found zero public-proof prefixes, zero validated ACL-effect failure records and zero provider-close diagnostic records. No accepted provider receipt, authenticated HTTP, genuine sealed656 RED or full14 acceptance was reached.
+
+Root rejected pinned MinIO `RELEASE.2025-04-22T22-12-26Z` for native installed-prefix multipart pagination and durable restart/orphan discovery. Pinned source treats a nonempty Prefix as an exact object and does not enumerate arbitrary child-key multipart directories; the empty-prefix cache path does not provide durable bounded complete inventory. This capability rejection is source-based and does not assign an actual value to the unretained predicate. The eleventh conditional authority was consumed; no same-provider diagnostic retry, manual retry or twelfth run is authorized. Read-only primary-source investigations are complete. RustFS 1.0.0 is a transition-design candidate under review only; no provider is selected for acceptance, no runtime/source implementation is authorized, and no retry authority exists.
 The fixture-only idle-retirement change passed a meaningful pre-implementation
 selection of 9 failing cases (115 deselected, 2.13 seconds) and an expanded
 pre-implementation selection of 9 failing / 11 passing cases (115 deselected,
@@ -310,8 +324,9 @@ provider/authenticated HTTP, genuine RED or full14 acceptance. Scoped review
 found the worker implementation compliant and one Important and one Minor
 test-robustness finding. The original author’s fix round 1 closed both, and the
 independent fix-only review approved with 0 Critical / 0 Important / 0 Minor.
-Local source commit `52343d410755ceb1190e979557d0bc6bcb0b153f` is complete but
-not pushed.
+Source commit `52343d410755ceb1190e979557d0bc6bcb0b153f` and the reviewed docs
+were pushed together at `d5aaba84fd1f456bb93e0d40b600203c1ee6877f`; remote SHA
+matched and the worktree was clean.
 
 The original implementation review found 0 Critical / 1 Important / 1 Minor.
 The Important finding concerned cleanup and join ordering that could strand a
@@ -327,7 +342,7 @@ production worker stayed unchanged at
 `11519d09de56fcce583376730078fa140b4e434064ffe992a6a0c21c9822d076`. Root
 confirmed the whole normalized module unchanged outside `_worker`, eight
 acceptance-file boundaries unchanged, exact two-file stage, private18 guard,
-no-drift and whitespace; source commit `52343d4` is local and unpublished.
+no-drift and whitespace; source commit `52343d4` was published in `d5aaba8`.
 
 The reviewed two-file result-gate receipt-safety correction passed 247 scoped
 cases and an independent review with zero Critical or Important findings. It
