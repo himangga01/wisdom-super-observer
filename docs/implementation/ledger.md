@@ -14,7 +14,7 @@ This ledger tracks executable service work. The separate [parity ledger](../inte
 | W00 atomic parity ledger | Static 77-case seed and desktop API preflight implemented; false-positive paths closed | 31 focused tests passed; checker 77/77 rows, zero errors; headless Chrome/Edge API probe 2/2 | Trusted W24 run registry and comparator; runtime reachability, Android/iOS/media/permission checks, support matrix sign-off; no `MATCHED` rows and `release_ready=false` |
 | W01 TVT bridge feasibility | Static handoff, frozen 199-operation manifest and declaration inventories implemented | 10 schema tests passed; 77 cases / 199 candidate operations; 281 request classes and 299 native declarations inventoried | Vendor rights, runtime fixtures and pilot; all six remote G-P1 families `BLOCKED` |
 | T05 durable jobs | Database-owned requests, outbox/inbox, restricted dispatcher/worker, fencing, cancellation, external uncertainty, status/items API and job-bound secret primitives implemented; task and milestone integration/fix reviews approved | [Actual Linux run 36716200713](https://github.com/himangga01/wisdom-super-observer/actions/runs/36716200713): 537 Python cases and all ten required real process/broker recovery cases, zero skips; no remaining Critical/Important review findings | Generic credential handlers fail CAPABILITY_UNSUPPORTED until the owning executor exists; no production IMPORT/REGISTRATION handler. Deployment and vendor effects remain pending |
-| T05A private assets | In progress; MinIO v2 fixture source, strict consumers, optional public-proof source and cutoff/request-boundary diagnostic amendment received scoped approval | [Latest completed foundation receipt](../engineering/linux-ci.md#linux-foundation-run-36789932368); [ninth provider attempt](../engineering/linux-ci.md#ninth-sealed-private-asset-baseline-attempt-anonymous-head-transport-error) stopped during setup with anonymous-HEAD transport error and fixture-local RELAY_TRANSPORT close refusal | Actual provider privacy/IAM and HTTP preflight, a separately authorized later cold retry, complete fourteen-case GREEN acceptance, actual relay connectivity, and whole APK parity; publish the locally committed diagnostic refinement |
+| T05A private assets | In progress; MinIO v2 fixture source, strict consumers, optional public-proof source and cutoff/request-boundary diagnostic amendment received scoped approval; accepted idle-retirement design implemented and approved in two fixture files, locally committed | [Latest completed foundation receipt](../engineering/linux-ci.md#linux-foundation-run-36795275636); [tenth provider attempt](../engineering/linux-ci.md#tenth-sealed-private-asset-baseline-attempt-anonymous-head-read-error) ended during setup with original-object anonymous-HEAD transport error and fixture-local RELAY_TRANSPORT close refusal | Publish source with final four docs; actual provider privacy/IAM and HTTP preflight, sealed656 genuine RED, complete fourteen-case GREEN acceptance, actual relay connectivity and whole APK parity; conditional eleventh cold workflow remains gated |
 | W02–W25 service features | Pending | None | Private storage prerequisite and family-specific gates |
 
 ## Previous integrated verification — 2026-09-30
@@ -137,6 +137,15 @@ cleanup passed. It covers source commit `cddeee3` and the published docs at
 `3048067bd515bcd86a2a41f48c1de56874e26785` and this draft. It remains foundation evidence only; it does not establish
 provider acceptance.
 
+The [0a033bc foundation receipt](../engineering/linux-ci.md#linux-foundation-run-36795275636)
+passed 1703 ordinary Python cases and ten actual Celery/Valkey recovery cases,
+both with zero skips. Ruff/mypy 40, frontend typecheck/lint/build and 15 unit
+cases, twenty canonical exports twice, TVT evidence checker 77 audit cases / 77
+ledger rows / zero errors, HTTPS Chrome 26, Valkey smoke and owned PostgreSQL
+cleanup passed. It covers reviewed source `3048067` and published docs at
+`0a033bc`; it predates and excludes the later idle-retirement implementation and this
+draft. This aggregate foundation receipt does not establish provider acceptance.
+
 The v2 producer and strict-consumer changes each received independent scoped
 approval with zero findings; the producer passed 251 focused cases and the root
 rerun passed 251, while the consumer preserves the original 77-case surface.
@@ -247,13 +256,78 @@ The monotonic stop guard prevents an intentional stop from installing first-
 register `PUMP_CUTOFF` metadata; an idle or absolute deadline may instead
 install cutoff metadata during teardown. The actual ninth bound and chronology
 remain unknown. The diagnostics do not establish cause or provider acceptance.
-The local commit’s publication remains pending. The root ruling conditionally
-accepts exactly one automatic tenth cold workflow from the next authorized
-single branch push, after final four-document review/freeze, curated staging,
-private18/no-drift/whitespace checks, documentation commit and remote-SHA
-verification. No actual tenth has run. An intermediate 304-only push, manual
-retry or behavior repair is not authorized; the ninth observation alone does
-not authorize execution.
+Source commit `3048067` and its reviewed documentation were published together
+at `0a033bc`. The tenth cold workflow has since run and its result is recorded
+in the Linux CI and private-assets evidence. The connection-local idle-retirement
+design is accepted and implemented in the authorized two fixture files.
+The original source review recorded 0 Critical / 1 Important / 1 Minor. The
+worker was compliant; fix round 1 closed the Important teardown and Minor
+fragmented-request findings, with independent scoped approval at 0 Critical /
+0 Important / 0 Minor. Final author verification passed 465 cases in 4.37
+seconds; root’s fresh run passed 465 in 4.38 seconds. Ruff passed on two files,
+formatting reported two unchanged files, and configured mypy40 remained valid
+because the fix changed untyped tests only. Root confirmed the whole normalized
+module unchanged outside `_worker`, eight unchanged gates, exact two-file stage,
+final source hashes, private18/no-drift/whitespace checks. Source commit
+`52343d410755ceb1190e979557d0bc6bcb0b153f` is local and unpublished. Root
+conditionally authorizes one automatic eleventh cold workflow only after final
+documentation approval, curated staging, private18/no-drift/whitespace checks,
+local documentation commit, and remote-SHA verification. No eleventh attempt
+has run; an intermediate source-only push or manual retry is not authorized.
+The tenth result does not establish provider acceptance or a cause.
+
+The [tenth sealed baseline attempt](../engineering/linux-ci.md#tenth-sealed-private-asset-baseline-attempt-anonymous-head-read-error)
+used source `0a033bc` and ended with one setup error in 22.79 seconds. Gateway
+`put_object_acl` variant 4 returned HTTP 403 / `AccessDenied`; the original
+object’s anonymous HEAD then recorded `HTTPX_READ_ERROR` / `HTTP_REQUEST`, null
+status and `TRANSPORT_ERROR`. The relay was RUNNING before the request without
+a global failure (4 connections, 9 sockets, 5 workers); at failure it was still
+RUNNING but failed (2 connections, 5 sockets, 5 workers), with first stage/kind
+`PUMP_CUTOFF` / `IDLE_CUTOFF`. Close recorded `RELAY_TRANSPORT`, CLOSED and zero
+tracked counts. These snapshots do not establish same-connection causality,
+freshness, quiescence, expiry chronology or the HTTP error’s cause. Workflow
+PostgreSQL cleanup succeeded; fixture-local provider close refused. No provider
+receipt, authenticated HTTP, sealed656 genuine RED or full14 acceptance was
+reached. The private log was 59,653 bytes, SHA-256
+`5d7a911e121a6345d7a6993fcf8c853eccc346fbe36088cd8e841a99a335a56a`.
+
+The fixture-only idle-retirement change passed a meaningful pre-implementation
+selection of 9 failing cases (115 deselected, 2.13 seconds) and an expanded
+pre-implementation selection of 9 failing / 11 passing cases (115 deselected,
+2.59 seconds). Its final focused selection passed 462 cases in 4.51 seconds;
+root’s fresh selection passed 462 in 4.40 seconds. Ruff passed on two files,
+formatting reported two unchanged files, and configured mypy passed on 40
+product source files; fixture/test files are outside that mypy gate. Root
+confirmed the normalized support module is unchanged outside `_worker` and
+eight provider/profile/harness/process/private-case/RED+GREEN-checker/workflow
+gates are unchanged. The change preserves direct pump behavior, cutoff and
+absolute/tie/byte limits. It retires only a connection on the typed idle-origin
+forwarding path; finalization attempts both owned handles and retains failed
+closes with their slot reservations. Pending failure-origin publication and
+STOPPING metadata suppression remain preserved. These owned-socket tests do
+not verify actual provider performance, explain the tenth failure, or establish
+provider/authenticated HTTP, genuine RED or full14 acceptance. Scoped review
+found the worker implementation compliant and one Important and one Minor
+test-robustness finding. The original author’s fix round 1 closed both, and the
+independent fix-only review approved with 0 Critical / 0 Important / 0 Minor.
+Local source commit `52343d410755ceb1190e979557d0bc6bcb0b153f` is complete but
+not pushed.
+
+The original implementation review found 0 Critical / 1 Important / 1 Minor.
+The Important finding concerned cleanup and join ordering that could strand a
+non-daemon relay after a test failure; the Minor finding concerned partial TCP
+reads of the HTTP request line. Fix round 1 added unconditional bounded cleanup
+with primary-error preservation and bounded CRLF request-line accumulation.
+Its targeted RED failed 3 cases with 135 deselected in 0.45 seconds. The final
+covering selection passed 465 cases in 4.37 seconds; root’s fresh run passed
+465 in 4.38 seconds. The fix-only review approved with 0 Critical / 0 Important
+/ 0 Minor. The final safety-test hash is
+`340b8b2f6e2bd219059d5ab69b321424e846681d784f1b8974c718448df426a9`; the
+production worker stayed unchanged at
+`11519d09de56fcce583376730078fa140b4e434064ffe992a6a0c21c9822d076`. Root
+confirmed the whole normalized module unchanged outside `_worker`, eight
+acceptance-file boundaries unchanged, exact two-file stage, private18 guard,
+no-drift and whitespace; source commit `52343d4` is local and unpublished.
 
 The reviewed two-file result-gate receipt-safety correction passed 247 scoped
 cases and an independent review with zero Critical or Important findings. It
