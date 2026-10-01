@@ -1752,6 +1752,13 @@ def test_completed_relay_thread_is_joined_before_registry_pruning(
         relay.close()
 
 
+def stub_owned_commands(provider, monkeypatch, runner):
+    def run(command, environment, allowance, **kwargs):
+        return runner(command, env=environment, timeout=allowance).stdout
+
+    monkeypatch.setattr(provider.commands, "run", run)
+
+
 def volume_archive(
     *, uid=65532, gid=65532, mode=0o700, name="data", kind=tarfile.DIRTYPE, extra=False
 ):
@@ -1810,7 +1817,7 @@ def test_volume_failure_exposes_only_bounded_structured_metadata(
         runner.side_effect = subprocess.TimeoutExpired(
             ["DO_NOT_EMIT_private_path"], 15, output=b"DO_NOT_EMIT_private_body"
         )
-    monkeypatch.setattr("tests.support.asset_provider.subprocess.run", runner)
+    stub_owned_commands(provider, monkeypatch, runner)
     with pytest.raises(RuntimeError, match="nonroot data volume") as failure:
         provider.verify_data_volume()
     message = str(failure.value)
@@ -1854,8 +1861,9 @@ def test_exact_nonroot_volume_archive_still_passes(tmp_path, monkeypatch):
     monkeypatch.setattr(
         provider, "docker_invocation", lambda *_: (["fixed-local-docker"], {})
     )
-    monkeypatch.setattr(
-        "tests.support.asset_provider.subprocess.run",
+    stub_owned_commands(
+        provider,
+        monkeypatch,
         Mock(
             return_value=subprocess.CompletedProcess(
                 [], 0, stdout=volume_archive(), stderr=b""
@@ -1876,13 +1884,12 @@ def test_scratch_build_copies_private_data_as_child_with_explicit_metadata(
     monkeypatch.setattr(asset_provider, "LocalDocker", lambda *_: object())
     binary_bytes = b"offline fixture bytes, never an executable"
 
-    def artifact(directory, name):
-        target = directory / name
+    def artifact(directory, budget):
+        target = directory / "rustfs"
         target.write_bytes(binary_bytes)
         return target
 
-    monkeypatch.setattr(asset_provider, "download_artifact", artifact)
-    monkeypatch.setattr(asset_provider, "verify_binary_version", lambda *_: None)
+    monkeypatch.setattr(asset_provider, "download_server", artifact)
 
     class BuildBoundaryReached(Exception):
         pass
@@ -1908,10 +1915,10 @@ def test_scratch_build_copies_private_data_as_child_with_explicit_metadata(
     assert [entry.name for entry in data_root.iterdir()] == ["data"]
     data = data_root / "data"
     assert data.is_dir() and not data.is_symlink() and not list(data.iterdir())
-    assert (context / "minio").read_bytes() == binary_bytes
+    assert (context / "rustfs").read_bytes() == binary_bytes
     assert "USER 65532:65532" in instructions
     assert 'VOLUME ["/data"]' in instructions
-    assert 'ENTRYPOINT ["/minio"]' in instructions
+    assert 'ENTRYPOINT ["/rustfs"]' in instructions
     assert not any(line.startswith(("RUN ", "ADD ")) for line in instructions)
     assert provider.receipt is None
 
@@ -1967,7 +1974,7 @@ def test_all_docker_commands_pin_local_socket_and_private_config_despite_saved_c
             )
         return subprocess.CompletedProcess(arguments, 0, stdout="[]", stderr="")
 
-    monkeypatch.setattr("tests.support.asset_provider.subprocess.run", run)
+    stub_owned_commands(provider, monkeypatch, run)
     if command == "copy":
         provider.verify_data_volume()
     elif command == "remove":
@@ -2010,7 +2017,7 @@ def test_changed_local_socket_refuses_docker_before_subprocess(tmp_path, monkeyp
     runner = Mock(
         return_value=subprocess.CompletedProcess([], 0, stdout="[]", stderr="")
     )
-    monkeypatch.setattr("tests.support.asset_provider.subprocess.run", runner)
+    stub_owned_commands(provider, monkeypatch, runner)
     provider.docker("inspect", "owned")
     with pytest.raises(RuntimeError, match="local Docker socket identity changed"):
         provider.docker("remove", "owned")
@@ -2025,21 +2032,22 @@ def owned_container_state(provider):
         "Config": {
             "Image": provider.image,
             "User": "65532:65532",
-            "Entrypoint": ["/minio"],
+            "Entrypoint": ["/rustfs"],
             "Cmd": [
                 "server",
                 "/data",
                 "--address",
                 ":9000",
-                "--console-address",
-                ":9001",
-                "--quiet",
             ],
             "Env": [
-                "MINIO_ROOT_USER=" + provider.credentials["bootstrap"][0],
-                "MINIO_ROOT_PASSWORD=" + provider.credentials["bootstrap"][1],
-                "MINIO_BROWSER=off",
-                "MINIO_UPDATE=off",
+                *(
+                    __import__(
+                        "tests.support.asset_rustfs", fromlist=["environment_bytes"]
+                    )
+                    .environment_bytes(provider.credentials)
+                    .decode()
+                    .splitlines()
+                ),
             ],
         },
         "NetworkSettings": {
@@ -2156,7 +2164,7 @@ def test_client_close_failure_does_not_prevent_owned_resource_teardown(
 
 def test_private_directory_foreign_owner_refuses_deletion(tmp_path):
     provider = AssetProvider(tmp_path)
-    provider.work = tmp_path / ("minio-" + provider.owner)
+    provider.work = tmp_path / ("rustfs-" + provider.owner)
     provider.work.mkdir()
     (provider.work / "owner.json").write_text(json.dumps({"owner": "foreign"}))
     sentinel = provider.work / "keep"
@@ -2321,3 +2329,384 @@ def test_process_disappearing_after_pin_refuses_signal_and_closes_handle(
     with pytest.raises(ValueError, match="identity unavailable"):
         harness.stop_api()
     assert "signal" not in events and "close" in events
+
+
+def version_container_state(provider):
+    state = owned_container_state(provider)
+    state["Id"] = "a" * 64
+    state["Name"] = "/owned-version"
+    state["Config"].update(Cmd=["--version"], Env=None, Labels={LABEL: provider.owner})
+    state["HostConfig"].update(NetworkMode="none", Tmpfs={})
+    state["NetworkSettings"]["Networks"] = {
+        "none": {
+            "IPAddress": "",
+            "Gateway": "",
+            "GlobalIPv6Address": "",
+            "IPv6Gateway": "",
+            "EndpointID": "",
+            "IPPrefixLen": 0,
+            "GlobalIPv6PrefixLen": 0,
+        }
+    }
+    state["Mounts"][0]["RW"] = False
+    return state
+
+
+def test_credential_free_version_mapping_accepts_empty_builtin_none(tmp_path):
+    provider = AssetProvider(tmp_path)
+    state = version_container_state(provider)
+    provider.assert_version_container(state, "owned-version", state["Id"])
+
+
+@pytest.mark.parametrize(
+    "field", ["IPAddress", "Gateway", "GlobalIPv6Address", "IPv6Gateway"]
+)
+def test_credential_free_version_mapping_refuses_network_address(tmp_path, field):
+    provider = AssetProvider(tmp_path)
+    state = version_container_state(provider)
+    state["NetworkSettings"]["Networks"]["none"][field] = "127.0.0.1"
+    with pytest.raises(RuntimeError, match="version mapping"):
+        provider.assert_version_container(state, "owned-version", state["Id"])
+
+
+@pytest.mark.parametrize("remaining", [7.99, 8.0])
+def test_sdk_admission_keeps_original_connect_read_allowance(remaining):
+    from tests.support.asset_rustfs import BudgetS3Client
+
+    native = Mock(put_object=Mock(return_value={}))
+    budget = Mock(allowance=Mock(return_value=remaining))
+    client = BudgetS3Client(native, budget)
+    if remaining < 8:
+        with pytest.raises(RuntimeError, match="allowance exhausted"):
+            client.put_object(Bucket="owned", Key="owned/key")
+        native.put_object.assert_not_called()
+    else:
+        client.put_object(Bucket="owned", Key="owned/key")
+        budget.check.assert_called_once()
+
+
+def test_sdk_late_body_is_retained_until_exact_close():
+    from tests.support.asset_rustfs import BudgetS3Client, PhaseCutoff
+
+    body = Mock()
+    native = Mock(get_object=Mock(return_value={"Body": body}))
+    budget = Mock(allowance=Mock(return_value=8), check=Mock(side_effect=PhaseCutoff()))
+    client = BudgetS3Client(native, budget)
+    with pytest.raises(PhaseCutoff):
+        client.get_object(Bucket="owned", Key="owned/key")
+    assert len(client.streams) == 1
+    client.close()
+    body.close.assert_called_once()
+    assert not client.streams
+
+
+def test_sdk_close_failure_retains_handle_and_attempts_later_client_close():
+    from tests.support.asset_rustfs import BudgetS3Client
+
+    body = Mock(close=Mock(side_effect=ValueError("private")))
+    native = Mock(get_object=Mock(return_value={"Body": body}))
+    client = BudgetS3Client(native, Mock(allowance=Mock(return_value=8)))
+    client.get_object(Bucket="owned", Key="owned/key")
+    with pytest.raises(RuntimeError, match="settlement refused"):
+        client.close()
+    assert len(client.streams) == 1
+    native.close.assert_called_once()
+
+
+def test_owned_command_unsettled_readers_refuse_new_process(monkeypatch):
+    from tests.support import asset_rustfs
+
+    process = Mock(stdout=BytesIO(), stderr=BytesIO(), returncode=0)
+    process.poll.return_value = 0
+    processes = Mock(return_value=process)
+    reader = Mock(is_alive=Mock(return_value=True))
+    monkeypatch.setattr(asset_rustfs.subprocess, "Popen", processes)
+    monkeypatch.setattr(asset_rustfs.threading, "Thread", Mock(return_value=reader))
+    commands = asset_rustfs.OwnedCommands()
+    with pytest.raises(RuntimeError, match="owned RustFS command"):
+        commands.run(["owned"], {}, 1)
+    assert len(commands.active) == 1
+    with pytest.raises(RuntimeError, match="ownership unsettled"):
+        commands.run(["owned-again"], {}, 1)
+    assert processes.call_count == 1
+
+
+def native_restart_fixture(tmp_path, monkeypatch):
+    import copy
+
+    from tests.support import asset_provider
+    from tests.support.asset_minio import unavailable_relay_snapshot
+    from tests.support.asset_rustfs import PhaseBudget
+
+    provider = AssetProvider(tmp_path)
+    provider.work = tmp_path
+    provider.container_id = "c" * 64
+    provider.relay_pin = (provider.container_id, "n" * 64, "e" * 64, "172.28.0.2")
+    provider.budget = PhaseBudget()
+    provider.budget.enter("A")
+    provider.budget.enter("B")
+    state = owned_container_state(provider)
+    state["Id"] = provider.container_id
+    state["State"] = {"Running": True, "StartedAt": "old"}
+    stopped, fresh = copy.deepcopy(state), copy.deepcopy(state)
+    stopped["State"]["Running"] = False
+    fresh["State"]["StartedAt"] = "fresh"
+    states = iter([state, stopped, fresh])
+    events = []
+    monkeypatch.setattr(provider, "inspect", lambda *_: next(states))
+    monkeypatch.setattr(
+        provider, "assert_container_mapping", lambda *_: events.append("mapping")
+    )
+    provider.clients = {
+        name: Mock(
+            close=Mock(side_effect=lambda name=name: events.append(name + ".close"))
+        )
+        for name in ("bootstrap", "gateway", "cleanup")
+    }
+    provider.relay = Mock(
+        failed=False,
+        close=Mock(side_effect=lambda: events.append("relay.close")),
+        assert_healthy=Mock(side_effect=lambda: events.append("healthy")),
+    )
+    monkeypatch.setattr(
+        provider,
+        "relay_snapshot",
+        lambda: {
+            **unavailable_relay_snapshot(),
+            "available": True,
+            "state": "CLOSED",
+            "failed": False,
+            "connections": 0,
+            "sockets": 0,
+            "workers": 0,
+        },
+    )
+    monkeypatch.setattr(provider, "docker", lambda *args: events.append(args[0]))
+    monkeypatch.setattr(
+        provider.commands, "assert_settled", lambda: events.append("commands.settled")
+    )
+    new = Mock(
+        VALIDATION_SECONDS=2,
+        address=("127.0.0.1", 1234),
+        start=Mock(side_effect=lambda **_: events.append("fresh.start")),
+    )
+    factory = Mock(return_value=new)
+    monkeypatch.setattr(asset_provider, "LoopbackRelay", factory)
+    monkeypatch.setattr(
+        provider,
+        "read_relay_identity",
+        lambda *_: (provider.container_id, "n" * 64, "f" * 64, "172.28.0.3"),
+    )
+    monkeypatch.setattr(
+        provider, "configure_clients", lambda: events.append("clients.fresh")
+    )
+    monkeypatch.setattr(provider, "require_pab", lambda: events.append("pab"))
+    provider.native_iam = Mock()
+    return provider, events, factory, stopped, fresh
+
+
+def test_native_restart_preserves_resources_and_adopts_only_fresh_settled_lifetime(
+    tmp_path, monkeypatch
+):
+    provider, events, factory, _, _ = native_restart_fixture(tmp_path, monkeypatch)
+    provider.restart_native_provider()
+    assert events == [
+        "mapping",
+        "healthy",
+        "bootstrap.close",
+        "gateway.close",
+        "cleanup.close",
+        "relay.close",
+        "commands.settled",
+        "stop",
+        "mapping",
+        "start",
+        "mapping",
+        "fresh.start",
+        "clients.fresh",
+        "pab",
+    ]
+    assert provider.relay_pin == (
+        provider.container_id,
+        "n" * 64,
+        "f" * 64,
+        "172.28.0.3",
+    )
+    assert provider.native_iam.endpoint == provider.endpoint == "http://127.0.0.1:1234"
+    factory.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    "fault",
+    ["failed", "client", "commands", "stop_identity", "same_start", "network_pin"],
+)
+def test_native_restart_refuses_unsettled_or_replaced_lifetime(
+    tmp_path, monkeypatch, fault
+):
+    provider, events, factory, stopped, fresh = native_restart_fixture(
+        tmp_path, monkeypatch
+    )
+    old_pin = provider.relay_pin
+    if fault == "failed":
+        provider.relay.failed = True
+    elif fault == "client":
+        provider.clients["gateway"].close.side_effect = ValueError("private")
+    elif fault == "commands":
+        monkeypatch.setattr(
+            provider.commands,
+            "assert_settled",
+            Mock(side_effect=RuntimeError("owned unsettled")),
+        )
+    elif fault == "stop_identity":
+        stopped["Id"] = "d" * 64
+    elif fault == "same_start":
+        fresh["State"]["StartedAt"] = "old"
+    else:
+        monkeypatch.setattr(
+            provider,
+            "read_relay_identity",
+            lambda *_: (
+                provider.container_id,
+                "replaced-network",
+                "f" * 64,
+                "172.28.0.3",
+            ),
+        )
+    with pytest.raises(RuntimeError):
+        provider.restart_native_provider()
+    assert provider.relay_pin == old_pin
+    if fault in {"failed", "client", "commands"}:
+        assert "stop" not in events
+    if fault != "network_pin":
+        factory.assert_not_called()
+    else:
+        assert provider.relay is factory.return_value
+        factory.return_value.start.assert_not_called()
+    if fault == "client":
+        assert "cleanup.close" in events and "relay.close" in events
+
+
+def test_anonymous_http_clips_phase_and_refuses_late_success(tmp_path, monkeypatch):
+    from tests.support import asset_provider, asset_rustfs
+
+    now = [0.0]
+    provider = AssetProvider(tmp_path)
+    provider.budget = asset_rustfs.PhaseBudget(clock=lambda: now[0])
+    provider.budget.enter("A")
+    now[0] = 359.5
+
+    def request(*_, **kwargs):
+        assert kwargs["timeout"] == 0.5
+        now[0] = 360
+        return Mock(status_code=200, content=b"private")
+
+    request = Mock(side_effect=request)
+    monkeypatch.setattr(asset_provider.httpx, "request", request)
+    with pytest.raises(asset_provider.HttpProbeFailure):
+        provider.raw_http("GET", "http://unused.invalid")
+    request.assert_called_once()
+
+
+@pytest.mark.parametrize("pipe", ["stdout", "stderr"])
+def test_owned_command_bounds_both_pipes_without_rendering_native_bytes(
+    monkeypatch, pipe
+):
+    from tests.support import asset_rustfs
+
+    process = Mock(
+        stdout=BytesIO(b"private" if pipe == "stdout" else b""),
+        stderr=BytesIO(b"private" if pipe == "stderr" else b""),
+        returncode=0,
+    )
+    process.poll.return_value = 0
+    monkeypatch.setattr(asset_rustfs.subprocess, "Popen", Mock(return_value=process))
+    commands = asset_rustfs.OwnedCommands()
+    with pytest.raises(RuntimeError) as caught:
+        commands.run(["owned"], {}, 1, output_limit=4)
+    assert "private" not in str(caught.value)
+    commands.assert_settled()
+
+
+@pytest.mark.parametrize("late_stage", ["request", "content"])
+def test_http_original_five_second_cutoff_refuses_success_inside_phase(
+    tmp_path, monkeypatch, late_stage
+):
+    from tests.support import asset_provider, asset_rustfs
+
+    now = [0.0]
+    monkeypatch.setattr(asset_provider.time, "monotonic", lambda: now[0])
+    provider = AssetProvider(tmp_path)
+    provider.budget = asset_rustfs.PhaseBudget(clock=lambda: now[0])
+    provider.budget.enter("A")
+
+    class Response:
+        status_code = 403
+
+        @property
+        def content(self):
+            if late_stage == "content":
+                now[0] = 6
+            return b""
+
+    def request(*_, **kwargs):
+        assert kwargs["timeout"] == 5
+        if late_stage == "request":
+            now[0] = 6
+        return Response()
+
+    request = Mock(side_effect=request)
+    monkeypatch.setattr(asset_provider.httpx, "request", request)
+    with pytest.raises(asset_provider.HttpProbeFailure):
+        provider.raw_http("HEAD", "http://unused.invalid")
+    request.assert_called_once()
+    assert now[0] < provider.budget.cutoff
+
+
+def test_cleanup_original_reserve_survives_repeated_refusal(
+    tmp_path, monkeypatch, capsys
+):
+    from tests.support import asset_provider
+
+    now = [0.0]
+    monkeypatch.setattr(asset_provider.time, "monotonic", lambda: now[0])
+    provider = AssetProvider(tmp_path)
+    monkeypatch.setattr(
+        provider.commands, "assert_settled", Mock(side_effect=RuntimeError("unsettled"))
+    )
+    with pytest.raises(RuntimeError, match="target retained"):
+        provider.close()
+    assert provider.cleanup_cutoff == 180
+    now[0] = 100
+    with pytest.raises(RuntimeError, match="target retained"):
+        provider.close()
+    assert provider.cleanup_cutoff == 180
+    assert capsys.readouterr().out.count("WSO_ASSET_PROVIDER_CLOSE_DIAGNOSTIC=") == 2
+
+
+@pytest.mark.parametrize("case", ["late_success", "insufficient_next_admission"])
+def test_readiness_retains_original_sixty_seconds_inside_phase(
+    tmp_path, monkeypatch, case
+):
+    from tests.support import asset_provider, asset_rustfs
+
+    now = [0.0]
+    monkeypatch.setattr(asset_provider.time, "monotonic", lambda: now[0])
+    monkeypatch.setattr(asset_provider.time, "sleep", lambda _: None)
+    provider = AssetProvider(tmp_path)
+    provider.budget = asset_rustfs.PhaseBudget(clock=lambda: now[0])
+    provider.budget.enter("A")
+
+    def request():
+        now[0] = 61 if case == "late_success" else 53
+        if case != "late_success":
+            if calls.call_count > 1:
+                return {}
+            raise OSError("private")
+        return {}
+
+    calls = Mock(side_effect=request)
+    provider.clients = {"bootstrap": Mock(list_buckets=calls)}
+    with pytest.raises(RuntimeError, match="authenticated ready"):
+        provider.wait_authenticated_ready()
+    assert calls.call_count == 1
+    assert now[0] < provider.budget.cutoff

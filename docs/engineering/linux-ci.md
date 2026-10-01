@@ -400,7 +400,38 @@ The fixed error combines four checks over installed-prefix objects and multipart
 
 Independent source inspection of the pinned MinIO release used by this run (`RELEASE.2025-04-22T22-12-26Z`, commit `0d7408fc9969caf07de6a8c3a84f9fbb10a6739e`) establishes a native capability mismatch. Its [multipart-upload listing implementation (`ListMultipartUploads`)](https://github.com/minio/minio/blob/0d7408fc9969caf07de6a8c3a84f9fbb10a6739e/cmd/erasure-sets.go#L881) treats its nonempty `Prefix` as one exact object. Its [multipart listing](https://github.com/minio/minio/blob/0d7408fc9969caf07de6a8c3a84f9fbb10a6739e/cmd/erasure-multipart.go#L254) visits only that exact object’s multipart directory, rather than enumerating multipart uploads on arbitrary installed child keys. Its [server-pool implementation](https://github.com/minio/minio/blob/0d7408fc9969caf07de6a8c3a84f9fbb10a6739e/cmd/erasure-server-pool.go#L1696) does not provide durable, bounded cross-key pagination through its empty-prefix cache path. Thus this pinned candidate cannot satisfy installed-prefix multipart enumeration, continuation across child keys, and durable restart/orphan discovery. The actual four-way predicate remains unknown; this capability rejection is based on pinned source semantics, not invented run counts.
 
-Root rejected this MinIO candidate for the required contract. No same-provider diagnostic retry, manual or twelfth run is authorized; do not weaken pagination, filtering, set equality or privacy assertions, substitute known database rows, or patch the vendor. The conditional eleventh authority was consumed. Read-only primary-source investigations are complete. RustFS 1.0.0 is chosen only as a transition-design candidate under review; no provider is selected for acceptance, no runtime/source implementation is authorized, and no retry authority exists. T05A remains in progress; provider acceptance, authenticated sealed656 RED, full14 and APK parity remain unproved.
+Root rejected this MinIO candidate for the required contract. No same-provider diagnostic retry, manual or twelfth run is authorized; do not weaken pagination, filtering, set equality or privacy assertions, substitute known database rows, or patch the vendor. The conditional eleventh authority was consumed. Read-only primary-source investigations are complete. RustFS 1.0.0 is the approved transition design and source implementation is underway; no provider is selected for acceptance and no retry authority exists. T05A remains in progress; provider acceptance, authenticated sealed656 RED, full14 and APK parity remain unproved.
+
+### RustFS transition implementation status — 2026-10-01
+
+The approved RustFS 1.0.0 design and exact archive/member hashes, profile,
+receipt ABI, role boundaries, restart proof, containment and budget are recorded
+in the [private asset transition status](private-assets.md#rustfs-transition-status--2026-10-01).
+This design does not change the actual-run record above. The latest completed
+Linux foundation remains run 36801780609 / job 110177504261 at d5aaba8, with
+1726 ordinary Python cases and ten actual Celery/Valkey recovery cases, both
+zero skips; the full foundation receipt remains recorded above. No CI is
+currently active and no RustFS runtime or provider run has occurred.
+
+The independent receipt-checker component is READY: 216 focused contracts
+passed in 1.31 seconds, Ruff, formatting and scoped mypy passed, and fresh
+independent review approved with zero Critical, Important or Minor findings.
+The original fixture review found six Important findings; one owner fix batch
+addressed all six, and fresh scoped review approved with zero findings. The
+fixture owner passed 676 profile/safety cases in 4.98 seconds; the helper owner
+passed 201 cases in 0.41 seconds. Root's one amended aggregate passed 1,093
+cases in 7.26 seconds with no skips. Ruff check/format across nine files,
+configured mypy across 40 product files and explicit pure-checker mypy across
+two files passed. These are source/contract gates, not provider acceptance.
+
+Root defined but has not activated one conditional RustFS probe12. Activation
+requires final four-doc review, private18, staged no-drift/whitespace/source
+hash gates, one reviewed curated commit and combined push, and verified remote
+SHA equality. If activated, at most one automatic cold run uses the existing
+20-minute sealed656 overlay12 workflow and foundation workflow; no manual retry
+or budget increase is authorized. The 11th MinIO attempt remains the latest
+actual provider run. No RustFS execution/acceptance, authenticated HTTP, genuine
+sealed-656 RED, full14 GREEN, W02 reopening or APK parity is established.
 
 ## Evidence handling
 

@@ -7,6 +7,14 @@ from pathlib import Path
 from typing import Any
 from xml.etree import ElementTree as ET
 
+if __package__:
+    from .asset_provider_receipt import validate_provider_receipt
+else:
+    # Mypy checks the package mode; real CLI contracts cover this adjacent import.
+    from asset_provider_receipt import (  # type: ignore[import-not-found, no-redef]
+        validate_provider_receipt,
+    )
+
 BASELINE_SHA = "6565929776c2ff5b9ff55670bc4567b6d2cf4821"
 CASE_NAME = "test_photo_upload_does_not_require_a_store"
 CLASSNAME = "tests.integration.test_private_assets"
@@ -33,37 +41,27 @@ def _unique_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     return result
 
 
+def _reject_nonfinite(value: str) -> Any:
+    raise ValueError("baseline RED receipt is malformed")
+
+
 def _verify_receipt(path: Path) -> dict[str, Any]:
     try:
         observed = json.loads(
-            _bounded_read(path, 16 * 1024), object_pairs_hook=_unique_keys
+            _bounded_read(path, 16 * 1024).decode("utf-8"),
+            object_pairs_hook=_unique_keys,
+            parse_constant=_reject_nonfinite,
         )
         if not isinstance(observed, dict) or not isinstance(
             observed.get("provider"), dict
         ):
             raise TypeError("baseline RED receipt shape is invalid")
-        image_id = observed["provider"].get("image_id")
-        if not isinstance(image_id, str) or not re.fullmatch(
-            r"sha256:[0-9a-f]{64}", image_id
-        ):
-            raise ValueError("baseline RED provider image identity is invalid")
+        provider = validate_provider_receipt(observed["provider"])
         expected = {
             "schema_version": 1,
             "baseline_sha": BASELINE_SHA,
             "stage": "ASSET_REQUEST_OBSERVED",
-            "provider": {
-                "provider": "MinIO",
-                "version": "RELEASE.2025-04-22T22-12-26Z",
-                "security_profile": "minio-inert-acl-dedicated-bucket-v2",
-                "artifact_kind": "official-binaries-local-scratch-image",
-                "binary_sha256": "53e2a2cb16c5366ea6fbbc479c19ddb4c6a0948273e752f740fb1fbf27bb817c",
-                "client_version": "RELEASE.2025-04-16T18-13-26Z",
-                "client_binary_sha256": "ac90da87a35641be5a0ac75d49de5161ddb47d629b5ba01261b0ae9e00aea15f",
-                "source_commit": "0d7408fc9969caf07de6a8c3a84f9fbb10a6739e",
-                "image_id": image_id,
-                "capabilities": "private IAM/put/get/head/delete/multipart/list/abort/presign-expiry",
-                "owned_resource_mapping": True,
-            },
+            "provider": provider,
             "http_preflight": {
                 "authenticated_tenants": 2,
                 "me_statuses": [200, 200],
@@ -79,7 +77,7 @@ def _verify_receipt(path: Path) -> dict[str, Any]:
         ):
             raise ValueError("baseline RED preflight evidence is incomplete or invalid")
         return observed
-    except (TypeError, UnicodeError, json.JSONDecodeError, RecursionError):
+    except (TypeError, ValueError, UnicodeError, RecursionError):
         raise ValueError("baseline RED receipt is malformed") from None
 
 

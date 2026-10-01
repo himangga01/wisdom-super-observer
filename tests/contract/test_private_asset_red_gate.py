@@ -1,6 +1,12 @@
 """Setup failures and unrelated failures cannot satisfy baseline lifecycle RED."""
 
+import fnmatch
 import json
+import re
+import shlex
+import subprocess
+import sys
+from pathlib import Path
 from xml.etree import ElementTree as ET
 
 import pytest
@@ -21,16 +27,18 @@ def evidence():
         "baseline_sha": BASELINE_SHA,
         "stage": "ASSET_REQUEST_OBSERVED",
         "provider": {
-            "provider": "MinIO",
-            "version": "RELEASE.2025-04-22T22-12-26Z",
-            "security_profile": "minio-inert-acl-dedicated-bucket-v2",
-            "artifact_kind": "official-binaries-local-scratch-image",
-            "binary_sha256": "53e2a2cb16c5366ea6fbbc479c19ddb4c6a0948273e752f740fb1fbf27bb817c",
-            "client_version": "RELEASE.2025-04-16T18-13-26Z",
-            "client_binary_sha256": "ac90da87a35641be5a0ac75d49de5161ddb47d629b5ba01261b0ae9e00aea15f",
-            "source_commit": "0d7408fc9969caf07de6a8c3a84f9fbb10a6739e",
+            "provider": "RustFS",
+            "version": "1.0.0",
+            "security_profile": "rustfs-inert-acl-dedicated-bucket-v1",
+            "artifact_kind": "official-zip-server-local-scratch-image",
+            "archive_sha256": "c30a95b76546f25122c9ca387090ddb30c391ca5605621b0d7c881703c0f21c8",
+            "archive_bytes": 194469895,
+            "binary_sha256": "222eedc3d9baabf6516702d9fbf230270c3ca49b50f562d3461c96e2cc6ae6ad",
+            "binary_bytes": 264596736,
+            "source_commit": "d47f54bfb2f39f48bd1adda334bd27e151fe85b8",
             "image_id": "sha256:" + "a" * 64,
-            "capabilities": "private IAM/put/get/head/delete/multipart/list/abort/presign-expiry",
+            "admin_bootstrap": "native-sigv4-iam-zip-v1",
+            "capabilities": "private IAM/put/get/head/delete/multipart/list/abort/presign-expiry/durable-prefix-pagination/restart",
             "owned_resource_mapping": True,
         },
         "http_preflight": {
@@ -269,10 +277,17 @@ def test_excluded_seaweed_profile_cannot_satisfy_new_baseline_gate(tmp_path):
         verify_baseline_red(junit, receipt, pytest_exit=1)
 
 
-def test_legacy_minio_v1_profile_cannot_satisfy_v2_baseline_gate(tmp_path):
+@pytest.mark.parametrize(
+    "profile",
+    [
+        "minio-inert-acl-dedicated-bucket-v1",
+        "minio-inert-acl-dedicated-bucket-v2",
+    ],
+)
+def test_legacy_minio_profiles_cannot_satisfy_rustfs_baseline_gate(tmp_path, profile):
     junit, receipt = files(tmp_path)
     body = evidence()
-    body["provider"]["security_profile"] = "minio-inert-acl-dedicated-bucket-v1"
+    body["provider"]["security_profile"] = profile
     receipt.write_text(json.dumps(body), encoding="utf-8")
     with pytest.raises(ValueError):
         verify_baseline_red(junit, receipt, pytest_exit=1)
@@ -440,3 +455,144 @@ def test_non_utf8_xml_cannot_bypass_declaration_guard(tmp_path, encoding):
     junit.write_bytes(body.encode(encoding))
     with pytest.raises(ValueError):
         verify_baseline_red(junit, receipt, pytest_exit=1)
+
+
+@pytest.mark.parametrize(
+    "entrypoint",
+    [
+        ["scripts/check_private_asset_red.py"],
+        ["-m", "scripts.check_private_asset_red"],
+    ],
+)
+@pytest.mark.parametrize("mutation", [None, "duplicate", "private", "junit_error"])
+def test_real_cli_modes_validate_raw_inputs_before_public_proof(
+    tmp_path, entrypoint, mutation
+):
+    junit, receipt = files(tmp_path)
+    if mutation == "duplicate":
+        payload = receipt.read_text(encoding="utf-8")
+        payload = payload.replace(
+            '"provider": "RustFS"', '"provider": "RustFS", "provider": "RustFS"'
+        )
+        receipt.write_text(payload, encoding="utf-8")
+    elif mutation == "private":
+        body = evidence()
+        body["provider"]["endpoint"] = "PRIVATE_SENTINEL"
+        receipt.write_text(json.dumps(body), encoding="utf-8")
+    elif mutation == "junit_error":
+        tree = ET.parse(junit)
+        ET.SubElement(tree.getroot()[0][0], "error").text = "PRIVATE_SENTINEL"
+        tree.write(junit, encoding="utf-8")
+    result = subprocess.run(
+        [
+            sys.executable,
+            *entrypoint,
+            str(junit),
+            str(receipt),
+            "--pytest-exit",
+            "1",
+            "--emit-public-proof",
+        ],
+        cwd=Path(__file__).resolve().parents[2],
+        capture_output=True,
+        text=True,
+        timeout=20,
+        check=False,
+    )
+    combined = result.stdout + result.stderr
+    assert "PRIVATE_SENTINEL" not in combined
+    proof_lines = [
+        line
+        for line in result.stdout.splitlines()
+        if line.startswith("WSO_PUBLIC_ASSET_RED_PROOF=")
+    ]
+    if mutation is None:
+        assert result.returncode == 0, result.stderr
+        assert result.stderr == ""
+        assert len(proof_lines) == 1
+        proof = json.loads(proof_lines[0].split("=", 1)[1])
+        assert proof == {
+            "schema_version": 1,
+            "receipt": evidence(),
+            "junit": {
+                "tests": 1,
+                "failures": 1,
+                "errors": 0,
+                "skipped": 0,
+                "classname": CLASSNAME,
+                "name": CASE_NAME,
+                "failure": EXPECTED_FAILURE,
+            },
+        }
+    else:
+        assert result.returncode == 1
+        assert proof_lines == []
+        assert "WSO_PUBLIC_ASSET_RED_PROOF=" not in result.stderr
+        assert "Traceback" not in combined
+
+
+@pytest.mark.parametrize("encoding", ["utf-8-sig", "utf-16", "utf-32"])
+def test_outer_receipt_requires_strict_utf8_without_bom(tmp_path, encoding):
+    junit, receipt = files(tmp_path)
+    receipt.write_bytes(json.dumps(evidence()).encode(encoding))
+    with pytest.raises(ValueError):
+        verify_baseline_red(junit, receipt, pytest_exit=1)
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        b'{"PRIVATE_SENTINEL":{"x":1,"x":1}}',
+        b'{"PRIVATE_SENTINEL":NaN}',
+        b'{"PRIVATE_SENTINEL":Infinity}',
+        b"[" * 2000 + b"]" * 2000,
+    ],
+)
+def test_outer_receipt_malformed_values_are_sanitized(tmp_path, payload):
+    junit, receipt = files(tmp_path)
+    receipt.write_bytes(payload)
+    with pytest.raises(ValueError) as rejected:
+        verify_baseline_red(junit, receipt, pytest_exit=1)
+    assert "PRIVATE_SENTINEL" not in str(rejected.value)
+
+
+def test_sealed_workflow_copies_only_reviewed_infrastructure():
+    workflow = (
+        Path(__file__).resolve().parents[2] / ".github/workflows/private-assets.yml"
+    ).read_text(encoding="utf-8")
+    overlay = re.search(r"for task_path in (.*?)\; do", workflow, re.DOTALL)
+    assert overlay is not None
+    copied = shlex.split(overlay.group(1).replace("\\\n", ""))
+    assert len(copied) == len(set(copied))
+    assert set(copied) == {
+        "pyproject.toml",
+        "packages/core/pyproject.toml",
+        "uv.lock",
+        "tests/support/asset_provider.py",
+        "tests/support/asset_minio.py",
+        "tests/support/asset_rustfs.py",
+        "tests/support/asset_harness.py",
+        "tests/support/asset_process.py",
+        "tests/integration/test_private_assets.py",
+        "scripts/dev/owned-ci-postgres.sh",
+        "scripts/check_private_asset_red.py",
+        "scripts/asset_provider_receipt.py",
+    }
+    # These are configuration contracts, not an execution of hosted CI.
+    assert re.findall(r"timeout-minutes: (\d+)", workflow) == ["20"]
+    assert re.findall(r"          ref: ([0-9a-f]+)", workflow) == [
+        "6565929776c2ff5b9ff55670bc4567b6d2cf4821"
+    ]
+
+
+def test_workflow_changes_to_both_new_helpers_select_the_baseline_gate():
+    workflow = (
+        Path(__file__).resolve().parents[2] / ".github/workflows/private-assets.yml"
+    ).read_text(encoding="utf-8")
+    paths = workflow.split("    paths:\n", 1)[1].split("\npermissions:", 1)[0]
+    patterns = re.findall(r"      - '([^']+)'", paths)
+    for changed in [
+        "scripts/asset_provider_receipt.py",
+        "tests/support/asset_rustfs.py",
+    ]:
+        assert any(fnmatch.fnmatchcase(changed, pattern) for pattern in patterns)

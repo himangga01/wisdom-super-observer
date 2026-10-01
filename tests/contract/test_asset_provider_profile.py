@@ -5,7 +5,7 @@ import threading
 from collections import Counter
 from io import BytesIO, StringIO, TextIOWrapper
 from itertools import product
-from unittest.mock import Mock
+from unittest.mock import Mock, call
 from xml.etree import ElementTree
 
 import httpx
@@ -13,6 +13,59 @@ import pytest
 from botocore.exceptions import ClientError
 
 from tests.support.asset_minio import EXCEPTION_TYPES, unavailable_relay_snapshot
+from tests.support.asset_rustfs import OWNER_ID, PAB
+
+
+@pytest.mark.parametrize(
+    "bad", [dict.fromkeys(PAB, 1), dict.fromkeys(PAB, False), {**PAB, "extra": True}]
+)
+def test_persisted_pab_requires_exact_four_boolean_true_values(tmp_path, bad):
+    provider = AssetProvider(tmp_path)
+    provider.clients = {
+        "bootstrap": Mock(
+            get_public_access_block=Mock(
+                return_value={
+                    "ResponseMetadata": {"HTTPStatusCode": 200},
+                    "PublicAccessBlockConfiguration": bad,
+                }
+            )
+        )
+    }
+    with pytest.raises(RuntimeError, match="persisted private"):
+        provider.require_pab()
+
+
+def test_native_admin_old_twenty_second_cutoff_refuses_late_success(monkeypatch):
+    from tests.support import asset_rustfs
+
+    now = [0.0]
+    monkeypatch.setattr(asset_rustfs.time, "monotonic", lambda: now[0])
+    budget = asset_rustfs.PhaseBudget(clock=lambda: now[0])
+    budget.enter("A")
+
+    def request(*args):
+        now[0] = 20.01
+        return 200, "application/json", b"{}"
+
+    identities = {
+        "bootstrap": ("a" * 20, "b" * 40),
+        "gateway": ("c" * 20, "d" * 40),
+        "cleanup": ("e" * 20, "f" * 40),
+    }
+    native = asset_rustfs.NativeIam(
+        "http://127.0.0.1:1",
+        identities,
+        {
+            "wso-gateway": {"Version": "2012-10-17", "Statement": []},
+            "wso-maintenance": {"Version": "2012-10-17", "Statement": []},
+        },
+        budget,
+        request=request,
+    )
+    with pytest.raises(RuntimeError, match="native admin"):
+        native.request("bootstrap", "GET", "export-iam")
+
+
 from tests.support.asset_provider import AssetProvider, policy_config
 
 
@@ -377,7 +430,7 @@ def test_first_http_snapshots_survive_required_stream_close(tmp_path, monkeypatc
 
     stream = Mock(
         read=Mock(
-            side_effect=lambda: provider.raw_http("HEAD", "http://unused.invalid")
+            side_effect=lambda *_: provider.raw_http("HEAD", "http://unused.invalid")
         ),
         close=Mock(side_effect=close),
     )
@@ -396,7 +449,7 @@ def test_first_http_snapshots_survive_required_stream_close(tmp_path, monkeypatc
     assert fields["close_failed"] is True and relay.state == "CLOSED"
     assert fields["exception_kind"] == "HTTPX_READ_ERROR"
     assert fields["call_phase"] == "HTTP_REQUEST"
-    stream.close.assert_called_once_with()
+    assert stream.close.call_args_list == [call(), call()]
 
 
 @pytest.mark.parametrize(
@@ -419,7 +472,7 @@ def test_http_request_kind_whitelist(tmp_path, monkeypatch, error_type, kind):
     assert '"call_phase": "HTTP_REQUEST"' in message
     assert '"observed_status": null' in message
     assert "secret-url-body-cookie" not in message
-    request.assert_called_once()
+    assert request.call_count == 4
 
 
 @pytest.mark.parametrize("status", [403, True, 503.0, 99, 600, None])
@@ -449,7 +502,7 @@ def test_http_response_access_preserves_only_obtained_status(
         f'"observed_status": {403 if type(status) is int and status == 403 else "null"}'
         in message
     )
-    assert order == ["status", "content"]
+    assert order == ["status", "content"] * 4
     assert "secret-response-body" not in message
 
 
@@ -525,7 +578,7 @@ def test_operation_kind_survives_required_second_close_failure(tmp_path):
         == fields["relay_at_failure"]
         == unavailable_relay_snapshot()
     )
-    stream.close.assert_called_once_with()
+    assert stream.close.call_args_list == [call(), call()]
 
 
 @pytest.mark.parametrize(
@@ -736,7 +789,7 @@ def acl_diagnostic_fixture(tmp_path):
     admin, actor = Mock(), Mock()
     provider.clients = {"bootstrap": admin}
     private_acl = {
-        "Owner": {},
+        "Owner": {"ID": OWNER_ID, "DisplayName": "rustfs"},
         "Grants": [
             {"Grantee": {"Type": "CanonicalUser"}, "Permission": "FULL_CONTROL"}
         ],
@@ -753,6 +806,10 @@ def acl_diagnostic_fixture(tmp_path):
     admin.get_object_acl.return_value = private_acl
     admin.get_bucket_acl.return_value = private_acl
     admin.get_bucket_policy.side_effect = error(404, "NoSuchBucketPolicy")
+    admin.get_public_access_block.return_value = {
+        "ResponseMetadata": {"HTTPStatusCode": 200},
+        "PublicAccessBlockConfiguration": PAB,
+    }
     admin.list_multipart_uploads.return_value = {"IsTruncated": False}
     actor.put_object.return_value = {"ResponseMetadata": {"HTTPStatusCode": 200}}
     actor.create_multipart_upload.return_value = {
@@ -930,8 +987,8 @@ def test_acl_first_failure_survives_required_close(tmp_path, read_failure):
     }[read_failure]
     assert f'"condition": "{condition}"' in message
     assert "secret-" not in message and "wrong-private" not in message
-    stream.close.assert_called_once_with()
-    admin.get_object_acl.assert_not_called()
+    assert stream.close.call_args_list == [call(), call()]
+    assert admin.get_object_acl.call_count == 2
 
 
 @pytest.mark.parametrize(
@@ -963,13 +1020,17 @@ def test_acl_mutation_response_is_separate_and_sanitized(
     assert f'"target": "{target}"' in message
     assert "code=UNKNOWN" in message
     assert "PrivateCredentialCode" not in message and "secret-url-body" not in message
-    admin.head_object.assert_not_called()
+    assert admin.head_object.call_args_list == (
+        [call(Bucket=provider.bucket, Key="private-new")]
+        if mutation_error == "sdk" and operation != "put_object_acl"
+        else []
+    ) + [call(Bucket=provider.bucket, Key="private-original")]
     assert provider.outcomes == [
         {
             "actor": "gateway",
             "operation": operation,
             "variant": 1,
-            "status": None,
+            "status": 418 if mutation_error == "sdk" else None,
             "code": "UNKNOWN",
             "effects_verified": False,
         }
@@ -1052,7 +1113,7 @@ def test_acl_refused_new_mutation_retains_absence_target(tmp_path, operation):
     provider, admin, actor = acl_diagnostic_fixture(tmp_path)
     getattr(actor, operation).side_effect = error(403, "AccessDenied")
     admin.head_object.side_effect = error(503, "SlowDown")
-    message = acl_diagnostic_run(provider, actor, operation)
+    message = acl_diagnostic_run(provider, actor, operation, name="cleanup")
     assert "status=403 code=AccessDenied" in message
     assert '"target": "new"' in message
     assert '"component": "absence_head"' in message
@@ -1084,10 +1145,11 @@ def test_acl_success_keeps_exact_operation_order_and_outcome(tmp_path):
         "admin.head_object",
         "admin.get_object",
         "admin.get_object_acl",
-        "http",
-        "http",
         "admin.get_bucket_acl",
         "admin.get_bucket_policy",
+        "admin.get_public_access_block",
+        "http",
+        "http",
         "admin.delete_object",
         "admin.head_object",
         "admin.list_multipart_uploads",
@@ -1301,10 +1363,10 @@ def test_multipart_bucket_authority_has_no_fabricated_prefix_condition():
 def test_private_synthetic_acl_is_not_a_canonical_owner_identity():
     AssetProvider.require_private_acl(
         {
-            "Owner": {"ID": "", "DisplayName": ""},
+            "Owner": {"ID": OWNER_ID, "DisplayName": "rustfs"},
             "Grants": [
                 {
-                    "Grantee": {"Type": "CanonicalUser", "ID": "", "DisplayName": ""},
+                    "Grantee": {"Type": "CanonicalUser"},
                     "Permission": "FULL_CONTROL",
                 }
             ],
@@ -1335,7 +1397,9 @@ def test_private_synthetic_acl_is_not_a_canonical_owner_identity():
 )
 def test_unexpected_synthetic_acl_fails_closed(grants):
     with pytest.raises(RuntimeError):
-        AssetProvider.require_private_acl({"Owner": {"ID": ""}, "Grants": grants})
+        AssetProvider.require_private_acl(
+            {"Owner": {"ID": OWNER_ID, "DisplayName": "rustfs"}, "Grants": grants}
+        )
 
 
 @pytest.mark.parametrize(
@@ -1453,10 +1517,10 @@ def effect_provider(tmp_path, monkeypatch):
     admin.get_object.return_value = {"Body": BytesIO(b"ciphertext")}
     admin.head_object.return_value = {"ContentLength": 10}
     admin.get_object_acl.return_value = {
-        "Owner": {"ID": ""},
+        "Owner": {"ID": OWNER_ID, "DisplayName": "rustfs"},
         "Grants": [
             {
-                "Grantee": {"Type": "CanonicalUser", "ID": ""},
+                "Grantee": {"Type": "CanonicalUser"},
                 "Permission": "FULL_CONTROL",
             }
         ],
@@ -1558,12 +1622,41 @@ CONTROL_MUTATIONS = (
 )
 CONTROL_GETS = ("get_bucket_ownership_controls", "get_public_access_block")
 PARSER_PUTS = {"put_bucket_ownership_controls", "put_public_access_block"}
+# Test-owned literal response contract; never derived from production decisions.
+CONTROL_ORACLE = {
+    ("gateway", "put_bucket_policy"): (403, "AccessDenied"),
+    ("gateway", "delete_bucket_policy"): (403, "AccessDenied"),
+    ("gateway", "put_bucket_acl"): (403, "AccessDenied"),
+    ("gateway", "put_object_acl"): (403, "AccessDenied"),
+    ("gateway", "put_bucket_ownership_controls"): (501, "NotImplemented"),
+    ("gateway", "delete_bucket_ownership_controls"): (501, "NotImplemented"),
+    ("gateway", "put_public_access_block"): (403, "AccessDenied"),
+    ("gateway", "delete_public_access_block"): (403, "AccessDenied"),
+    ("gateway", "create_bucket"): (403, "AccessDenied"),
+    ("cleanup", "put_bucket_policy"): (403, "AccessDenied"),
+    ("cleanup", "delete_bucket_policy"): (403, "AccessDenied"),
+    ("cleanup", "put_bucket_acl"): (403, "AccessDenied"),
+    ("cleanup", "put_object_acl"): (403, "AccessDenied"),
+    ("cleanup", "put_bucket_ownership_controls"): (501, "NotImplemented"),
+    ("cleanup", "delete_bucket_ownership_controls"): (501, "NotImplemented"),
+    ("cleanup", "put_public_access_block"): (403, "AccessDenied"),
+    ("cleanup", "delete_public_access_block"): (403, "AccessDenied"),
+    ("cleanup", "create_bucket"): (403, "AccessDenied"),
+    ("bootstrap", "get_bucket_ownership_controls"): (501, "NotImplemented"),
+    ("bootstrap", "get_public_access_block"): (200, "SUCCESS"),
+    ("gateway", "get_bucket_ownership_controls"): (501, "NotImplemented"),
+    ("gateway", "get_public_access_block"): (403, "AccessDenied"),
+    ("cleanup", "get_bucket_ownership_controls"): (501, "NotImplemented"),
+    ("cleanup", "get_public_access_block"): (403, "AccessDenied"),
+}
+
 CONTROL_EFFECTS = (
     "signed_head",
     "signed_bytes",
     "object_acl",
     "bucket_acl",
     "policy_absence",
+    "public_access_block",
     "anonymous_get",
     "anonymous_head",
 )
@@ -1575,10 +1668,10 @@ def control_fixture(tmp_path, monkeypatch, *, fault=None, effect_fault=None):
     provider.clients = {name: Mock() for name in ("bootstrap", "gateway", "cleanup")}
     events = []
     acl = {
-        "Owner": {"ID": ""},
+        "Owner": {"ID": OWNER_ID, "DisplayName": "rustfs"},
         "Grants": [
             {
-                "Grantee": {"Type": "CanonicalUser", "ID": ""},
+                "Grantee": {"Type": "CanonicalUser"},
                 "Permission": "FULL_CONTROL",
             }
         ],
@@ -1603,6 +1696,9 @@ def control_fixture(tmp_path, monkeypatch, *, fault=None, effect_fault=None):
     admin.get_object_acl.side_effect = effect("object_acl", acl)
     admin.get_bucket_acl.side_effect = effect("bucket_acl", acl)
     admin.get_bucket_policy.side_effect = effect("policy_absence", None)
+    monkeypatch.setattr(
+        provider, "require_pab", lambda: effect("public_access_block", None)()
+    )
 
     def anonymous(method, *_):
         return effect("anonymous_" + method.lower(), (403, b""))()
@@ -1619,14 +1715,17 @@ def control_fixture(tmp_path, monkeypatch, *, fault=None, effect_fault=None):
                 return value
             if name == "bootstrap" and operation in CONTROL_MUTATIONS:
                 raise AssertionError("bootstrap mutations prohibited")
-            expected = (
-                (400, "MalformedXML")
-                if operation in PARSER_PUTS
-                else (501, "NotImplemented")
-                if operation in CONTROL_GETS
-                else (403, "AccessDenied")
-            )
-            raise error(*expected)
+            if name == "bootstrap" and operation == "get_public_access_block":
+                return {
+                    "ResponseMetadata": {"HTTPStatusCode": 200},
+                    "PublicAccessBlockConfiguration": {
+                        "BlockPublicAcls": True,
+                        "IgnorePublicAcls": True,
+                        "BlockPublicPolicy": True,
+                        "RestrictPublicBuckets": True,
+                    },
+                }
+            raise error(*CONTROL_ORACLE[(name, operation)])
 
         return perform
 
@@ -1671,12 +1770,16 @@ def test_v2_exact_controls_payloads_queries_order_and_complete_effects(
         outcome["response_verified"] and outcome["effects_verified"]
         for outcome in provider.control_outcomes
     )
+    assert {
+        (row["actor"], row["operation"]): (row["status"], row["code"])
+        for row in provider.control_outcomes
+    } == CONTROL_ORACLE
     assert Counter(
         (row["status"], row["code"]) for row in provider.control_outcomes
     ) == {
-        (400, "MalformedXML"): 4,
-        (403, "AccessDenied"): 14,
-        (501, "NotImplemented"): 6,
+        (200, "SUCCESS"): 1,
+        (403, "AccessDenied"): 16,
+        (501, "NotImplemented"): 7,
     }
     model = get_session().get_service_model("s3")
     serializer = create_serializer("rest-xml")
@@ -1708,7 +1811,7 @@ def test_v2_exact_controls_payloads_queries_order_and_complete_effects(
                         "BlockPublicPolicy",
                         "RestrictPublicBuckets",
                     ),
-                    True,
+                    False,
                 )
             )
             assert arguments == {"Bucket": provider.bucket, field: expected}
@@ -1730,7 +1833,7 @@ def test_v2_exact_controls_payloads_queries_order_and_complete_effects(
             else:
                 assert {
                     node.tag.rsplit("}", 1)[1]: node.text for node in xml
-                } == dict.fromkeys(expected, "true")
+                } == dict.fromkeys(expected, "false")
         elif operation == "put_object_acl":
             assert arguments == {
                 "Bucket": provider.bucket,
@@ -1795,6 +1898,23 @@ def test_parser_refusal_retains_operation_and_attempts_all_effects(
     provider, events = control_fixture(
         tmp_path, monkeypatch, fault=("gateway", operation, response)
     )
+    if (
+        hasattr(response, "response")
+        and AssetProvider.error_identity(response)
+        == CONTROL_ORACLE[("gateway", operation)]
+    ):
+        provider.control_profile(provider.prefix + "private", b"ciphertext")
+        assert {
+            (row["actor"], row["operation"]): (row["status"], row["code"])
+            for row in provider.control_outcomes
+        } == CONTROL_ORACLE
+        assert len(provider.control_outcomes) == 24
+        assert all(
+            row["response_verified"] and row["effects_verified"]
+            for row in provider.control_outcomes
+        )
+        assert_control_effects(events)
+        return
     with pytest.raises(RuntimeError) as raised:
         provider.control_profile(provider.prefix + "private", b"ciphertext")
     message = str(raised.value)
@@ -1828,7 +1948,7 @@ def test_control_readback_failure_is_unverified_and_preserves_original_label(
 def test_v2_producer_profile_is_exact():
     from tests.support.asset_provider import SECURITY_PROFILE
 
-    assert SECURITY_PROFILE == "minio-inert-acl-dedicated-bucket-v2"
+    assert SECURITY_PROFILE == "rustfs-inert-acl-dedicated-bucket-v1"
 
 
 @pytest.mark.parametrize(
@@ -1874,13 +1994,7 @@ def test_unknown_control_metadata_is_refused_with_complete_sanitized_effects(
 def test_each_control_attempt_enforces_exact_pair_and_preserves_full_effects(
     tmp_path, monkeypatch, actor, operation, refusal
 ):
-    status, code = (
-        (400, "MalformedXML")
-        if operation in PARSER_PUTS
-        else (501, "NotImplemented")
-        if operation in CONTROL_GETS
-        else (403, "AccessDenied")
-    )
+    status, code = CONTROL_ORACLE[(actor, operation)]
     responses = {
         "success": {"ResponseMetadata": {"HTTPStatusCode": 204}},
         "status": error(401, code),
@@ -1925,7 +2039,7 @@ def test_response_refusal_and_readback_failure_both_remain_visible(
             e[:3] == ("attempt", "gateway", "put_bucket_ownership_controls")
             for e in events
         ):
-            return {"Owner": {}, "Grants": []}
+            return {"Owner": {"ID": OWNER_ID, "DisplayName": "rustfs"}, "Grants": []}
         return value
 
     admin.get_bucket_acl.side_effect = changed_acl
@@ -1965,11 +2079,26 @@ def test_each_control_effect_rejects_changed_state(tmp_path, monkeypatch, compon
     operations = {
         "signed_head": ("head_object", {"ContentLength": 11}),
         "signed_bytes": ("get_object", {"Body": BytesIO(b"changed")}),
-        "object_acl": ("get_object_acl", {"Owner": {}, "Grants": []}),
-        "bucket_acl": ("get_bucket_acl", {"Owner": {}, "Grants": []}),
+        "object_acl": (
+            "get_object_acl",
+            {"Owner": {"ID": OWNER_ID, "DisplayName": "rustfs"}, "Grants": []},
+        ),
+        "bucket_acl": (
+            "get_bucket_acl",
+            {"Owner": {"ID": OWNER_ID, "DisplayName": "rustfs"}, "Grants": []},
+        ),
         "policy_absence": ("get_bucket_policy", {"Policy": "public"}),
     }
-    if component in operations:
+    if component == "public_access_block":
+        monkeypatch.setattr(
+            provider,
+            "require_pab",
+            lambda: (
+                events.append(("effect", component)),
+                (_ for _ in ()).throw(RuntimeError("changed PAB")),
+            )[1],
+        )
+    elif component in operations:
         operation, changed = operations[component]
         original = getattr(admin, operation).side_effect
 
@@ -2005,14 +2134,8 @@ def test_unsupported_get_requires_exact_pinned_501(status, code):
 
 
 def test_failed_public_effect_keeps_sanitized_typed_outcome(tmp_path, monkeypatch):
-    provider = AssetProvider(tmp_path)
-    actor = Mock()
-    actor.put_object.return_value = {"ResponseMetadata": {"HTTPStatusCode": 200}}
-    monkeypatch.setattr(
-        provider,
-        "private_effect",
-        Mock(side_effect=RuntimeError("private bytes changed")),
-    )
+    provider, admin, actor = acl_diagnostic_fixture(tmp_path)
+    admin.get_object.side_effect = lambda **_: {"Body": BytesIO(b"changed")}
     with pytest.raises(
         RuntimeError, match="actor=bootstrap operation=put_object variant=0 status=200"
     ):
@@ -2092,7 +2215,7 @@ def test_exact_actor_operation_public_grant_matrix_and_valid_xml(tmp_path, monke
             grant = ("canned", arguments["ACL"])
         elif operation == "put_object_acl":
             policy = arguments["AccessControlPolicy"]
-            owner = "0" * 64
+            owner = OWNER_ID
             assert policy["Owner"] == {"ID": owner}
             assert policy["Grants"][0] == {
                 "Grantee": {"Type": "CanonicalUser", "ID": owner},
@@ -2132,7 +2255,14 @@ def test_exact_actor_operation_public_grant_matrix_and_valid_xml(tmp_path, monke
         elif operation == "put_object":
             assert arguments["Body"] == body
         seen.append((name, operation, grant))
-        provider.outcomes.append({"effects_verified": True})
+        provider.outcomes.append(
+            {
+                "actor": name,
+                "operation": operation,
+                "variant": _index,
+                "effects_verified": True,
+            }
+        )
 
     monkeypatch.setattr(provider, "verify_public_attempt", record)
     provider.privacy_profile(provider.prefix + "private", b"ciphertext")
@@ -2151,3 +2281,699 @@ def test_exact_actor_operation_public_grant_matrix_and_valid_xml(tmp_path, monke
         expected_grants,
     )
     assert Counter(seen) == Counter(expected)
+
+
+@pytest.mark.parametrize("failed_read,phase", [(1, "IAM_BEFORE"), (7, "IAM_AFTER")])
+def test_native_admin_failure_context_is_static_and_first_read_is_retained(
+    failed_read, phase
+):
+    from tests.contract.test_asset_rustfs import iam_fixture
+
+    native, calls, controls, _ = iam_fixture()
+    controls["fail_get"] = failed_read
+    with pytest.raises(RuntimeError) as caught:
+        native.no_effect()
+    assert (
+        str(caught.value)
+        == "native runtime admin no-effect failed actor=GATEWAY phase="
+        + phase
+        + " component=EXPORT condition=SHAPE status=null"
+    )
+    assert len(calls) == (5 if failed_read == 1 else 11)
+    assert "unsafe" not in str(caught.value)
+
+
+def test_native_admin_metadata_change_names_only_static_component():
+    from tests.contract.test_asset_rustfs import iam_fixture
+
+    native, calls, controls, _ = iam_fixture()
+    controls["failure"] = True
+    with pytest.raises(RuntimeError) as caught:
+        native.no_effect()
+    assert (
+        str(caught.value)
+        == "native runtime admin no-effect failed actor=GATEWAY phase=IAM_AFTER component=POLICY_GATEWAY condition=METADATA status=null"
+    )
+    assert len(calls) == 11
+
+
+def test_native_admin_wrong_denial_retains_status_before_all_after_reads():
+    from tests.contract.test_asset_rustfs import iam_fixture
+
+    native, calls, _, _ = iam_fixture()
+    request = native.request_hook
+
+    def wrong(*args):
+        value = request(*args)
+        return (
+            (200, "application/xml", b"<Error><Code>AccessDenied</Code></Error>")
+            if args[1] == "PUT"
+            else value
+        )
+
+    native.request_hook = wrong
+    with pytest.raises(RuntimeError) as caught:
+        native.no_effect()
+    assert (
+        str(caught.value)
+        == "native runtime admin no-effect failed actor=GATEWAY phase=IAM_IMPORT component=IMPORT_STATUS condition=HTTP_STATUS status=200"
+    )
+    assert len(calls) == 11
+
+
+def test_native_listing_transport_does_not_invent_marker_failure():
+    from tests.support.asset_rustfs import NativeListingFailure, native_pages
+
+    actor = Mock(list_objects_v2=Mock(side_effect=OSError("unsafe secret key")))
+    with pytest.raises(NativeListingFailure) as caught:
+        native_pages(actor, "owned", "installed/", "objects", {"installed/a"})
+    assert caught.value.summary["marker_valid"] is None
+    assert caught.value.summary["terminal"] is None
+    assert caught.value.summary["pages"] == 0
+    assert "unsafe" not in str(caught.value)
+    actor.list_objects_v2.assert_called_once_with(
+        Bucket="owned", Prefix="installed/", MaxKeys=1
+    )
+
+
+def test_native_listing_counts_received_rows_when_provider_ignores_max_one():
+    from tests.support.asset_rustfs import NativeListingFailure, native_pages
+
+    actor = Mock(
+        list_objects_v2=Mock(
+            return_value={
+                "Contents": [{"Key": "installed/a"}, {"Key": "installed/b"}],
+                "IsTruncated": False,
+            }
+        )
+    )
+    with pytest.raises(NativeListingFailure) as caught:
+        native_pages(
+            actor, "owned", "installed/", "objects", {"installed/a", "installed/b"}
+        )
+    assert caught.value.summary["rows"] == 2
+    assert caught.value.summary["pages"] == 1
+    assert caught.value.summary["marker_valid"] is None
+    actor.list_objects_v2.assert_called_once()
+
+
+def test_native_listing_failure_refuses_unsafe_fields_and_stream():
+    from tests.support.asset_rustfs import NativeListingFailure
+
+    error = NativeListingFailure(
+        "private-key",
+        {"pages": True, "rows": 1001, "terminal": 1, "unsafe-secret": "secret"},
+    )
+    assert error.stream == "objects"
+    assert set(error.summary) == {
+        "pages",
+        "rows",
+        "unique_rows",
+        "expected_rows",
+        "set_equal",
+        "missing_rows",
+        "extra_rows",
+        "marker_valid",
+        "terminal",
+        "same_key_boundary",
+    }
+    assert all(value is None for value in error.summary.values())
+
+
+def test_native_inventory_emits_bounded_first_predicates_without_second_stream_call(
+    tmp_path, capsys
+):
+    provider = AssetProvider(tmp_path)
+    provider.clients = {
+        "cleanup": Mock(
+            list_objects_v2=Mock(return_value={"Contents": [], "IsTruncated": False})
+        )
+    }
+    with pytest.raises(RuntimeError, match="NATIVE_BEFORE_RESTART"):
+        provider.native_inventory(
+            "NATIVE_BEFORE_RESTART", {"secret/a"}, {("secret/b", "secret-upload")}
+        )
+    line = capsys.readouterr().out.strip()
+    data = json.loads(line.split("=", 1)[1])
+    assert data["objects"]["missing_rows"] == 1
+    assert data["objects"]["terminal"] is True
+    assert data["multipart"]["pages"] is None
+    assert "secret" not in line
+    provider.clients["cleanup"].list_objects_v2.assert_called_once()
+    provider.clients["cleanup"].list_multipart_uploads.assert_not_called()
+
+
+def test_native_inventory_revalidates_mutable_failure_diagnostics(
+    tmp_path, capsys, monkeypatch
+):
+    from tests.support.asset_rustfs import NativeListingFailure
+
+    provider = AssetProvider(tmp_path)
+    error = NativeListingFailure("objects", {"pages": 0})
+    error.summary["private-key"] = "private-value"
+    error.summary["rows"] = True
+    provider.clients = {"cleanup": Mock()}
+    monkeypatch.setattr(
+        "tests.support.asset_provider.native_pages", Mock(side_effect=error)
+    )
+    with pytest.raises(RuntimeError):
+        provider.native_inventory("NATIVE_CLEANUP", set(), set())
+    data = json.loads(capsys.readouterr().out.strip().split("=", 1)[1])
+    assert "private-key" not in data["objects"]
+    assert data["objects"]["rows"] is None
+
+
+def test_official_download_late_required_close_refuses_extraction(
+    tmp_path, monkeypatch
+):
+    import hashlib
+
+    from tests.support import asset_rustfs
+
+    now = [0.0]
+    monkeypatch.setattr(asset_rustfs.time, "monotonic", lambda: now[0])
+    budget = asset_rustfs.PhaseBudget(clock=lambda: now[0])
+    budget.enter("A")
+    body = b"verified tiny archive"
+    monkeypatch.setattr(asset_rustfs, "ARCHIVE_SIZE", len(body))
+    monkeypatch.setattr(asset_rustfs, "ARCHIVE_SHA", hashlib.sha256(body).hexdigest())
+    response = Mock(status_code=200, iter_bytes=Mock(return_value=iter([body])))
+    context = Mock()
+    context.__enter__ = Mock(return_value=response)
+    context.__exit__ = Mock(side_effect=lambda *_: now.__setitem__(0, 180))
+    client = Mock(stream=Mock(return_value=context))
+    outer = Mock()
+    outer.__enter__ = Mock(return_value=client)
+    outer.__exit__ = Mock(return_value=False)
+    monkeypatch.setattr(asset_rustfs.httpx, "Client", Mock(return_value=outer))
+    extract = Mock(return_value=tmp_path / "rustfs")
+    monkeypatch.setattr(asset_rustfs, "extract_server", extract)
+    with pytest.raises(RuntimeError, match="acquisition failed"):
+        asset_rustfs.download_server(tmp_path, budget)
+    extract.assert_not_called()
+    context.__exit__.assert_called_once()
+
+
+def final_preflight_fixture(tmp_path, monkeypatch):
+    from tests.support import asset_provider
+    from tests.support.asset_rustfs import PhaseBudget
+
+    provider = AssetProvider(tmp_path)
+    provider.work = tmp_path
+    provider.image = "sha256:" + "a" * 64
+    provider.container_id, provider.network_id = "c" * 64, "n" * 64
+    endpoint = {
+        "IPAddress": "172.28.0.2",
+        "NetworkID": provider.network_id,
+        "EndpointID": "e" * 64,
+    }
+    state = {
+        "Id": provider.container_id,
+        "Name": "/" + provider.container,
+        "Config": {"Labels": {"wso.assets.owner": provider.owner}},
+        "State": {"Running": True},
+        "NetworkSettings": {"Networks": {provider.network: endpoint}, "Ports": None},
+        "HostConfig": {"PortBindings": None},
+    }
+    network = {
+        "Id": provider.network_id,
+        "Name": provider.network,
+        "Labels": {"wso.assets.owner": provider.owner},
+        "Driver": "bridge",
+        "Internal": True,
+        "EnableIPv6": False,
+        "IPAM": {"Config": [{"Subnet": "172.28.0.0/24", "Gateway": "172.28.0.1"}]},
+        "Containers": {
+            provider.container_id: {
+                "Name": provider.container,
+                "EndpointID": "e" * 64,
+                "IPv4Address": "172.28.0.2/24",
+            }
+        },
+    }
+    provider.relay_pin = provider.verify_relay_identity(state, network)
+    provider.relay = Mock(VALIDATION_SECONDS=2, assert_healthy=Mock())
+    provider.budget = PhaseBudget()
+    provider.budget.enter("A")
+    body = {}
+
+    def put(**args):
+        body["value"] = args["Body"]
+
+    gateway = Mock(
+        put_object=Mock(side_effect=put),
+        head_object=Mock(side_effect=lambda **_: {"ContentLength": len(body["value"])}),
+        get_object=Mock(side_effect=lambda **_: {"Body": BytesIO(body["value"])}),
+    )
+    admin = Mock(
+        get_bucket_versioning=Mock(return_value={}),
+        get_object_lock_configuration=Mock(return_value={}),
+        head_bucket=Mock(return_value={"ResponseMetadata": {"HTTPStatusCode": 200}}),
+        create_multipart_upload=Mock(return_value={"UploadId": "foreign-upload"}),
+        get_object=Mock(
+            side_effect=lambda **_: {"Body": BytesIO(b"foreign-preserved")}
+        ),
+        list_multipart_uploads=Mock(
+            return_value={"Uploads": [{"UploadId": "foreign-upload"}]}
+        ),
+    )
+    admin.list_multipart_uploads.side_effect = lambda **_: {
+        "Uploads": [
+            {
+                "Key": admin.create_multipart_upload.call_args.kwargs["Key"],
+                "UploadId": "foreign-upload",
+            }
+        ],
+        "IsTruncated": False,
+    }
+    provider.clients = {
+        "bootstrap": admin,
+        "gateway": gateway,
+        "cleanup": Mock(
+            list_multipart_uploads=Mock(
+                return_value={"Uploads": [{"UploadId": "foreign-upload"}]}
+            )
+        ),
+    }
+    monkeypatch.setattr(provider, "require_pab", Mock())
+    monkeypatch.setattr(provider, "native_checkpoint", Mock())
+    monkeypatch.setattr(provider, "privacy_profile", Mock())
+    monkeypatch.setattr(provider, "denied", Mock())
+    monkeypatch.setattr(provider, "exact_absence", Mock())
+    monkeypatch.setattr(provider, "native_inventory", Mock())
+    monkeypatch.setattr(
+        provider,
+        "raw_get",
+        Mock(
+            side_effect=lambda _: (
+                (200, body["value"])
+                if not getattr(provider, "returned_presign", False)
+                and not setattr(provider, "returned_presign", True)
+                else (403, b"")
+            )
+        ),
+    )
+    monkeypatch.setattr(provider, "inspect", Mock(return_value=state))
+    monkeypatch.setattr(provider, "assert_container_mapping", Mock())
+    read = Mock(side_effect=lambda *_: provider.verify_relay_identity(state, network))
+    monkeypatch.setattr(provider, "read_relay_identity", read)
+    monkeypatch.setattr(asset_provider.time, "sleep", lambda _: None)
+    factory = Mock(return_value={"owned": True})
+    monkeypatch.setattr(asset_provider, "make_provider_receipt", factory)
+    return provider, state, network, endpoint, read, factory
+
+
+@pytest.mark.parametrize(
+    "fault", ["stopped", "cid", "nid", "eid", "ip", "foreign_member"]
+)
+def test_final_factory_refuses_changed_running_target_even_with_healthy_listener(
+    tmp_path, monkeypatch, fault
+):
+    provider, state, network, endpoint, read, factory = final_preflight_fixture(
+        tmp_path, monkeypatch
+    )
+    if fault == "stopped":
+        state["State"]["Running"] = False
+    elif fault == "cid":
+        state["Id"] = "d" * 64
+    elif fault == "nid":
+        network["Id"] = "f" * 64
+    elif fault == "eid":
+        endpoint["EndpointID"] = "f" * 64
+        network["Containers"][provider.container_id]["EndpointID"] = "f" * 64
+    elif fault == "ip":
+        endpoint["IPAddress"] = "172.28.0.3"
+        network["Containers"][provider.container_id]["IPv4Address"] = "172.28.0.3/24"
+    else:
+        network["Containers"]["foreign-member"] = {}
+    with pytest.raises(RuntimeError, match="target identity"):
+        provider.preflight()
+    factory.assert_not_called()
+    read.assert_called_once()
+    assert provider.receipt is None
+
+
+def test_final_factory_follows_fresh_retained_pin_and_resource_validation(
+    tmp_path, monkeypatch
+):
+    provider, _, _, _, read, factory = final_preflight_fixture(tmp_path, monkeypatch)
+    provider.preflight()
+    read.assert_called_once()
+    provider.assert_container_mapping.assert_called_once()
+    factory.assert_called_once_with(image_id=provider.image)
+    assert provider.receipt == {"owned": True}
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        None,
+        {},
+        dict.fromkeys(PAB, False),
+        dict.fromkeys(PAB, 1),
+        {**PAB, "extra": True},
+    ],
+)
+def test_counted_root_pab_payload_is_checked_despite_later_valid_effects(
+    tmp_path, monkeypatch, value
+):
+    provider, events = control_fixture(
+        tmp_path,
+        monkeypatch,
+        fault=(
+            "bootstrap",
+            "get_public_access_block",
+            {
+                "ResponseMetadata": {"HTTPStatusCode": 200},
+                "PublicAccessBlockConfiguration": value,
+            },
+        ),
+    )
+    with pytest.raises(
+        RuntimeError, match="actor=bootstrap operation=get_public_access_block"
+    ):
+        provider.control_profile(provider.prefix + "private", b"ciphertext")
+    assert provider.control_outcomes[-1]["response_verified"] is False
+    assert provider.control_outcomes[-1]["effects_verified"] is True
+    assert_control_effects(events)
+
+
+def test_foreign_inventory_is_seeded_before_native_phase_b(tmp_path, monkeypatch):
+    provider, _, _, _, _, _ = final_preflight_fixture(tmp_path, monkeypatch)
+    admin = provider.clients["bootstrap"]
+
+    def checkpoint(*_):
+        assert admin.put_object.call_count == 1
+        assert admin.create_multipart_upload.call_count == 1
+        assert admin.create_bucket.call_count == 2
+        assert provider.foreign_inventory["key"] != provider.prefix
+        assert provider.foreign_inventory["upload"] == "foreign-upload"
+
+    provider.native_checkpoint.side_effect = checkpoint
+    provider.preflight()
+
+
+def foreign_checkpoint_fixture(tmp_path, monkeypatch, fault):
+    from tests.support.asset_rustfs import PhaseBudget
+
+    provider = AssetProvider(tmp_path)
+    provider.work = tmp_path
+    provider.budget = PhaseBudget()
+    provider.budget.enter("A")
+    foreign_prefix = "wso-assets/v1/foreign-installation/"
+    foreign = foreign_prefix + "foreign"
+    provider.foreign_inventory = {
+        "prefix": foreign_prefix,
+        "key": foreign,
+        "upload": "foreign-upload",
+        "bucket": "owned-foreign",
+    }
+    objects = {
+        foreign: b"foreign-preserved",
+        provider.prefix + "original": b"ciphertext",
+    }
+    uploads = {(foreign, "foreign-upload"): "foreign-etag"}
+    buckets = {provider.bucket, "owned-foreign"}
+    events = []
+
+    class Store:
+        def put_object(self, **args):
+            objects[args["Key"]] = args["Body"]
+
+        def create_multipart_upload(self, **args):
+            upload = "upload-" + str(len(uploads))
+            uploads[(args["Key"], upload)] = None
+            return {"UploadId": upload}
+
+        def upload_part(self, **args):
+            uploads[(args["Key"], args["UploadId"])] = "actual-returned-etag"
+            return {"ETag": "actual-returned-etag"}
+
+        def list_parts(self, **args):
+            return {
+                "Parts": [
+                    {"PartNumber": 1, "ETag": uploads[(args["Key"], args["UploadId"])]}
+                ]
+            }
+
+        def list_objects_v2(self, **args):
+            assert args["MaxKeys"] == 1
+            rows = sorted(
+                key
+                for key in objects
+                if key.startswith(args["Prefix"])
+                and key > args.get("ContinuationToken", "")
+            )
+            if (
+                fault == "exposed_foreign"
+                and "restart" in events
+                and args["Prefix"] == provider.prefix
+            ):
+                rows.insert(0, foreign)
+            return {
+                "Contents": [{"Key": key} for key in rows[:1]],
+                "IsTruncated": len(rows) > 1,
+                **({"NextContinuationToken": rows[0]} if len(rows) > 1 else {}),
+            }
+
+        def list_multipart_uploads(self, **args):
+            assert args["MaxUploads"] == 1
+            marker = (args.get("KeyMarker", ""), args.get("UploadIdMarker", ""))
+            rows = sorted(
+                pair
+                for pair in uploads
+                if pair[0].startswith(args["Prefix"]) and pair > marker
+            )
+            return {
+                "Uploads": [
+                    {"Key": key, "UploadId": upload} for key, upload in rows[:1]
+                ],
+                "IsTruncated": len(rows) > 1,
+                **(
+                    {"NextKeyMarker": rows[0][0], "NextUploadIdMarker": rows[0][1]}
+                    if len(rows) > 1
+                    else {}
+                ),
+            }
+
+        def complete_multipart_upload(self, **args):
+            uploads.pop((args["Key"], args["UploadId"]))
+            objects[args["Key"]] = b"ciphertext"
+
+        def abort_multipart_upload(self, **args):
+            uploads.pop((args["Key"], args["UploadId"]))
+
+        def delete_object(self, **args):
+            objects.pop(args["Key"], None)
+            if fault == "cleanup_removed_foreign":
+                objects.pop(foreign, None)
+
+        def get_object(self, **args):
+            return {"Body": BytesIO(objects[args["Key"]])}
+
+        def head_bucket(self, **args):
+            if args["Bucket"] not in buckets:
+                raise KeyError("private")
+            return {"ResponseMetadata": {"HTTPStatusCode": 200}}
+
+    provider.clients = {name: Store() for name in ("bootstrap", "gateway", "cleanup")}
+
+    def restart():
+        assert foreign in objects and (foreign, "foreign-upload") in uploads
+        events.append("restart")
+        if fault == "removed_object":
+            objects.pop(foreign)
+        elif fault == "removed_upload":
+            uploads.pop((foreign, "foreign-upload"))
+        elif fault == "removed_bucket":
+            buckets.remove("owned-foreign")
+
+    monkeypatch.setattr(provider, "restart_native_provider", restart)
+    monkeypatch.setattr(provider, "private_effect", Mock())
+    monkeypatch.setattr(provider, "exact_absence", Mock())
+    provider.native_iam = Mock()
+    return provider, events, objects, uploads
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "removed_object",
+        "removed_upload",
+        "removed_bucket",
+        "cleanup_removed_foreign",
+        "exposed_foreign",
+    ],
+)
+def test_native_restart_and_seed_cleanup_refuse_foreign_loss_or_exposure(
+    tmp_path, monkeypatch, fault
+):
+    provider, events, _, _ = foreign_checkpoint_fixture(tmp_path, monkeypatch, fault)
+    with pytest.raises(RuntimeError):
+        provider.native_checkpoint(provider.prefix + "original", b"ciphertext")
+    assert events == ["restart"]
+    provider.native_iam.no_effect.assert_not_called()
+    assert provider.receipt is None
+
+
+def test_native_restart_and_seed_cleanup_preserve_foreign_actual_inventory(
+    tmp_path, monkeypatch
+):
+    provider, events, objects, uploads = foreign_checkpoint_fixture(
+        tmp_path, monkeypatch, None
+    )
+    provider.native_checkpoint(provider.prefix + "original", b"ciphertext")
+    assert events == ["restart"]
+    assert objects == {
+        provider.foreign_inventory["key"]: b"foreign-preserved",
+        provider.prefix + "original": b"ciphertext",
+    }
+    assert set(uploads) == {(provider.foreign_inventory["key"], "foreign-upload")}
+    provider.native_iam.no_effect.assert_called_once()
+
+
+def test_control_fixture_does_not_follow_swapped_production_outcomes(
+    tmp_path, monkeypatch
+):
+    from tests.support.asset_provider import CONTROL_RESULTS
+
+    # Swap two semantic expectations without changing aggregate counts.
+    monkeypatch.setitem(CONTROL_RESULTS, "put_bucket_acl", (501, "NotImplemented"))
+    monkeypatch.setitem(
+        CONTROL_RESULTS, "delete_bucket_ownership_controls", (403, "AccessDenied")
+    )
+    provider, events = control_fixture(tmp_path, monkeypatch)
+    with pytest.raises(RuntimeError, match="actor=gateway operation=put_bucket_acl"):
+        provider.control_profile(provider.prefix + "private", b"ciphertext")
+    assert_control_effects(events)
+    assert provider.control_outcomes[-1]["response_verified"] is False
+
+
+# Each row is a literal ordered seven-variant contract, independent of source.
+_PUBLIC_ACCEPT = (
+    (200, "accepted-inert-candidate"),
+    (200, "accepted-inert-candidate"),
+    (200, "accepted-inert-candidate"),
+    (200, "accepted-inert-candidate"),
+    (200, "accepted-inert-candidate"),
+    (200, "accepted-inert-candidate"),
+    (200, "accepted-inert-candidate"),
+)
+_PUBLIC_DENY = (
+    (403, "AccessDenied"),
+    (403, "AccessDenied"),
+    (403, "AccessDenied"),
+    (403, "AccessDenied"),
+    (403, "AccessDenied"),
+    (403, "AccessDenied"),
+    (403, "AccessDenied"),
+)
+_PUBLIC_ROOT_ACL = (
+    (200, "accepted-inert-candidate"),
+    (200, "accepted-inert-candidate"),
+    (200, "accepted-inert-candidate"),
+    (501, "NotImplemented"),
+    (501, "NotImplemented"),
+    (501, "NotImplemented"),
+    (501, "NotImplemented"),
+)
+PUBLIC_ORACLE = {
+    ("bootstrap", "put_object_acl"): _PUBLIC_ROOT_ACL,
+    ("bootstrap", "put_object"): _PUBLIC_ACCEPT,
+    ("bootstrap", "create_multipart_upload"): _PUBLIC_ACCEPT,
+    ("gateway", "put_object_acl"): _PUBLIC_DENY,
+    ("gateway", "put_object"): _PUBLIC_ACCEPT,
+    ("gateway", "create_multipart_upload"): _PUBLIC_ACCEPT,
+    ("cleanup", "put_object_acl"): _PUBLIC_DENY,
+    ("cleanup", "put_object"): _PUBLIC_DENY,
+    ("cleanup", "create_multipart_upload"): _PUBLIC_DENY,
+}
+PUBLIC_IDENTITIES = [
+    (actor, operation, index, response)
+    for (actor, operation), responses in PUBLIC_ORACLE.items()
+    for index, response in enumerate(responses)
+]
+
+
+@pytest.mark.parametrize("actor,operation,index,expected", PUBLIC_IDENTITIES)
+@pytest.mark.parametrize("wrong", [False, True])
+def test_all_sixty_three_literal_public_outcomes_drive_real_positive_and_negative_verifier(
+    tmp_path, actor, operation, index, expected, wrong
+):
+    provider, admin, sdk = acl_diagnostic_fixture(tmp_path)
+    assert AssetProvider.public_result(actor, operation, index) == expected
+    status, code = expected
+    if wrong:
+        status, code = (
+            (501, "NotImplemented") if status == 403 else (403, "AccessDenied")
+        )
+    actual = getattr(sdk, operation)
+    if status == 200:
+        actual.return_value = {
+            "ResponseMetadata": {"HTTPStatusCode": 200},
+            **(
+                {"UploadId": "returned-upload"}
+                if operation == "create_multipart_upload"
+                else {}
+            ),
+        }
+    else:
+        actual.side_effect = error(status, code)
+    original = provider.prefix + "original"
+    new = original if operation == "put_object_acl" else provider.prefix + "new"
+
+    def head(**args):
+        if args["Key"] == original or (
+            status == 200 and admin.delete_object.call_count == 0
+        ):
+            return {"ContentLength": 10}
+        raise error(404, "NoSuchKey")
+
+    admin.head_object.side_effect = head
+    arguments = {"Bucket": provider.bucket, "Key": new}
+    if operation == "put_object":
+        arguments["Body"] = b"ciphertext"
+    if wrong:
+        with pytest.raises(
+            RuntimeError,
+            match="public mutation response differs|inert ACL effect failed",
+        ):
+            provider.verify_public_attempt(
+                sdk, actor, index, operation, arguments, original, b"ciphertext"
+            )
+    else:
+        provider.verify_public_attempt(
+            sdk, actor, index, operation, arguments, original, b"ciphertext"
+        )
+    assert len(provider.outcomes) == 1
+    row = provider.outcomes[0]
+    assert row["effects_verified"] is (not wrong)
+    assert (row["actor"], row["operation"], row["variant"]) == (actor, operation, index)
+    actual.assert_called_once_with(**arguments)
+    admin.get_bucket_acl.assert_called_once()
+    admin.get_public_access_block.assert_called_once()
+    admin.get_bucket_policy.assert_called_once()
+    assert provider.raw_http.call_count == (
+        4 if status == 200 and operation != "put_object_acl" else 2
+    )
+    assert provider.receipt is None
+
+
+@pytest.mark.parametrize("identity,expected", list(CONTROL_ORACLE.items()))
+def test_all_twenty_four_literal_control_outcomes_drive_positive_verifier(
+    tmp_path, monkeypatch, identity, expected
+):
+    provider, events = control_fixture(tmp_path, monkeypatch)
+    actor, operation = identity
+    provider.control_attempt(
+        actor,
+        operation,
+        lambda: getattr(provider.clients[actor], operation)(Bucket=provider.bucket),
+        provider.prefix + "private",
+        b"ciphertext",
+    )
+    assert len(provider.control_outcomes) == 1
+    row = provider.control_outcomes[0]
+    assert (row["status"], row["code"]) == expected
+    assert row["response_verified"] is True and row["effects_verified"] is True
+    assert_control_effects(events)

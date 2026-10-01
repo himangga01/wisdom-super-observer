@@ -14,7 +14,7 @@ This ledger tracks executable service work. The separate [parity ledger](../inte
 | W00 atomic parity ledger | Static 77-case seed and desktop API preflight implemented; false-positive paths closed | 31 focused tests passed; checker 77/77 rows, zero errors; headless Chrome/Edge API probe 2/2 | Trusted W24 run registry and comparator; runtime reachability, Android/iOS/media/permission checks, support matrix sign-off; no `MATCHED` rows and `release_ready=false` |
 | W01 TVT bridge feasibility | Static handoff, frozen 199-operation manifest and declaration inventories implemented | 10 schema tests passed; 77 cases / 199 candidate operations; 281 request classes and 299 native declarations inventoried | Vendor rights, runtime fixtures and pilot; all six remote G-P1 families `BLOCKED` |
 | T05 durable jobs | Database-owned requests, outbox/inbox, restricted dispatcher/worker, fencing, cancellation, external uncertainty, status/items API and job-bound secret primitives implemented; task and milestone integration/fix reviews approved | [Actual Linux run 36716200713](https://github.com/himangga01/wisdom-super-observer/actions/runs/36716200713): 537 Python cases and all ten required real process/broker recovery cases, zero skips; no remaining Critical/Important review findings | Generic credential handlers fail CAPABILITY_UNSUPPORTED until the owning executor exists; no production IMPORT/REGISTRATION handler. Deployment and vendor effects remain pending |
-| T05A private assets | In progress; reviewed idle-retirement source and docs are published; pinned MinIO candidate rejected for native installed-prefix multipart enumeration and durable restart/orphan discovery | [Latest foundation receipt](../engineering/linux-ci.md#linux-foundation-run-36801780609); [eleventh provider attempt](../engineering/linux-ci.md#eleventh-sealed-private-asset-baseline-native-listing-contract-failure) failed setup at forced-pagination/filter checkpoint; actual predicate/counts unretained | Read-only primary-source investigations are complete; RustFS 1.0.0 is a transition-design candidate under review only. No provider is selected for acceptance and no runtime/source implementation or retry is authorized. Provider privacy/IAM receipt, authenticated HTTP, sealed656 genuine RED, full14 GREEN, whole APK parity remain open |
+| T05A private assets | In progress; reviewed idle-retirement source/docs published; MinIO pin rejected for native installed-prefix multipart inventory and durable restart/orphan discovery; RustFS source/checker reviews and offline aggregate approved | [Latest foundation receipt](../engineering/linux-ci.md#linux-foundation-run-36801780609); [eleventh provider attempt](../engineering/linux-ci.md#eleventh-sealed-private-asset-baseline-native-listing-contract-failure) failed setup at forced-pagination/filter checkpoint; actual predicate/counts unretained; RustFS source status in [transition record](../engineering/linux-ci.md#rustfs-transition-implementation-status--2026-10-01) | Approved design/source are not runtime acceptance. Final documentation, private18, staged no-drift, reviewed combined publication and remote-SHA gates remain before conditional probe12 activation. No RustFS execution or provider receipt. Provider privacy/IAM receipt, authenticated HTTP, sealed656 genuine RED, full14 GREEN, whole APK parity remain open |
 | W02–W25 service features | W02 remains closed; W03–W25 pending | No private provider acceptance; no APK `MATCHED` rows and `release_ready=false` | T05A provider capability remains unresolved; all six remote G-P1 families remain `BLOCKED` |
 
 ## Previous integrated verification — 2026-09-30
@@ -94,6 +94,34 @@ managed database head remained unchanged. The integrated Linux run at `0deeb79`
 covers the product foundation; later gate/relay changes are outside that run.
 
 ## Private asset implementation
+
+### RustFS transition — current source stage
+
+The frozen RustFS 1.0.0 design defines the fixture profile, exact 13-key
+receipt, 63 private-effect checks, 24 controls, 20-call administrator
+no-effect observation, nonroot containment, healthy same-container restart
+proof and unchanged operation budgets. See the [transition design and evidence
+boundary](../engineering/private-assets.md#rustfs-transition-status--2026-10-01).
+The official archive and server member have the exact hashes recorded there;
+the archive and static ELF were inspected without executing the binary.
+
+The independent receipt-checker component is READY with 216 focused contracts
+passed in 1.31 seconds plus Ruff, formatting and scoped mypy; fresh independent
+review is approved with zero Critical, Important or Minor findings. The
+fixture's original six Important review findings were addressed in one owner
+fix batch; fresh scoped review is approved with zero findings. The final
+fixture owner run passed 676 profile/safety cases in 4.98 seconds, and the
+helper owner run passed 201 cases in 0.41 seconds. Root's single amended
+aggregate passed 1,093 cases in 7.26 seconds with no skips; Ruff check/format
+across nine files, configured mypy across 40 product files and explicit
+pure-checker mypy across two files passed. These are offline source/contract
+gates. The d5 foundation run and eleventh MinIO setup error remain the latest
+actual Linux and provider evidence respectively. Root defined but has not
+activated one conditional RustFS probe12; the required documentation, private18,
+no-drift, reviewed commit/push and remote-equality gates remain before it can
+run. No RustFS receipt, authenticated HTTP, genuine sealed-656 RED, full14
+GREEN, APK `MATCHED` row or release readiness is established; T05A remains in
+progress and W02 remains closed.
 
 T05A is in progress: private upload contracts, bounded S3/crypto/image adapters
 and the real Linux S3/HTTP fixture are being implemented in separate owned files.

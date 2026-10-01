@@ -7,6 +7,7 @@ on:
       - '.github/workflows/private-assets.yml'
       - 'scripts/dev/owned-ci-postgres.sh'
       - 'scripts/check_private_asset_red.py'
+      - 'scripts/asset_provider_receipt.py'
       - 'tests/support/asset_*.py'
       - 'tests/integration/test_private_assets.py'
       - 'packages/core/pyproject.toml'
@@ -55,9 +56,11 @@ jobs:
           for task_path in \
             pyproject.toml packages/core/pyproject.toml uv.lock \
             tests/support/asset_provider.py tests/support/asset_minio.py \
+            tests/support/asset_rustfs.py \
             tests/support/asset_harness.py \
             tests/support/asset_process.py tests/integration/test_private_assets.py \
-            scripts/dev/owned-ci-postgres.sh scripts/check_private_asset_red.py; do
+            scripts/dev/owned-ci-postgres.sh scripts/check_private_asset_red.py \
+            scripts/asset_provider_receipt.py; do
             mkdir -p "$task_baseline/$(dirname "$task_path")"
             cp -- "$task_path" "$task_baseline/$task_path"
           done

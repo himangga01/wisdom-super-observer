@@ -83,11 +83,77 @@ See the [AWS S3 action/condition reference](https://docs.aws.amazon.com/service-
 
 ## Provider fixture candidate
 
-**Current disposition:** MinIO `RELEASE.2025-04-22T22-12-26Z` is rejected for the required native installed-prefix multipart pagination and durable restart/orphan discovery contract. The artifact metadata and earlier experiments below are historical; they do not imply current candidate approval.
+**Current disposition:** MinIO `RELEASE.2025-04-22T22-12-26Z` is rejected for the required native installed-prefix multipart pagination and durable restart/orphan discovery contract. RustFS 1.0.0 is the approved transition design; fixture source/checker reviews and root's offline aggregate are approved, pending final documentation and publication gates. It is not runtime/provider acceptance or production selection. The artifact metadata and earlier experiments below are historical; they do not imply current candidate approval.
+
+### RustFS transition status — 2026-10-01
+
+The frozen design is `rustfs-inert-acl-dedicated-bucket-v1`, based on official
+RustFS source commit `d47f54bfb2f39f48bd1adda334bd27e151fe85b8`. The verified
+official Linux x86_64 musl archive is 194,469,895 bytes, SHA-256
+`c30a95b76546f25122c9ca387090ddb30c391ca5605621b0d7c881703c0f21c8`; its exact
+`rustfs` server member is 264,596,736 bytes, SHA-256
+`222eedc3d9baabf6516702d9fbf230270c3ca49b50f562d3461c96e2cc6ae6ad`. The
+source/archive and static ELF were inspected read-only; the executable has not
+been run. The plan uses the server member only, without `rustfs-cli` or `mc`.
+This is a fixture pin, not a production image approval.
+
+The design retains the exact 13-key receipt and the normal fixture import of
+the pure standard-library `scripts.asset_provider_receipt` module, with an
+explicit package import for the standalone CLI mode. The checker component is
+READY: its 216 focused contracts passed in 1.31 seconds, with Ruff, formatting
+and scoped mypy passing; fresh independent review is approved with 0 Critical,
+0 Important and 0 Minor findings. The original fixture source review first
+reported six Important findings; all six were addressed in one owner fix batch.
+Fresh scoped review is approved with 0 Critical, 0 Important and 0 Minor. The
+final fixture owner run passed 676 profile/safety cases in 4.98 seconds; the
+independent helper run passed 201 cases in 0.41 seconds. Root's single amended
+aggregate passed 1,093 cases in 7.26 seconds with no skips, comprising 676 +
+201 + 216. Ruff check/format across nine files, configured mypy across 40
+product files and explicit pure-checker mypy across two files passed. These are
+offline source/contract facts, not RustFS or sealed-fixture behavior.
+
+The frozen profile specifies 63 private-effect checks, the exact 24-control
+table, four true public-access-block readbacks, synthetic ACL characterization,
+and two native administrator denial probes outside that table. Native
+ownership-control responses of 501 are unsupported operations, not IAM denials.
+Administrator no-effect observation uses 20 root-read-only snapshot calls and
+compares complete export, user-info and policy-info observable metadata; hidden
+identity/version, transient state and clock limits remain explicit. Gateway
+authority covers object PUT/GET but not delete; cleanup covers delete and
+multipart abort without GET, HEAD, PUT or key access. A dedicated bucket remains
+required because multipart-upload listing authority exposes bucket-wide
+metadata.
+
+The restart proof requires the same owned container ID, image, network, volume
+and configuration, settled old transport and a healthy stop/start. Only the
+fresh network endpoint ID/IP and relay lifetime may change. It requires native and gateway
+markers, same-key multipart uploads, raw-cursor resume and on-disk durability,
+without reseeding, fabricated cursors or known SQL inventory. Planned
+containment is nonroot UID/GID 65532, data and private tmp mode 0700, 64 MiB
+logs/tmp budget, internal bridge without host publication, read-only root,
+capability drop, protected mode-0600 environment file and independent 20/40
+hex credential pairs. These remain design/source gates pending actual execution.
+
+The provider phase budget remains twelve minutes split into 6/3/3-minute phases,
+with three minutes for cleanup and one minute for the API/HTTP reserve; all
+existing call caps remain unchanged and new calls must fit them.
+The full fourteen-case aging plan is gated and not activated. The 11th MinIO
+attempt remains the latest actual provider run and failed setup as recorded
+below. No RustFS acceptance, authenticated HTTP, genuine sealed-656 RED,
+full14 GREEN, W02 reopening or APK parity is established.
+
+Root has defined one conditional RustFS probe12, but has not activated it. Its
+condition requires final four-doc spec/quality approval, the staged private18
+guard, exact 14-file no-drift/whitespace/source-hash checks, one reviewed
+curated commit and one combined push, then verified remote SHA equality. If
+activated after those gates, it permits at most one automatic cold probe using
+the existing 20-minute sealed656 overlay12 workflow and foundation workflow.
+There is no manual retry, product overlay or budget increase. The cold runtime
+assertions must pass before an authenticated missing-route RED can count.
 
 The two actual SeaweedFS 4.47 probes failed setup; neither is meaningful
-missing-feature RED. The replacement is an unmodified official Linux binary
-packaged into an owned local scratch image:
+missing-feature RED. At that earlier stage, the proposed replacement was an
+unmodified official Linux binary packaged into an owned local scratch image:
 
 | Artifact | Exact version | SHA256 |
 | --- | --- | --- |

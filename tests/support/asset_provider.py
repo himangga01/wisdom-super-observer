@@ -1,4 +1,4 @@
-"""Owned official MinIO fixture. Every acceptance probe uses real S3/HTTP."""
+"""Owned official RustFS fixture. Acceptance requires actual S3/HTTP probes."""
 
 from __future__ import annotations
 
@@ -18,40 +18,51 @@ from uuid import uuid4
 
 import httpx
 
+from scripts.asset_provider_receipt import make_provider_receipt
 from tests.support.asset_minio import (
-    CLIENT_SHA,
-    CLIENT_VERSION,
     EXCEPTION_KINDS,
-    SERVER_COMMIT,
-    SERVER_SHA,
-    SERVER_VERSION,
     LocalDocker,
     LoopbackRelay,
-    download_artifact,
     exception_kind,
     fixed_label,
     normalize_relay_snapshot,
     private_file,
-    provision_users,
     require_linux_ci,
     unavailable_relay_snapshot,
-    verify_binary_version,
+)
+from tests.support.asset_rustfs import (
+    FIXED_ENV,
+    OWNER_ID,
+    PAB,
+    SERVER_COMMIT,
+    SERVER_SHA,
+    BudgetS3Client,
+    NativeIam,
+    NativeListingFailure,
+    OwnedCommandFailure,
+    OwnedCommands,
+    PhaseBudget,
+    credentials,
+    download_server,
+    environment_bytes,
+    native_pages,
+    verify_version,
 )
 
 LABEL = "wso.assets.owner"
-SECURITY_PROFILE = "minio-inert-acl-dedicated-bucket-v2"
+SECURITY_PROFILE = "rustfs-inert-acl-dedicated-bucket-v1"
 CONTROL_RESULTS = {
     "put_bucket_policy": (403, "AccessDenied"),
     "delete_bucket_policy": (403, "AccessDenied"),
     "put_bucket_acl": (403, "AccessDenied"),
     "put_object_acl": (403, "AccessDenied"),
-    "put_bucket_ownership_controls": (400, "MalformedXML"),
-    "delete_bucket_ownership_controls": (403, "AccessDenied"),
-    "put_public_access_block": (400, "MalformedXML"),
+    "put_bucket_ownership_controls": (501, "NotImplemented"),
+    "delete_bucket_ownership_controls": (501, "NotImplemented"),
+    "put_public_access_block": (403, "AccessDenied"),
     "delete_public_access_block": (403, "AccessDenied"),
     "create_bucket": (403, "AccessDenied"),
     "get_bucket_ownership_controls": (501, "NotImplemented"),
-    "get_public_access_block": (501, "NotImplemented"),
+    "get_public_access_block": (403, "AccessDenied"),
 }
 
 ACL_COMPONENTS = frozenset(
@@ -69,6 +80,7 @@ ACL_COMPONENTS = frozenset(
         "anonymous_head",
         "bucket_acl",
         "policy_absence",
+        "public_access_block",
         "delete_new",
         "absence_head",
         "absence_multipart_page",
@@ -303,20 +315,21 @@ class AssetProvider:
         self.volume = "wso-assets-data-" + self.owner
         self.container = "wso-assets-s3-" + self.owner
         self.network = "wso-assets-net-" + self.owner
-        self.image_tag = "wso-assets-minio:" + self.owner
+        self.image_tag = "wso-assets-rustfs:" + self.owner
         self.work = None
         self.created = []
         self.clients = {}
-        self.credentials = {
-            name: (secrets.token_hex(12), secrets.token_hex(32))
-            for name in ("bootstrap", "gateway", "cleanup")
-        }
+        self.credentials = credentials()
         self.receipt = None
         self.outcomes = []
         self.control_outcomes = []
         self.docker_target = None
         self.relay = None
         self.relay_pin = None
+        self.commands = OwnedCommands()
+        self.budget = None
+        self.cleanup_cutoff = None
+        self.foreign_inventory = None
 
     def docker_invocation(self, *arguments):
         if self.docker_target is None:
@@ -328,44 +341,49 @@ class AssetProvider:
     def docker(self, *arguments):
         command, environment = self.docker_invocation(*arguments)
         try:
-            result = subprocess.run(
-                command,
-                env=environment,
-                check=True,
-                capture_output=True,
-                text=True,
-                timeout=180,
-            )
-            if len(result.stdout) > 1048576:
-                raise RuntimeError("owned Docker output exceeded bound")
-            return result.stdout.strip()
+            allowance = 180
+            if self.cleanup_cutoff is not None:
+                allowance = min(allowance, self.cleanup_cutoff - time.monotonic())
+            elif self.budget is not None:
+                allowance = self.budget.allowance(180)
+            if allowance <= 0:
+                raise RuntimeError("owned Docker operation cutoff")
+            output = self.commands.run(command, environment, allowance)
+            if (
+                self.cleanup_cutoff is not None
+                and time.monotonic() >= self.cleanup_cutoff
+            ):
+                raise RuntimeError("owned Docker operation cutoff")
+            if self.budget is not None and self.cleanup_cutoff is None:
+                self.budget.check()
+            return output
         except (OSError, subprocess.SubprocessError):
             raise RuntimeError("owned asset Docker operation failed") from None
 
     def start(self):
         require_linux_ci()
-        self.work = self.directory / ("minio-" + self.owner)
+        self.budget = PhaseBudget()
+        self.budget.enter("A")
+        self.work = self.directory / ("rustfs-" + self.owner)
         self.work.mkdir(mode=0o700)
         private_json(self.work / "owner.json", {"owner": self.owner})
         # Fix and verify the local target before any download/build/mutation.
         self.docker_target = LocalDocker(self.work)
-        for name in ("minio", "mc"):
-            binary = download_artifact(self.work, name)
-            verify_binary_version(binary, name, self.work)
+        download_server(self.work, self.budget)
         context = self.work / "image"
         context.mkdir(mode=0o700)
         data_root = context / "data-root"
         data_root.mkdir(mode=0o700)
         (data_root / "data").mkdir(mode=0o700)
-        shutil.copyfile(self.work / "minio", context / "minio")
+        shutil.copyfile(self.work / "rustfs", context / "rustfs")
         dockerfile = (
             "FROM scratch\n"
             f'LABEL {LABEL}="{self.owner}" wso.assets.source="{SERVER_COMMIT}" wso.assets.binary="{SERVER_SHA}"\n'
-            "COPY --chmod=0555 minio /minio\n"
+            "COPY --chmod=0555 rustfs /rustfs\n"
             # BuildKit preserves the top-level copy destination's metadata.
             # Copy /data as a child so explicit ownership/mode are applied.
             "COPY --chown=65532:65532 --chmod=0700 data-root /\n"
-            'USER 65532:65532\nVOLUME ["/data"]\nEXPOSE 9000\nENTRYPOINT ["/minio"]\n'
+            'USER 65532:65532\nWORKDIR /data\nVOLUME ["/data"]\nEXPOSE 9000\nENTRYPOINT ["/rustfs"]\n'
         )
         private_file(context / "Dockerfile", dockerfile.encode())
         self.created.append(("image", self.image_tag))
@@ -390,10 +408,7 @@ class AssetProvider:
         self.env_file = self.work / "server.env"
         private_file(
             self.env_file,
-            (
-                f"MINIO_ROOT_USER={self.credentials['bootstrap'][0]}\nMINIO_ROOT_PASSWORD={self.credentials['bootstrap'][1]}\n"
-                "MINIO_BROWSER=off\nMINIO_UPDATE=off\n"
-            ).encode(),
+            environment_bytes(self.credentials),
         )
         if (
             self.env_file.stat().st_mode & 0o777 != 0o600
@@ -428,19 +443,21 @@ class AssetProvider:
             "/data",
             "--address",
             ":9000",
-            "--console-address",
-            ":9001",
-            "--quiet",
         )
         if not re.fullmatch(r"[0-9a-f]{64}", self.container_id):
             raise RuntimeError("owned container identity unavailable")
         self.assert_container_mapping(self.inspect("container", self.container))
         self.verify_data_volume()
+        self.verify_server_version()
         self.docker("start", self.container)
         state = self.inspect("container", self.container)
         self.assert_container_mapping(state)
         self.relay = LoopbackRelay(self.relay_target, self.work)
-        cutoff = time.monotonic() + self.relay.VALIDATION_SECONDS
+        cutoff = min(
+            self.budget.cutoff,
+            self.budget.outer,
+            time.monotonic() + self.relay.VALIDATION_SECONDS,
+        )
         observed = self.read_relay_identity(
             cutoff, self.relay.stop, self.relay.commands
         )
@@ -450,32 +467,42 @@ class AssetProvider:
         self.relay.start(deadline=cutoff)
         self.endpoint = "http://127.0.0.1:" + str(self.relay.address[1])
         self.configure_clients()
-        deadline = time.monotonic() + 60
-        while True:
-            try:
-                self.clients["bootstrap"].list_buckets()
-                break
-            except Exception:  # noqa: BLE001 -- sanitize startup provider details
-                if time.monotonic() >= deadline:
-                    raise RuntimeError(
-                        "MinIO did not become authenticated ready"
-                    ) from None
-                time.sleep(0.2)
-        provision_users(
-            self.work,
+        self.wait_authenticated_ready()
+        self.native_iam = NativeIam(
             self.endpoint,
             self.credentials,
             policy_config(self.bucket, self.prefix, self.credentials),
+            self.budget,
         )
+        self.native_iam.provision()
         self.preflight()
         return self
+
+    def wait_authenticated_ready(self):
+        deadline = min(self.budget.cutoff, self.budget.outer, time.monotonic() + 60)
+        while True:
+            if deadline - time.monotonic() < 8 or self.budget.allowance(8) < 8:
+                raise RuntimeError("RustFS did not become authenticated ready")
+            try:
+                self.clients["bootstrap"].list_buckets()
+            except Exception:  # noqa: BLE001 -- sanitize startup details and retain old cutoff
+                if time.monotonic() >= deadline:
+                    raise RuntimeError(
+                        "RustFS did not become authenticated ready"
+                    ) from None
+                time.sleep(min(0.2, max(0, deadline - time.monotonic())))
+                continue
+            if time.monotonic() >= deadline:
+                raise RuntimeError("RustFS did not become authenticated ready")
+            self.budget.check()
+            return
 
     def configure_clients(self):
         import boto3
         from botocore.config import Config
 
         for name, (access, secret) in self.credentials.items():
-            self.clients[name] = boto3.client(
+            client = boto3.client(
                 "s3",
                 endpoint_url=self.endpoint,
                 region_name="us-east-1",
@@ -491,15 +518,123 @@ class AssetProvider:
                     response_checksum_validation="when_required",
                 ),
             )
+            self.clients[name] = (
+                BudgetS3Client(client, self.budget)
+                if self.budget is not None
+                else client
+            )
+
+    def verify_server_version(self):
+        name = "wso-assets-version-" + self.owner
+        self.created.append(("version-container", name))
+        identity = self.docker(
+            "create",
+            "--name",
+            name,
+            "--label",
+            f"{LABEL}={self.owner}",
+            "--network=none",
+            "--log-driver=none",
+            "--cap-drop=ALL",
+            "--security-opt=no-new-privileges:true",
+            "--read-only",
+            "--memory=2g",
+            "--cpus=2",
+            "--pids-limit=128",
+            "--mount",
+            f"type=volume,src={self.volume},dst=/data,readonly",
+            self.image,
+            "--version",
+        )
+        if not re.fullmatch(r"[0-9a-f]{64}", identity):
+            raise RuntimeError("owned version container identity unavailable")
+        state = self.inspect("version-container", name)
+        self.assert_version_container(state, name, identity)
+        command, environment = self.docker_invocation("start", "--attach", name)
+        output = self.commands.run(
+            command,
+            environment,
+            self.budget.allowance(20),
+            binary=True,
+            output_limit=16384,
+        )
+        self.budget.check()
+        state = self.inspect("version-container", name)
+        self.assert_version_container(state, name, identity)
+        if state["State"]["Running"] is not False or state["State"]["ExitCode"] != 0:
+            raise RuntimeError("official RustFS version command failed")
+        verify_version(output)
+        self.docker("container", "rm", name)
+        self.created.remove(("version-container", name))
+
+    def assert_version_container(self, state, name, identity=None):
+        host, config = state["HostConfig"], state["Config"]
+        networks = state["NetworkSettings"]["Networks"]
+        empty_none = type(networks) is dict and (
+            not networks
+            or (
+                set(networks) == {"none"}
+                and type(networks["none"]) is dict
+                and all(
+                    networks["none"].get(field, "") == ""
+                    for field in (
+                        "IPAddress",
+                        "Gateway",
+                        "GlobalIPv6Address",
+                        "IPv6Gateway",
+                    )
+                )
+                and all(
+                    type(networks["none"].get(field, 0)) is int
+                    and networks["none"].get(field, 0) == 0
+                    for field in ("IPPrefixLen", "GlobalIPv6PrefixLen")
+                )
+                and networks["none"].get("IPAMConfig") is None
+            )
+        )
+        if (
+            state["Name"] != "/" + name
+            or (identity is not None and state["Id"] != identity)
+            or state["Image"] != self.image
+            or config["Image"] != self.image
+            or config["User"] != "65532:65532"
+            or config["Entrypoint"] != ["/rustfs"]
+            or config["Cmd"] != ["--version"]
+            or config["Labels"].get(LABEL) != self.owner
+            or config.get("Env") not in (None, [])
+            or host["NetworkMode"] != "none"
+            or not empty_none
+            or host.get("Binds")
+            or host.get("Devices")
+            or host.get("DeviceRequests")
+            or host["Privileged"] is not False
+            or host["ReadonlyRootfs"] is not True
+            or host["CapDrop"] != ["ALL"]
+            or host["SecurityOpt"] != ["no-new-privileges:true"]
+            or host["Memory"] != 2147483648
+            or host["NanoCpus"] != 2000000000
+            or host["PidsLimit"] != 128
+            or host["LogConfig"]["Type"] != "none"
+            or not no_host_bindings(host.get("PortBindings"))
+            or not no_host_bindings(state["NetworkSettings"].get("Ports"))
+            or len(state["Mounts"]) != 1
+            or state["Mounts"][0]["Type"] != "volume"
+            or state["Mounts"][0]["Name"] != self.volume
+            or state["Mounts"][0]["Destination"] != "/data"
+            or state["Mounts"][0]["RW"] is not False
+        ):
+            raise RuntimeError("owned credential-free version mapping mismatch")
 
     def inspect(self, kind, name):
         arguments = (
-            ["inspect", name] if kind == "container" else [kind, "inspect", name]
+            ["inspect", name]
+            if kind in {"container", "version-container"}
+            else [kind, "inspect", name]
         )
         data = json.loads(self.docker(*arguments))[0]
         labels = (
             data["Config"]["Labels"]
-            if kind in {"container", "image"}
+            if kind in {"container", "version-container", "image"}
             else data["Labels"]
         )
         if labels.get(LABEL) != self.owner:
@@ -510,7 +645,8 @@ class AssetProvider:
         config = image["Config"]
         if (
             config["User"] != "65532:65532"
-            or config["Entrypoint"] != ["/minio"]
+            or config["Entrypoint"] != ["/rustfs"]
+            or config.get("WorkingDir") != "/data"
             or config["Labels"].get("wso.assets.source") != SERVER_COMMIT
             or config["Labels"].get("wso.assets.binary") != SERVER_SHA
             or image["Os"] != "linux"
@@ -529,16 +665,13 @@ class AssetProvider:
             or state["Image"] != self.image
             or state["Config"]["Image"] != self.image
             or state["Config"]["User"] != "65532:65532"
-            or state["Config"]["Entrypoint"] != ["/minio"]
+            or state["Config"]["Entrypoint"] != ["/rustfs"]
             or state["Config"]["Cmd"]
             != [
                 "server",
                 "/data",
                 "--address",
                 ":9000",
-                "--console-address",
-                ":9001",
-                "--quiet",
             ]
             or set(state["NetworkSettings"]["Networks"]) != {self.network}
             or host["NetworkMode"] != self.network
@@ -577,11 +710,14 @@ class AssetProvider:
                 "uid=65532",
                 "gid=65532",
             }
-            or environment.get("MINIO_ROOT_USER") != self.credentials["bootstrap"][0]
-            or environment.get("MINIO_ROOT_PASSWORD")
-            != self.credentials["bootstrap"][1]
-            or environment.get("MINIO_BROWSER") != "off"
-            or environment.get("MINIO_UPDATE") != "off"
+            or environment.get("RUSTFS_ACCESS_KEY") != self.credentials["bootstrap"][0]
+            or environment.get("RUSTFS_SECRET_KEY") != self.credentials["bootstrap"][1]
+            or any(environment.get(key) != value for key, value in FIXED_ENV.items())
+            or any(
+                key.startswith(("MINIO_", "RUSTFS_"))
+                and key not in {*FIXED_ENV, "RUSTFS_ACCESS_KEY", "RUSTFS_SECRET_KEY"}
+                for key in environment
+            )
             or any(key.startswith("AWS_") for key in environment)
         ):
             raise RuntimeError("asset container resource mapping mismatch")
@@ -709,21 +845,17 @@ class AssetProvider:
                 "cp", self.container + ":/data", "-"
             )
             diagnostic["stage"] = "command"
-            result = subprocess.run(
-                command,
-                env=environment,
-                stdin=subprocess.DEVNULL,
-                capture_output=True,
-                timeout=15,
-                check=True,
-            )
-            diagnostic["returncode"] = numeric(result.returncode)
+            allowance = self.budget.allowance(15) if self.budget is not None else 15
+            output = self.commands.run(command, environment, allowance, binary=True)
+            if self.budget is not None:
+                self.budget.check()
+            diagnostic["returncode"] = 0
             diagnostic["stage"] = "archive_bound"
-            diagnostic["archive_bytes"] = numeric(len(result.stdout))
-            if len(result.stdout) > 1048576:
+            diagnostic["archive_bytes"] = numeric(len(output))
+            if len(output) > 1048576:
                 raise ValueError
             diagnostic["stage"] = "archive_parse"
-            with tarfile.open(fileobj=io.BytesIO(result.stdout)) as archive:
+            with tarfile.open(fileobj=io.BytesIO(output)) as archive:
                 entries = archive.getmembers()
             diagnostic["entry_count"] = numeric(len(entries))
             if entries:
@@ -768,8 +900,9 @@ class AssetProvider:
             ValueError,
             tarfile.TarError,
             subprocess.SubprocessError,
+            OwnedCommandFailure,
         ) as error:
-            if isinstance(error, subprocess.CalledProcessError):
+            if isinstance(error, (subprocess.CalledProcessError, OwnedCommandFailure)):
                 diagnostic["returncode"] = numeric(error.returncode)
             raise RuntimeError(
                 "actual nonroot data volume UID/GID/mode verification failed: "
@@ -835,17 +968,26 @@ class AssetProvider:
         phase, status = "HTTP_REQUEST", None
         before = self.relay_snapshot()
         try:
+            timeout = self.budget.allowance(5) if self.budget is not None else 5
+            cutoff = time.monotonic() + timeout
             response = httpx.request(
                 method,
                 url,
-                timeout=5,
+                timeout=timeout,
                 trust_env=False,
                 follow_redirects=False,
                 **kwargs,
             )
             phase = "HTTP_RESPONSE_ACCESS"
+            if time.monotonic() >= cutoff:
+                raise RuntimeError("owned HTTP operation cutoff")
             status = response.status_code
-            return status, response.content
+            content = response.content
+            if time.monotonic() >= cutoff:
+                raise RuntimeError("owned HTTP operation cutoff")
+            if self.budget is not None:
+                self.budget.check()
+            return status, content
         except Exception as error:  # noqa: BLE001 -- exact approved type metadata only
             at_failure = self.relay_snapshot()
             raise HttpProbeFailure(
@@ -859,22 +1001,108 @@ class AssetProvider:
     def require_private_acl(response):
         owner = response.get("Owner", {})
         grants = response.get("Grants", [])
-        if (
-            owner.get("ID", "") != ""
-            or owner.get("DisplayName", "") != ""
-            or len(grants) != 1
-        ):
+        if owner != {"ID": OWNER_ID, "DisplayName": "rustfs"} or len(grants) != 1:
             raise RuntimeError("synthetic private ACL shape differs")
         grant = grants[0]
         grantee = grant.get("Grantee", {})
         if (
             grant.get("Permission") != "FULL_CONTROL"
             or grantee.get("Type") != "CanonicalUser"
-            or grantee.get("ID", "") != ""
-            or grantee.get("DisplayName", "") != ""
-            or grantee.get("URI") is not None
+            or grantee != {"Type": "CanonicalUser"}
         ):
             raise RuntimeError("synthetic private ACL shape differs")
+
+    @staticmethod
+    def validate_pab(response):
+        if (
+            type(response) is not dict
+            or type(response.get("ResponseMetadata")) is not dict
+        ):
+            raise RuntimeError("persisted private public-access-block state differs")
+        value = response.get("PublicAccessBlockConfiguration")
+        if (
+            type(response["ResponseMetadata"].get("HTTPStatusCode")) is not int
+            or response["ResponseMetadata"].get("HTTPStatusCode") != 200
+            or type(value) is not dict
+            or set(value) != set(PAB)
+            or any(
+                type(item) is not bool or item is not True for item in value.values()
+            )
+        ):
+            raise RuntimeError("persisted private public-access-block state differs")
+
+    def require_pab(self):
+        self.validate_pab(
+            self.clients["bootstrap"].get_public_access_block(Bucket=self.bucket)
+        )
+
+    def restart_native_provider(self):
+        """One same-resource stop/start; never replace a failed/unsettled relay."""
+        old = self.inspect("container", self.container)
+        self.assert_container_mapping(old)
+        if old["State"]["Running"] is not True or self.relay is None:
+            raise RuntimeError("native restart requires owned running provider")
+        old_pin = self.relay_pin
+        self.relay.assert_healthy()
+        first = None
+        for client in self.clients.values():
+            try:
+                client.close()
+            except Exception:  # noqa: BLE001 -- settle all bodies/clients; never adopt replacement
+                first = first or "client"
+        self.relay.close()
+        snapshot = self.relay_snapshot()
+        if (
+            first
+            or self.relay.failed
+            or snapshot.get("available") is not True
+            or snapshot.get("state") != "CLOSED"
+            or any(
+                snapshot.get(name) != 0
+                for name in ("connections", "sockets", "workers")
+            )
+        ):
+            raise RuntimeError("native restart transport settlement refused")
+        self.commands.assert_settled()
+        self.docker("stop", "--time=2", self.container_id)
+        stopped = self.inspect("container", self.container_id)
+        self.assert_container_mapping(stopped)
+        if stopped["Id"] != old["Id"] or stopped["State"]["Running"] is not False:
+            raise RuntimeError("native restart STOPPED witness differs")
+        self.docker("start", self.container_id)
+        fresh = self.inspect("container", self.container_id)
+        self.assert_container_mapping(fresh)
+        if (
+            fresh["Id"] != old["Id"]
+            or fresh["State"]["Running"] is not True
+            or fresh["State"]["StartedAt"] == old["State"]["StartedAt"]
+        ):
+            raise RuntimeError("native restart lifetime witness differs")
+        # Only a healthy CLOSED old lifetime permits clearing its endpoint pin.
+        # Same CID/image/NID/volume remain independently enforced.
+        self.relay_pin = None
+        candidate = LoopbackRelay(self.relay_target, self.work)
+        self.relay = candidate
+        cutoff = min(
+            self.budget.cutoff,
+            self.budget.outer,
+            time.monotonic() + candidate.VALIDATION_SECONDS,
+        )
+        try:
+            observed = self.read_relay_identity(
+                cutoff, candidate.stop, candidate.commands
+            )
+            if observed[:2] != old_pin[:2]:
+                raise RuntimeError("native restart immutable resource pin differs")
+            self.relay_pin = observed
+            candidate.start(deadline=cutoff)
+        except Exception:  # noqa: BLE001 -- retain failed partial owned lifetime for final cleanup
+            self.relay_pin = old_pin
+            raise RuntimeError("native restart fresh lifetime unverified") from None
+        self.endpoint = "http://127.0.0.1:" + str(candidate.address[1])
+        self.configure_clients()
+        self.native_iam.endpoint = self.endpoint
+        self.require_pab()
 
     def inspect_no_bucket_policy(self, diagnostic=None):
         from botocore.exceptions import ClientError
@@ -956,7 +1184,9 @@ class AssetProvider:
                     "STATUS_MISMATCH",
                 )
 
-    def materialize_public_upload(self, actor, key, upload, body, diagnostic=None):
+    def materialize_public_upload(
+        self, actor, key, upload, body, diagnostic=None, *, verify=True
+    ):
         diagnostic = diagnostic or AclDiagnostic()
         part = diagnostic.call(
             "upload_part",
@@ -976,7 +1206,8 @@ class AssetProvider:
                 MultipartUpload={"Parts": [{"PartNumber": 1, "ETag": etag}]},
             ),
         )
-        self.private_effect(key, body, diagnostic)
+        if verify:
+            self.private_effect(key, body, diagnostic)
 
     def multipart_pages(self, actor, prefix, diagnostic=None):
         diagnostic = diagnostic or AclDiagnostic()
@@ -1077,21 +1308,34 @@ class AssetProvider:
         except ClientError as error:
             status, code = self.error_identity(error)
             diagnostic.observe(status, code)
-            if (status, code) not in {(403, "AccessDenied"), (501, "NotImplemented")}:
-                diagnostic.fail(
-                    "public mutation unexpected response", "STATUS_MISMATCH"
-                )
-            return False, {"status": status, "code": code}, None
+            return (
+                False,
+                {
+                    "status": acl_status(status),
+                    "code": code
+                    if type(code) is str and code in ACL_CODES
+                    else "UNKNOWN",
+                },
+                None,
+            )
         except Exception:  # noqa: BLE001 -- sanitized mutation transport only
             diagnostic.observe(None, "TRANSPORT_ERROR")
             diagnostic.fail("public mutation transport failed", "TRANSPORT_ERROR")
         status = result.get("ResponseMetadata", {}).get("HTTPStatusCode")
         diagnostic.observe(status, "SUCCESS")
-        if status not in {200, 204}:
+        if type(status) is not int or not 200 <= status < 300:
             diagnostic.fail(
                 "public mutation unexpected success status", "STATUS_MISMATCH"
             )
         return True, {"status": status, "code": "accepted-inert-candidate"}, result
+
+    @staticmethod
+    def public_result(name, operation, index):
+        if name == "cleanup" or (operation == "put_object_acl" and name == "gateway"):
+            return 403, "AccessDenied"
+        if operation == "put_object_acl" and index >= 3:
+            return 501, "NotImplemented"
+        return 200, "accepted-inert-candidate"
 
     def verify_public_attempt(
         self, actor, name, index, operation, arguments, original, body
@@ -1117,123 +1361,190 @@ class AssetProvider:
             "effects_verified": False,
         }
         self.outcomes.append(record)
+        first, accepted, result = None, False, None
         outcome = {"status": None, "code": "UNKNOWN"}
         try:
             accepted, outcome, result = self.public_attempt(
                 actor, operation, arguments, diagnostic
             )
-        except Exception as error:  # noqa: BLE001 -- bounded mutation attribution
-            fields = (
-                error.fields
+            record.update(status=acl_status(outcome["status"]), code=outcome["code"])
+            if (outcome["status"], outcome["code"]) != self.public_result(
+                name, operation, index
+            ):
+                diagnostic.fail("public mutation response differs", "STATUS_MISMATCH")
+        except Exception as error:  # noqa: BLE001 -- keep only immutable fixed first fields
+            first = (
+                error
                 if isinstance(error, AclEffectFailure)
-                else diagnostic.fields
+                else AclEffectFailure("public mutation failed", diagnostic.fields)
             )
-            raise RuntimeError(
-                f"inert ACL effect failed actor={name} operation={operation} variant={index} status=None code=UNKNOWN diagnostic="
-                + json.dumps(acl_fields(fields), sort_keys=True)
-            ) from None
-        record.update(status=acl_status(outcome["status"]), code=outcome["code"])
         new_key = arguments["Key"]
-        try:
-            if accepted and operation == "create_multipart_upload":
+        materialized = accepted and operation == "put_object"
+        if accepted and operation == "create_multipart_upload":
+            try:
                 diagnostic.begin("multipart_identity")
                 diagnostic.observe(outcome["status"], "SUCCESS")
-                upload = result.get("UploadId")
-                if not isinstance(upload, str) or not upload:
+                upload = result.get("UploadId") if isinstance(result, dict) else None
+                if type(upload) is not str or not upload:
                     diagnostic.fail(
                         "accepted public multipart lacks upload identity", "UNKNOWN"
                     )
-                self.materialize_public_upload(actor, new_key, upload, body, diagnostic)
-            elif accepted and operation == "put_object":
-                diagnostic.begin("signed_head")
-                self.private_effect(new_key, body, diagnostic)
-            elif operation != "put_object_acl":
-                self.exact_absence(new_key, diagnostic)
-            diagnostic.target = "original"
-            diagnostic.begin("signed_head")
-            self.private_effect(original, body, diagnostic)
-            admin = self.clients["bootstrap"]
-            diagnostic.target = "bucket"
-            response = diagnostic.call(
-                "bucket_acl", lambda: admin.get_bucket_acl(Bucket=self.bucket)
-            )
+                self.materialize_public_upload(
+                    actor, new_key, upload, body, diagnostic, verify=False
+                )
+                materialized = True
+            except Exception as error:  # noqa: BLE001 -- original/bucket checks still safe
+                first = first or (
+                    error
+                    if isinstance(error, AclEffectFailure)
+                    else AclEffectFailure("multipart effect failed", diagnostic.fields)
+                )
+        if operation != "put_object_acl":
+            diagnostic.target = "new"
+            if materialized:
+                failures = self.effect_bundle(
+                    new_key, body, diagnostic, include_bucket=False
+                )
+                first = first or (failures[0] if failures else None)
+            elif not accepted and outcome["status"] is not None:
+                try:
+                    self.exact_absence(new_key, diagnostic)
+                except AclEffectFailure as error:
+                    first = first or error
+        diagnostic.target = "original"
+        failures = self.effect_bundle(original, body, diagnostic, include_bucket=True)
+        first = first or (failures[0] if failures else None)
+        if materialized:
+            diagnostic.target = "new_cleanup"
             try:
-                self.require_private_acl(response)
-            except Exception:  # noqa: BLE001 -- fixed ACL shape, never raw grant data
-                diagnostic.fail("synthetic private ACL shape differs", "ACL_SHAPE")
-            self.inspect_no_bucket_policy(diagnostic)
-            if accepted and operation != "put_object_acl":
-                diagnostic.target = "new_cleanup"
                 diagnostic.call(
                     "delete_new",
-                    lambda: admin.delete_object(Bucket=self.bucket, Key=new_key),
+                    lambda: self.clients["bootstrap"].delete_object(
+                        Bucket=self.bucket, Key=new_key
+                    ),
                 )
                 self.exact_absence(new_key, diagnostic)
-        except Exception as error:  # noqa: BLE001 -- bounded effect attribution
-            fields = (
-                error.fields
-                if isinstance(error, AclEffectFailure)
-                else diagnostic.fields
-            )
+            except AclEffectFailure as error:
+                first = first or error
+        if first is not None:
             raise RuntimeError(
-                f"inert ACL effect failed actor={name} operation={operation} variant={index} status={acl_status(outcome['status'])} code={outcome['code']} diagnostic="
-                + json.dumps(acl_fields(fields), sort_keys=True)
+                f"inert ACL effect failed actor={name} operation={operation} variant={index} status={record['status']} code={record['code']} diagnostic="
+                + json.dumps(acl_fields(first.fields), sort_keys=True)
             ) from None
         record["effects_verified"] = True
 
-    def control_effects(self, key, body):
-        """One bounded pass, retaining every component after a failed readback.
-
-        Signed object HEAD/bytes plus the bucket ACL establish presence of the
-        owned bucket. No repair runs here. Existing one-attempt SDK/HTTP timeouts
-        apply; this does not claim OS-call preemption or remote quiescence.
-        """
-        admin = self.clients["bootstrap"]
+    def effect_bundle(self, key, body, diagnostic, *, include_bucket):
+        """One complete safe observational pass; never repair state after failure."""
+        admin, failures = self.clients["bootstrap"], []
 
         def signed_head():
-            if admin.head_object(Bucket=self.bucket, Key=key)["ContentLength"] != len(
-                body
-            ):
-                raise RuntimeError("signed length differs")
+            response = diagnostic.call(
+                "signed_head", lambda: admin.head_object(Bucket=self.bucket, Key=key)
+            )
+            if response["ContentLength"] != len(body):
+                diagnostic.fail("signed length differs", "LENGTH_MISMATCH")
 
         def signed_bytes():
-            stream = admin.get_object(Bucket=self.bucket, Key=key)["Body"]
+            stream = diagnostic.call(
+                "signed_get_open", lambda: admin.get_object(Bucket=self.bucket, Key=key)
+            )["Body"]
+            first = None
             try:
-                if stream.read(len(body) + 1) != body:
-                    raise RuntimeError("signed bytes differ")
+                if (
+                    diagnostic.call(
+                        "signed_get_read", lambda: stream.read(len(body) + 1)
+                    )
+                    != body
+                ):
+                    diagnostic.fail("signed bytes differ", "BYTES_MISMATCH")
+            except Exception as error:  # noqa: BLE001 -- snapshot comparison failures before close
+                first = (
+                    error
+                    if isinstance(error, AclEffectFailure)
+                    else AclEffectFailure(
+                        "signed bytes comparison failed", diagnostic.fields
+                    )
+                )
             finally:
-                stream.close()
+                try:
+                    diagnostic.call("signed_get_close", stream.close)
+                except AclEffectFailure as error:
+                    if first:
+                        first.fields["close_failed"] = True
+                    else:
+                        first = error
+            if first:
+                raise first
+
+        def acl(component, operation):
+            response = diagnostic.call(component, operation)
+            try:
+                self.require_private_acl(response)
+            except Exception:  # noqa: BLE001 -- no synthetic grantee data escapes
+                diagnostic.fail("synthetic private ACL differs", "ACL_SHAPE")
 
         def anonymous(method):
-            if self.raw_http(method, f"{self.endpoint}/{self.bucket}/{key}")[0] != 403:
-                raise RuntimeError("anonymous access differs")
+            status = diagnostic.call(
+                "anonymous_" + method.lower(),
+                lambda: self.raw_http(method, f"{self.endpoint}/{self.bucket}/{key}"),
+            )[0]
+            diagnostic.observe(status, "SUCCESS")
+            if status != 403:
+                diagnostic.fail("anonymous access differs", "STATUS_MISMATCH")
 
-        failed = []
-        for component, operation in (
+        operations = [
             ("signed_head", signed_head),
-            ("signed_bytes", signed_bytes),
+            ("signed_get_open", signed_bytes),
             (
                 "object_acl",
-                lambda: self.require_private_acl(
-                    admin.get_object_acl(Bucket=self.bucket, Key=key)
+                lambda: acl(
+                    "object_acl",
+                    lambda: admin.get_object_acl(Bucket=self.bucket, Key=key),
                 ),
             ),
-            (
-                "bucket_acl",
-                lambda: self.require_private_acl(
-                    admin.get_bucket_acl(Bucket=self.bucket)
+        ]
+        if include_bucket:
+            operations += [
+                (
+                    "bucket_acl",
+                    lambda: acl(
+                        "bucket_acl", lambda: admin.get_bucket_acl(Bucket=self.bucket)
+                    ),
                 ),
-            ),
-            ("policy_absence", self.inspect_no_bucket_policy),
+                ("policy_absence", partial(self.inspect_no_bucket_policy, diagnostic)),
+                ("public_access_block", self.require_pab),
+            ]
+        operations += [
             ("anonymous_get", partial(anonymous, "GET")),
             ("anonymous_head", partial(anonymous, "HEAD")),
-        ):
+        ]
+        target = diagnostic.target
+        for component, operation in operations:
+            diagnostic.target = (
+                "bucket"
+                if component in {"bucket_acl", "policy_absence", "public_access_block"}
+                else target
+            )
+            diagnostic.begin(component)
             try:
                 operation()
-            except Exception:  # noqa: BLE001 -- finish diagnostics without raw SDK errors
-                # Only fixed component enums escape; never SDK bodies or URLs.
-                failed.append(component)
-        return failed
+            except Exception as error:  # noqa: BLE001 -- run all safely available later observations
+                failures.append(
+                    error
+                    if isinstance(error, AclEffectFailure)
+                    else AclEffectFailure("private effect failed", diagnostic.fields)
+                )
+        return failures
+
+    def control_effects(self, key, body):
+        diagnostic = AclDiagnostic()
+        diagnostic.target = "original"
+        return [
+            "signed_bytes"
+            if error.fields["component"].startswith("signed_get_")
+            else error.fields["component"]
+            for error in self.effect_bundle(key, body, diagnostic, include_bucket=True)
+        ]
 
     def control_attempt(self, name, operation_name, operation, key, body):
         from botocore.exceptions import ClientError
@@ -1263,6 +1574,13 @@ class AssetProvider:
         # Exact typed classification is separate from the bounded diagnostic enum.
         status = status if type(status) is int and 100 <= status <= 599 else None
         matched = (status, code) == CONTROL_RESULTS[operation_name]
+        if name == "bootstrap" and operation_name == "get_public_access_block":
+            matched = (status, code) == (200, "SUCCESS")
+            if matched:
+                try:
+                    self.validate_pab(result)
+                except RuntimeError:
+                    matched = False
         code = (
             code
             if code
@@ -1335,7 +1653,7 @@ class AssetProvider:
                     "put_public_access_block",
                     {
                         "PublicAccessBlockConfiguration": {
-                            name: True
+                            name: False
                             for name in (
                                 "BlockPublicAcls",
                                 "IgnorePublicAcls",
@@ -1348,8 +1666,8 @@ class AssetProvider:
                 ("delete_public_access_block", {}),
                 ("create_bucket", {}),
             ):
-                # The two valid control PUT XML roots fail parsing before IAM.
-                # Ordinary no-body CreateBucket supplies separate authority proof.
+                # Ownership is unsupported; PAB persistence is independent of
+                # the required runtime IAM mutation denial.
                 self.control_attempt(
                     name,
                     operation_name,
@@ -1357,8 +1675,7 @@ class AssetProvider:
                     key,
                     body,
                 )
-        # Exact unsupported GET behavior, not IAM enforcement. Omit bootstrap
-        # PUT/DELETE queries that source routing could treat as bucket mutations.
+        # Ownership GET is unsupported; runtime PAB GET requires IAM denial.
         for name in ("bootstrap", "gateway", "cleanup"):
             actor = self.clients[name]
             for operation_name in (
@@ -1392,8 +1709,8 @@ class AssetProvider:
                 if "ACL" not in variant:
                     grant, header = next(iter(variant.items()))
                     # A syntactically valid known fixture canonical identifier;
-                    # MinIO's synthetic empty-ID ACL is not identity authority.
-                    owner = "0" * 64
+                    # Characterization supplies valid XML, not identity authority.
+                    owner = OWNER_ID
                     existing = {
                         "AccessControlPolicy": {
                             "Owner": {"ID": owner},
@@ -1431,8 +1748,17 @@ class AssetProvider:
                     self.verify_public_attempt(
                         actor, name, index, operation, arguments, key, body
                     )
-        if len(self.outcomes) != 63 or not all(
-            row["effects_verified"] is True for row in self.outcomes
+        expected = {
+            (actor, operation, variant)
+            for actor in ("bootstrap", "gateway", "cleanup")
+            for operation in ("put_object_acl", "put_object", "create_multipart_upload")
+            for variant in range(7)
+        }
+        if (
+            {(row["actor"], row["operation"], row["variant"]) for row in self.outcomes}
+            != expected
+            or len(self.outcomes) != 63
+            or not all(row["effects_verified"] is True for row in self.outcomes)
         ):
             raise RuntimeError("incomplete public grant effect matrix")
         private_json(self.work / "public-effects.json", self.outcomes)
@@ -1445,6 +1771,201 @@ class AssetProvider:
                 raise RuntimeError("anonymous list/write capability failed")
         self.private_effect(key, body)
 
+    def native_inventory(self, stage, objects, uploads, *, starts=None):
+        if type(stage) is not str or stage not in {
+            "NATIVE_BEFORE_RESTART",
+            "NATIVE_RESUME",
+            "NATIVE_AFTER_RESTART",
+            "NATIVE_CLEANUP",
+        }:
+            raise RuntimeError("invalid native listing stage")
+        summaries = {
+            stream: {
+                "pages": None,
+                "rows": None,
+                "unique_rows": None,
+                "expected_rows": len(expected),
+                "set_equal": None,
+                "missing_rows": None,
+                "extra_rows": None,
+                "marker_valid": None,
+                "terminal": None,
+                "same_key_boundary": None,
+            }
+            for stream, expected in (("objects", objects), ("multipart", uploads))
+        }
+        results = {}
+        try:
+            for stream, expected in (("objects", objects), ("multipart", uploads)):
+                rows, cursors, summary = native_pages(
+                    self.clients["cleanup"],
+                    self.bucket,
+                    self.prefix,
+                    stream,
+                    expected,
+                    start=(starts or {}).get(stream),
+                )
+                results[stream] = (rows, cursors)
+                summaries[stream] = summary
+                if stage in {"NATIVE_BEFORE_RESTART", "NATIVE_AFTER_RESTART"} and (
+                    not cursors
+                    or (
+                        stream == "multipart"
+                        and summary["same_key_boundary"] is not True
+                    )
+                ):
+                    raise NativeListingFailure(stream, summary)
+            return results
+        except NativeListingFailure as error:
+            safe = NativeListingFailure(error.stream, error.summary)
+            summaries[safe.stream] = safe.summary
+            try:
+                print(
+                    "WSO_ASSET_NATIVE_LISTING_DIAGNOSTIC="
+                    + json.dumps(
+                        {"schema_version": 1, "stage": stage, **summaries},
+                        sort_keys=True,
+                    )
+                )
+            except (OSError, ValueError):
+                pass
+            raise RuntimeError(
+                "native RustFS paging/restart capability failed stage=" + stage
+            ) from None
+
+    def seed_foreign_inventory(self):
+        admin = self.clients["bootstrap"]
+        prefix = f"wso-assets/v1/{uuid4().hex}/"
+        key = prefix + "foreign"
+        bucket = self.bucket + "-foreign"
+        admin.put_object(Bucket=self.bucket, Key=key, Body=b"foreign-preserved")
+        upload = admin.create_multipart_upload(Bucket=self.bucket, Key=key).get(
+            "UploadId"
+        )
+        if type(upload) is not str or not upload:
+            raise RuntimeError("foreign seed upload identity invalid")
+        admin.create_bucket(Bucket=bucket)
+        self.foreign_inventory = {
+            "prefix": prefix,
+            "key": key,
+            "upload": upload,
+            "bucket": bucket,
+        }
+        private_json(self.work / "foreign-inventory.json", self.foreign_inventory)
+
+    def verify_foreign_inventory(self):
+        if self.foreign_inventory is None:
+            raise RuntimeError("foreign inventory preservation unavailable")
+        admin, first, stream = self.clients["bootstrap"], False, None
+        item = self.foreign_inventory
+        try:
+            stream = admin.get_object(Bucket=self.bucket, Key=item["key"])["Body"]
+            if stream.read(len(b"foreign-preserved") + 1) != b"foreign-preserved":
+                first = True
+        except Exception:  # noqa: BLE001 -- fixed context only; still check later safe inventory
+            first = True
+        finally:
+            if stream is not None:
+                try:
+                    stream.close()
+                except Exception:  # noqa: BLE001 -- retain any earlier bytes/read failure
+                    first = True
+        try:
+            native_pages(
+                admin,
+                self.bucket,
+                item["prefix"],
+                "multipart",
+                {(item["key"], item["upload"])},
+            )
+        except Exception:  # noqa: BLE001 -- no private identities or SDK error escapes
+            first = True
+        try:
+            response = admin.head_bucket(Bucket=item["bucket"])
+            status = response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+            if type(status) is not int or status != 200:
+                first = True
+        except Exception:  # noqa: BLE001 -- no guessed bucket absence/preservation
+            first = True
+        if first:
+            raise RuntimeError("foreign inventory preservation failed") from None
+
+    def native_checkpoint(self, key, body):
+        self.budget.enter("B")
+        gateway, cleanup = self.clients["gateway"], self.clients["cleanup"]
+        objects, uploads = [key], []
+        for index in range(3):
+            child = key + f"-page-{index}"
+            gateway.put_object(Bucket=self.bucket, Key=child, Body=body)
+            objects.append(child)
+            for _ in range(2 if index == 0 else 1):
+                upload = gateway.create_multipart_upload(
+                    Bucket=self.bucket, Key=child
+                ).get("UploadId")
+                if type(upload) is not str or not upload:
+                    raise RuntimeError("native multipart seed identity invalid")
+                etag = gateway.upload_part(
+                    Bucket=self.bucket,
+                    Key=child,
+                    UploadId=upload,
+                    PartNumber=1,
+                    Body=body,
+                ).get("ETag")
+                if type(etag) is not str or not etag:
+                    raise RuntimeError("native multipart seed part identity invalid")
+                uploads.append((child, upload, etag))
+                cleanup.list_parts(Bucket=self.bucket, Key=child, UploadId=upload)
+        expected_uploads = {(child, upload) for child, upload, _ in uploads}
+        prior = self.native_inventory(
+            "NATIVE_BEFORE_RESTART", set(objects), expected_uploads
+        )
+        starts = {stream: value[1][0] for stream, value in prior.items()}
+        self.restart_native_provider()
+        remaining_objects = {row["Key"] for row in prior["objects"][0][1:]}
+        remaining_uploads = {
+            (row["Key"], row["UploadId"]) for row in prior["multipart"][0][1:]
+        }
+        resumed = self.native_inventory(
+            "NATIVE_RESUME", remaining_objects, remaining_uploads, starts=starts
+        )
+        if (
+            resumed["objects"][0] != prior["objects"][0][1:]
+            or {(row["Key"], row["UploadId"]) for row in resumed["multipart"][0]}
+            != remaining_uploads
+        ):
+            raise RuntimeError("native retained cursor suffix differs")
+        self.native_inventory("NATIVE_AFTER_RESTART", set(objects), expected_uploads)
+        gateway, cleanup = self.clients["gateway"], self.clients["cleanup"]
+        for index, (child, upload, etag) in enumerate(uploads):
+            parts = cleanup.list_parts(
+                Bucket=self.bucket, Key=child, UploadId=upload
+            ).get("Parts", [])
+            if (
+                len(parts) != 1
+                or parts[0].get("PartNumber") != 1
+                or parts[0].get("ETag") != etag
+            ):
+                raise RuntimeError("durable native multipart parts differ")
+            if index == 0:
+                gateway.complete_multipart_upload(
+                    Bucket=self.bucket,
+                    Key=child,
+                    UploadId=upload,
+                    MultipartUpload={"Parts": [{"PartNumber": 1, "ETag": etag}]},
+                )
+                self.private_effect(child, body)
+            else:
+                cleanup.abort_multipart_upload(
+                    Bucket=self.bucket, Key=child, UploadId=upload
+                )
+        for child in objects[1:]:
+            cleanup.delete_object(Bucket=self.bucket, Key=child)
+            self.exact_absence(child)
+        self.native_inventory("NATIVE_CLEANUP", {key}, set())
+        self.verify_foreign_inventory()
+        self.budget.enter("C")
+        self.native_iam.no_effect()
+
     def preflight(self):
         """Real provider-only bootstrap, followed by the unchanged HTTP harness."""
         from botocore.exceptions import ClientError
@@ -1454,6 +1975,8 @@ class AssetProvider:
         )
         bucket = self.bucket
         admin.create_bucket(Bucket=bucket)
+        admin.put_public_access_block(Bucket=bucket, PublicAccessBlockConfiguration=PAB)
+        self.require_pab()
         if admin.get_bucket_versioning(Bucket=bucket).get("Status") not in (
             None,
             "Suspended",
@@ -1486,6 +2009,11 @@ class AssetProvider:
                 raise RuntimeError("gateway authenticated GET failed")
         finally:
             stream.close()
+        self.seed_foreign_inventory()
+        self.native_checkpoint(key, body)
+        admin, gateway, cleanup = (
+            self.clients[name] for name in ("bootstrap", "gateway", "cleanup")
+        )
         self.privacy_profile(key, body)
         presign = gateway.generate_presigned_url(
             "get_object", Params={"Bucket": bucket, "Key": key}, ExpiresIn=2
@@ -1505,14 +2033,10 @@ class AssetProvider:
             "maintenance HEAD no-read",
             head=True,
         )
-        # Seed a synthetic foreign namespace and a separate owned foreign bucket.
-        foreign = f"wso-assets/v1/{uuid4().hex}/foreign"
-        admin.put_object(Bucket=bucket, Key=foreign, Body=b"foreign-preserved")
-        foreign_upload = admin.create_multipart_upload(Bucket=bucket, Key=foreign)[
-            "UploadId"
-        ]
-        foreign_bucket = bucket + "-foreign"
-        admin.create_bucket(Bucket=foreign_bucket)
+        # The exact foreign inventory was seeded before native pagination/restart.
+        foreign = self.foreign_inventory["key"]
+        foreign_upload = self.foreign_inventory["upload"]
+        foreign_bucket = self.foreign_inventory["bucket"]
         for actor in (gateway, cleanup):
             self.denied(
                 partial(actor.head_object, Bucket=bucket, Key=foreign),
@@ -1557,64 +2081,10 @@ class AssetProvider:
             raise RuntimeError(
                 "dedicated bucket multipart metadata observation differs"
             )
-        uploads = []
-        objects = [key]
-        for index in range(3):
-            upload_key = key + f"-page-{index}"
-            gateway.put_object(Bucket=bucket, Key=upload_key, Body=body)
-            objects.append(upload_key)
-            upload = gateway.create_multipart_upload(Bucket=bucket, Key=upload_key)[
-                "UploadId"
-            ]
-            part = gateway.upload_part(
-                Bucket=bucket, Key=upload_key, UploadId=upload, PartNumber=1, Body=body
-            )
-            uploads.append((upload_key, upload, part["ETag"]))
-            cleanup.list_parts(Bucket=bucket, Key=upload_key, UploadId=upload)
-        object_rows, object_pages = self.object_pages(cleanup, self.prefix)
-        upload_rows, upload_pages = self.multipart_pages(cleanup, self.prefix)
-        if (
-            object_pages < 2
-            or upload_pages < 2
-            or {row["Key"] for row in object_rows} != set(objects)
-            or {(row["Key"], row["UploadId"]) for row in upload_rows}
-            != {(item[0], item[1]) for item in uploads}
-        ):
-            raise RuntimeError("actual forced pagination/filter checkpoints failed")
-        for index, (upload_key, upload, etag) in enumerate(uploads):
-            if index == 0:
-                gateway.complete_multipart_upload(
-                    Bucket=bucket,
-                    Key=upload_key,
-                    UploadId=upload,
-                    MultipartUpload={"Parts": [{"PartNumber": 1, "ETag": etag}]},
-                )
-                self.private_effect(upload_key, body)
-            else:
-                cleanup.abort_multipart_upload(
-                    Bucket=bucket, Key=upload_key, UploadId=upload
-                )
-        for object_key in objects:
-            cleanup.delete_object(Bucket=bucket, Key=object_key)
-            self.exact_absence(object_key)
-        if (
-            self.object_pages(cleanup, self.prefix)[0]
-            or self.multipart_pages(cleanup, self.prefix)[0]
-        ):
-            raise RuntimeError("maintenance final prefix absence failed")
-        stream = admin.get_object(Bucket=bucket, Key=foreign)["Body"]
-        try:
-            if stream.read() != b"foreign-preserved":
-                raise RuntimeError("foreign object bytes changed")
-        finally:
-            stream.close()
-        if not any(
-            row.get("UploadId") == foreign_upload
-            for row in admin.list_multipart_uploads(Bucket=bucket, Prefix=foreign).get(
-                "Uploads", []
-            )
-        ):
-            raise RuntimeError("foreign upload was altered")
+        cleanup.delete_object(Bucket=bucket, Key=key)
+        self.exact_absence(key)
+        self.native_inventory("NATIVE_CLEANUP", set(), set())
+        self.verify_foreign_inventory()
         admin.abort_multipart_upload(
             Bucket=bucket, Key=foreign, UploadId=foreign_upload
         )
@@ -1624,19 +2094,19 @@ class AssetProvider:
         if self.relay is None:
             raise RuntimeError("owned relay unavailable at acceptance")
         self.relay.assert_healthy()
-        self.receipt = {
-            "provider": "MinIO",
-            "version": SERVER_VERSION,
-            "security_profile": SECURITY_PROFILE,
-            "artifact_kind": "official-binaries-local-scratch-image",
-            "binary_sha256": SERVER_SHA,
-            "client_version": CLIENT_VERSION,
-            "client_binary_sha256": CLIENT_SHA,
-            "source_commit": SERVER_COMMIT,
-            "image_id": self.image,
-            "capabilities": "private IAM/put/get/head/delete/multipart/list/abort/presign-expiry",
-            "owned_resource_mapping": True,
-        }
+        cutoff = min(
+            self.budget.cutoff,
+            self.budget.outer,
+            time.monotonic() + self.relay.VALIDATION_SECONDS,
+        )
+        observed = self.read_relay_identity(
+            cutoff, self.relay.stop, self.relay.commands
+        )
+        if self.relay_pin is None or observed != self.relay_pin:
+            raise RuntimeError("owned relay target identity differs")
+        self.budget.check()
+        self.relay.assert_healthy()
+        self.receipt = make_provider_receipt(image_id=self.image)
         private_json(self.work / "provider-receipt.json", self.receipt)
 
     def emit_close_diagnostic(self, categories):
@@ -1670,6 +2140,16 @@ class AssetProvider:
 
     def close(self):
         failures = []
+        if self.cleanup_cutoff is None:
+            self.cleanup_cutoff = time.monotonic() + 180
+        try:
+            self.commands.assert_settled()
+        except RuntimeError:
+            self.receipt = None
+            self.emit_close_diagnostic(["relay-unsettled"])
+            raise RuntimeError(
+                "owned command cleanup unsettled; target retained"
+            ) from None
         if self.relay is not None:
             try:
                 self.relay.close()
@@ -1695,6 +2175,9 @@ class AssetProvider:
                 if kind == "container":
                     self.assert_container_mapping(state)
                     self.docker("container", "rm", "--force", name)
+                elif kind == "version-container":
+                    self.assert_version_container(state, name)
+                    self.docker("container", "rm", "--force", name)
                 elif kind == "image":
                     self.assert_image(state)
                     if getattr(self, "image", state["Id"]) != state["Id"]:
@@ -1709,7 +2192,7 @@ class AssetProvider:
                 resolved = self.work.resolve()
                 if (
                     resolved.parent != self.directory
-                    or resolved.name != "minio-" + self.owner
+                    or resolved.name != "rustfs-" + self.owner
                     or self.work.is_symlink()
                     or json.loads((self.work / "owner.json").read_text())["owner"]
                     != self.owner
@@ -1743,7 +2226,7 @@ def provider_only():
         finally:
             provider.close()
         private_json(receipt, evidence)
-    print("actual MinIO provider preflight and owned teardown passed")
+    print("actual RustFS provider preflight and owned teardown passed")
 
 
 if __name__ == "__main__":
