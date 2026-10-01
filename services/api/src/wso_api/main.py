@@ -25,6 +25,8 @@ from wso_api.connections.router import configure_connections
 from wso_api.connections.router import router as connections_router
 from wso_api.jobs.router import router as jobs_router
 from wso_api.stores.router import router as stores_router
+from wso_api.tvt.account import configure_account
+from wso_api.tvt.account import router as account_router
 from wso_api.tvt.startup import configure_startup
 from wso_api.tvt.startup import router as startup_router
 
@@ -73,6 +75,7 @@ def create_app(
     checks = dict(readiness_checks or {})
     configure_auth(app)
     configure_startup(app)
+    configure_account(app)
     configure_connections(app)
     configure_assets(app, runtime=asset_runtime)
     app.include_router(auth_router)
@@ -81,6 +84,7 @@ def create_app(
     app.include_router(jobs_router)
     app.include_router(assets_router)
     app.include_router(startup_router)
+    app.include_router(account_router)
 
     @app.middleware("http")
     async def request_context(

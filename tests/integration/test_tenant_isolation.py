@@ -672,6 +672,16 @@ def test_app_cannot_access_grant_internals_or_issuer(seeded, query) -> None:
 PRIVATE_TABLE_OWNERS = {
     **dict.fromkeys(
         (
+            "tvt_account_sessions",
+            "tvt_account_tokens",
+            "tvt_account_tickets",
+            "tvt_account_challenges",
+            "tvt_account_storage",
+        ),
+        "wso_account_owner",
+    ),
+    **dict.fromkeys(
+        (
             "tenant_grants",
             "tenant_contexts",
             "connection_secrets",

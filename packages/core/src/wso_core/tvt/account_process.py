@@ -282,7 +282,9 @@ class ProcessAccountTransport:
                     cwd=str(Path(__file__).resolve().parent),
                     bufsize=0,
                     creationflags=(
-                        subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+                        getattr(subprocess, "CREATE_NO_WINDOW", 0)
+                        if os.name == "nt"
+                        else 0
                     ),
                 )
                 exchange = _Exchange(process, payload, _wire_limit(self._max_body))

@@ -5,10 +5,12 @@ from __future__ import annotations
 import json
 from dataclasses import asdict
 from datetime import UTC, datetime
+from uuid import UUID
 
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
+from wso_contracts.tvt.identity import TokenKind
 
 from wso_core.secrets import SecretRejected
 from wso_core.tvt.authorization import AuthorizationDenied, AuthorizedScope, recheck
@@ -71,3 +73,54 @@ class CredentialProvider:
         if type(handle) is not str or len(handle) != 64:
             raise SecretRejected()
         return handle
+
+    def with_account_ticket(
+        self,
+        scope: AuthorizedScope,
+        purpose: str,
+        region: str,
+        brand: str,
+        *,
+        identity_id: UUID | None = None,
+        kind: TokenKind = TokenKind.USER,
+        generation: int = 0,
+    ) -> str:
+        """W05 typed admission; no untyped handle fallback for managed tokens."""
+        from wso_core.worker import JOB_STEP_ACTIVE
+
+        prelogin = purpose in {"login", "image", "check"}
+        action = "account.login" if prelogin or purpose == "logout" else "account.read"
+        if (
+            JOB_STEP_ACTIVE.get()
+            or type(scope) is not AuthorizedScope
+            or purpose not in {"login", "image", "check", "profile", "renew", "logout"}
+            or scope.action != action
+            or type(kind) is not TokenKind
+            or kind is not TokenKind.USER
+            or type(generation) is not int
+            or generation < 0
+            or (prelogin and (identity_id is not None or generation != 0))
+            or (not prelogin and (type(identity_id) is not UUID or generation < 1))
+            or (action == "account.read" and scope.target.identity_id != identity_id)
+        ):
+            raise SecretRejected()
+        try:
+            recheck(self._session, scope)
+            ticket: str | None = self._session.execute(
+                text(
+                    "SELECT public.wso_tvt_account_issue(:purpose,:region,:brand,:identity,:kind,:generation)"
+                ),
+                {
+                    "purpose": purpose,
+                    "region": region,
+                    "brand": brand,
+                    "identity": identity_id,
+                    "kind": kind.value,
+                    "generation": generation,
+                },
+            ).scalar_one()
+        except (AuthorizationDenied, DBAPIError):
+            raise SecretRejected() from None
+        if type(ticket) is not str or len(ticket) != 64:
+            raise SecretRejected()
+        return ticket
