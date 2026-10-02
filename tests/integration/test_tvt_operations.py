@@ -34,12 +34,28 @@ EVIDENCE = (
 
 
 def diagnostic(context):
-    error = context.original_exception
-    if getattr(error, "sqlstate", None) in {"42702", "42703", "42601", "42501"}:
+    # Optional evidence must never replace SQLAlchemy's original DBAPI error.
+    try:
+        error = context.original_exception
+        sqlstate = getattr(error, "sqlstate", None)
+        if type(sqlstate) is not str or sqlstate not in {
+            "42702",
+            "42703",
+            "42601",
+            "42501",
+        }:
+            return
+        error_class = type(error).__name__
+        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,63}", error_class):
+            error_class = "DBAPIError"
+        record = f"{sqlstate}: {error_class}\n"
+        EVIDENCE.mkdir(parents=True, exist_ok=True)
         with (EVIDENCE / "sql-diagnostics.txt").open("a", encoding="utf-8") as out:
-            out.write(
-                str(error.sqlstate) + ": " + str(error.diag.message_primary) + "\n"
-            )
+            out.write(record)
+    except Exception:  # noqa: BLE001 - optional diagnostics cannot own SQL errors
+        # Metadata, formatting and filesystem failures are diagnostic failures;
+        # returning None keeps the original SQLAlchemy exception propagation.
+        return
 
 
 def foundation_contents(db, tables=None):
