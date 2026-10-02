@@ -310,3 +310,376 @@ class AccountBridgeV1:
             timeout,
             metadata,
             _registered_method=True)
+
+
+class FlowBridgeV1Stub:
+    """Missing associated documentation comment in .proto file."""
+
+    def __init__(self, channel):
+        """Constructor.
+
+        Args:
+            channel: A grpc.Channel.
+        """
+        self.Start = channel.unary_unary(
+                '/wso.tvt.account.v1.FlowBridgeV1/Start',
+                request_serializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.FlowStartRequest.SerializeToString,
+                response_deserializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.FlowReply.FromString,
+                _registered_method=True)
+        self.State = channel.unary_unary(
+                '/wso.tvt.account.v1.FlowBridgeV1/State',
+                request_serializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.FlowStateRequest.SerializeToString,
+                response_deserializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.FlowReply.FromString,
+                _registered_method=True)
+        self.Existence = channel.unary_unary(
+                '/wso.tvt.account.v1.FlowBridgeV1/Existence',
+                request_serializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.FlowExistenceRequest.SerializeToString,
+                response_deserializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.FlowReply.FromString,
+                _registered_method=True)
+        self.Image = channel.unary_unary(
+                '/wso.tvt.account.v1.FlowBridgeV1/Image',
+                request_serializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.FlowImageRequest.SerializeToString,
+                response_deserializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.FlowReply.FromString,
+                _registered_method=True)
+        self.IssueCode = channel.unary_unary(
+                '/wso.tvt.account.v1.FlowBridgeV1/IssueCode',
+                request_serializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.FlowIssueCodeRequest.SerializeToString,
+                response_deserializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.FlowReply.FromString,
+                _registered_method=True)
+        self.Register = channel.unary_unary(
+                '/wso.tvt.account.v1.FlowBridgeV1/Register',
+                request_serializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.FlowRegisterRequest.SerializeToString,
+                response_deserializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.FlowReply.FromString,
+                _registered_method=True)
+        self.Recover = channel.unary_unary(
+                '/wso.tvt.account.v1.FlowBridgeV1/Recover',
+                request_serializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.FlowRecoverRequest.SerializeToString,
+                response_deserializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.FlowReply.FromString,
+                _registered_method=True)
+        self.Cancel = channel.unary_unary(
+                '/wso.tvt.account.v1.FlowBridgeV1/Cancel',
+                request_serializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.FlowCancelRequest.SerializeToString,
+                response_deserializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.FlowReply.FromString,
+                _registered_method=True)
+
+
+class FlowBridgeV1Servicer:
+    """Missing associated documentation comment in .proto file."""
+
+    def Start(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def State(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def Existence(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def Image(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def IssueCode(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def Register(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def Recover(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def Cancel(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+
+def add_FlowBridgeV1Servicer_to_server(servicer, server):
+    rpc_method_handlers = {
+            'Start': grpc.unary_unary_rpc_method_handler(
+                    servicer.Start,
+                    request_deserializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.FlowStartRequest.FromString,
+                    response_serializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.FlowReply.SerializeToString,
+            ),
+            'State': grpc.unary_unary_rpc_method_handler(
+                    servicer.State,
+                    request_deserializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.FlowStateRequest.FromString,
+                    response_serializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.FlowReply.SerializeToString,
+            ),
+            'Existence': grpc.unary_unary_rpc_method_handler(
+                    servicer.Existence,
+                    request_deserializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.FlowExistenceRequest.FromString,
+                    response_serializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.FlowReply.SerializeToString,
+            ),
+            'Image': grpc.unary_unary_rpc_method_handler(
+                    servicer.Image,
+                    request_deserializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.FlowImageRequest.FromString,
+                    response_serializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.FlowReply.SerializeToString,
+            ),
+            'IssueCode': grpc.unary_unary_rpc_method_handler(
+                    servicer.IssueCode,
+                    request_deserializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.FlowIssueCodeRequest.FromString,
+                    response_serializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.FlowReply.SerializeToString,
+            ),
+            'Register': grpc.unary_unary_rpc_method_handler(
+                    servicer.Register,
+                    request_deserializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.FlowRegisterRequest.FromString,
+                    response_serializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.FlowReply.SerializeToString,
+            ),
+            'Recover': grpc.unary_unary_rpc_method_handler(
+                    servicer.Recover,
+                    request_deserializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.FlowRecoverRequest.FromString,
+                    response_serializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.FlowReply.SerializeToString,
+            ),
+            'Cancel': grpc.unary_unary_rpc_method_handler(
+                    servicer.Cancel,
+                    request_deserializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.FlowCancelRequest.FromString,
+                    response_serializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.FlowReply.SerializeToString,
+            ),
+    }
+    generic_handler = grpc.method_handlers_generic_handler(
+            'wso.tvt.account.v1.FlowBridgeV1', rpc_method_handlers)
+    server.add_generic_rpc_handlers((generic_handler,))
+    server.add_registered_method_handlers('wso.tvt.account.v1.FlowBridgeV1', rpc_method_handlers)
+
+
+ # This class is part of an EXPERIMENTAL API.
+class FlowBridgeV1:
+    """Missing associated documentation comment in .proto file."""
+
+    @staticmethod
+    def Start(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/wso.tvt.account.v1.FlowBridgeV1/Start',
+            wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.FlowStartRequest.SerializeToString,
+            wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.FlowReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def State(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/wso.tvt.account.v1.FlowBridgeV1/State',
+            wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.FlowStateRequest.SerializeToString,
+            wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.FlowReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def Existence(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/wso.tvt.account.v1.FlowBridgeV1/Existence',
+            wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.FlowExistenceRequest.SerializeToString,
+            wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.FlowReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def Image(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/wso.tvt.account.v1.FlowBridgeV1/Image',
+            wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.FlowImageRequest.SerializeToString,
+            wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.FlowReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def IssueCode(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/wso.tvt.account.v1.FlowBridgeV1/IssueCode',
+            wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.FlowIssueCodeRequest.SerializeToString,
+            wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.FlowReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def Register(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/wso.tvt.account.v1.FlowBridgeV1/Register',
+            wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.FlowRegisterRequest.SerializeToString,
+            wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.FlowReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def Recover(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/wso.tvt.account.v1.FlowBridgeV1/Recover',
+            wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.FlowRecoverRequest.SerializeToString,
+            wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.FlowReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def Cancel(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/wso.tvt.account.v1.FlowBridgeV1/Cancel',
+            wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.FlowCancelRequest.SerializeToString,
+            wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.FlowReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)

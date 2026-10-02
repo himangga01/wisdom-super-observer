@@ -105,6 +105,9 @@ jobs:
         env:
           WSO_TEST_ACCOUNT_RPC_RUNTIME: '1'
           WSO_TEST_W02_OPERATION_DIAGNOSTIC: '1'
+          WSO_TEST_W06_FLOW_ACCEPTANCE: '1'
+          WSO_TEST_W06_API_ACCEPTANCE: '1'
+          WSO_TEST_W06_PARENT_SHA256: '3a2fc52bb33a86058d5f13d36f6112986f1ef4117032c64cc268e2e88f61572e'
         shell: pwsh
         run: ./scripts/verify.ps1 -WithPostgres -WithAuthBrowser -WithJobBroker
       - name: Real Valkey 9.1.2 persistence fixture smoke

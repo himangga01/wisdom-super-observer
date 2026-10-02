@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { CSRF_COOKIE, SESSION_COOKIE, equalSecret, privateResponse, readAuthConfig } from "../auth";
 import { consentInputSchema, consentSchema, preferencesInputSchema, preferencesSchema, publicBootstrap, publicMessages, tenantSchema } from "./api-client";
 import { accountResponse, imageCheckSchema, loginSchema, refreshSchema, safeAccountError, selectionSchema, type AccountOperation, type AccountSelection } from "./account-api-client";
+import { flowInputSchemas, flowRequestIdSchema, flowResponse, safeFlowError, type FlowOperation } from "./flow-api-client";
 
 function privateJson(value: unknown, status: number, requestId: string) {
   const response = privateResponse(NextResponse.json(value, { status }));
@@ -47,9 +48,10 @@ async function boundedJson(response: Response, limit: number, signal: AbortSigna
 function correlation(value: unknown): string | undefined {
   if (value && typeof value === "object" && "request_id" in value && tenantSchema.safeParse(value.request_id).success) return value.request_id as string;
 }
-function operation(segments: string[]): { method: string; account?: AccountOperation; id?: string; startup?: string } | undefined {
+function operation(segments: string[]): { method: string; account?: AccountOperation; flow?: FlowOperation; id?: string; startup?: string } | undefined {
   if (segments.length === 1 && ["bootstrap", "consent", "preferences"].includes(segments[0])) return { method: { bootstrap: "GET", consent: "POST", preferences: "PUT" }[segments[0]]!, startup: segments[0] };
   const path = segments.join("/");
+  if (segments.length === 2 && segments[0] === "account-flows" && Object.hasOwn(flowInputSchemas, segments[1])) return { method: "POST", flow: segments[1] as FlowOperation };
   if (path === "identities/login") return { method: "POST", account: "login" };
   if (path === "identities/challenges/image") return { method: "POST", account: "image" };
   if (path === "identities/challenges/image/check") return { method: "POST", account: "check" };
@@ -60,7 +62,7 @@ function operation(segments: string[]): { method: string; account?: AccountOpera
 }
 export async function proxyTvt(request: NextRequest, segments: string[], backendFetch: typeof fetch = fetch) {
   let requestId = randomUUID() as string;
-  const isAccount = segments[0] === "identities";
+  const isAccount = segments[0] === "identities" || segments[0] === "account-flows";
   const controller = new AbortController(); const signal = AbortSignal.any([request.signal, controller.signal]);
   const timer = setTimeout(() => controller.abort(), 10_000);
   try {
@@ -77,7 +79,7 @@ export async function proxyTvt(request: NextRequest, segments: string[], backend
         if (!/^application\/json(?:\s*;\s*charset=utf-8)?$/i.test(request.headers.get("content-type") ?? "")) return fail(422, requestId, isAccount);
         try {
           const value = await boundedJson(new Response(request.body, { headers: request.headers }), isAccount ? 32768 : 4096, signal);
-          body = op.account ? { login: loginSchema, image: selectionSchema, check: imageCheckSchema, refresh: refreshSchema }[op.account as "login" | "image" | "check" | "refresh"].parse(value) : op.startup === "consent" ? consentInputSchema.parse(value) : preferencesInputSchema.parse(value);
+          body = op.flow ? flowInputSchemas[op.flow].parse(value) : op.account ? { login: loginSchema, image: selectionSchema, check: imageCheckSchema, refresh: refreshSchema }[op.account as "login" | "image" | "check" | "refresh"].parse(value) : op.startup === "consent" ? consentInputSchema.parse(value) : preferencesInputSchema.parse(value);
         } catch { return fail(signal.aborted && isAccount ? 504 : 422, requestId, isAccount); }
       } else {
         // Next's Node adapter may expose an empty POST as a non-null stream.
@@ -92,14 +94,17 @@ export async function proxyTvt(request: NextRequest, segments: string[], backend
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     }), signal);
     let data: unknown;
-    try { data = await boundedJson(response, op.account === "image" && response.ok ? 131072 : 65536, signal); } catch { if (signal.aborted) throw new Error("Cancelled"); if (response.ok || isAccount) return fail(503, requestId, isAccount); }
-    requestId = correlation(data) ?? requestId;
+    try { data = await boundedJson(response, response.ok && (op.account === "image" || op.flow === "image" || op.flow === "issue-code") ? 131072 : 65536, signal); } catch { if (signal.aborted) throw new Error("Cancelled"); if (response.ok || isAccount) return fail(503, requestId, isAccount); }
+    if (op.flow && data && typeof data === "object" && "request_id" in data && flowRequestIdSchema.safeParse(data.request_id).success) requestId = data.request_id as string;
+    else requestId = correlation(data) ?? requestId;
+    if (op.flow && response.headers.has("X-Request-ID") && response.headers.get("X-Request-ID") !== requestId) return fail(503, requestId, true);
     if (!response.ok) {
+      if (op.flow) { const safe = safeFlowError(response.status, data); return privateJson({ error: safe.error, request_id: requestId }, safe.status, requestId); }
       if (isAccount) { const safe = safeAccountError(response.status, data); return fail(safe.status, requestId, true, safe.error.code); }
       return fail([401, 403, 404, 409, 422, 503].includes(response.status) ? response.status : 503, requestId);
     }
     if (response.status !== 200) return fail(503, requestId, isAccount);
-    const result = op.account ? accountResponse(op.account, data, op.id, op.account === "login" ? body as AccountSelection : undefined) : op.startup === "bootstrap" ? publicBootstrap(data, tenant!) : op.startup === "consent" ? consentSchema.parse(data) : preferencesSchema.parse(data);
+    const result = op.flow ? flowResponse(data, body as { region: string; brand: string; purpose: "register" | "recover"; flow_id?: string }, response.headers.get("X-Request-ID") ?? undefined) : op.account ? accountResponse(op.account, data, op.id, op.account === "login" ? body as AccountSelection : undefined) : op.startup === "bootstrap" ? publicBootstrap(data, tenant!) : op.startup === "consent" ? consentSchema.parse(data) : preferencesSchema.parse(data);
     return privateJson(result, 200, requestId);
   } catch { return fail(signal.aborted && isAccount ? 504 : 503, requestId, isAccount); }
   finally { clearTimeout(timer); }

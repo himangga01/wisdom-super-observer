@@ -38,6 +38,12 @@ KNOWN_PATHS = frozenset(
         "/user/info/email/is-exist",
         "/user/register",
         "/user/info/password/reset",
+        "/resource/device/list",
+        "/resource/channel/list",
+        "/resource/device/detail",
+        "/resource/channel/detail",
+        "/resource/channel/share/to-other/list",
+        "/resource/channel/share/from-other/list",
     }
 )
 

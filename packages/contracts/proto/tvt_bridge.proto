@@ -28,3 +28,25 @@ service AccountBridgeV1 {
   rpc Renew(RenewRequest) returns (AccountReply);
   rpc Logout(LogoutRequest) returns (AccountReply);
 }
+
+// Separate fixed registration/recovery surface. Payloads are private closed
+// method-specific JSON; context and SQL authority rules remain identical.
+message FlowStartRequest { RpcContext context = 1; bytes private_json = 2; }
+message FlowStateRequest { RpcContext context = 1; bytes private_json = 2; }
+message FlowExistenceRequest { RpcContext context = 1; bytes private_json = 2; }
+message FlowImageRequest { RpcContext context = 1; bytes private_json = 2; }
+message FlowIssueCodeRequest { RpcContext context = 1; bytes private_json = 2; }
+message FlowRegisterRequest { RpcContext context = 1; bytes private_json = 2; }
+message FlowRecoverRequest { RpcContext context = 1; bytes private_json = 2; }
+message FlowCancelRequest { RpcContext context = 1; bytes private_json = 2; }
+message FlowReply { bytes public_json = 1; string failure_code = 2; }
+service FlowBridgeV1 {
+  rpc Start(FlowStartRequest) returns (FlowReply);
+  rpc State(FlowStateRequest) returns (FlowReply);
+  rpc Existence(FlowExistenceRequest) returns (FlowReply);
+  rpc Image(FlowImageRequest) returns (FlowReply);
+  rpc IssueCode(FlowIssueCodeRequest) returns (FlowReply);
+  rpc Register(FlowRegisterRequest) returns (FlowReply);
+  rpc Recover(FlowRecoverRequest) returns (FlowReply);
+  rpc Cancel(FlowCancelRequest) returns (FlowReply);
+}

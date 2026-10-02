@@ -7,11 +7,19 @@ import re
 import time
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 from google.protobuf.message import Message
 from pydantic import BaseModel
 from wso_contracts.tvt.account import AccountLogin, AccountRefresh, ImageCheckRequest
+from wso_contracts.tvt.account_flows import (
+    AccountDynamicCodeRequest,
+    AccountFlowCancel,
+    AccountFlowReference,
+    AccountFlowStart,
+    AccountRecoverySubmit,
+    AccountRegistrationSubmit,
+)
 from wso_core.tvt.account_projection import AccountFailure
 
 PROTOCOL_VERSION = 1
@@ -49,16 +57,64 @@ def failure(code: str) -> AccountFailure:
     return AccountFailure(safe, FAILURES[safe])
 
 
-def encode_input(body: AccountLogin | ImageCheckRequest | AccountRefresh) -> bytes:
+FLOW_FAILURES = FAILURES | {
+    "ACCOUNT_SCOPE_INVALID": 422,
+    "ACCOUNT_TRANSPORT_FAILED": 502,
+    "ACCOUNT_CANCELLED": 409,
+    "ACCOUNT_QUARANTINED": 409,
+    "FLOW_CLOSED": 409,
+    "FLOW_EXPIRED": 409,
+    "FLOW_CONSUMED": 409,
+    "FLOW_KEY_MISSING": 409,
+    "FLOW_PURPOSE_INVALID": 422,
+    "FLOW_IMAGE_MISSING": 409,
+    "FLOW_RATE_LIMITED": 429,
+}
+FLOW_INPUTS = (
+    AccountFlowStart,
+    AccountFlowReference,
+    AccountDynamicCodeRequest,
+    AccountRegistrationSubmit,
+    AccountRecoverySubmit,
+    AccountFlowCancel,
+)
+
+
+def flow_failure(code: str) -> AccountFailure:
+    safe = code if code in FLOW_FAILURES else "ACCOUNT_UNAVAILABLE"
+    return AccountFailure(safe, FLOW_FAILURES[safe])
+
+
+def encode_input(body: BaseModel) -> bytes:
     # Only entering credentials. Never recursively serialize arbitrary SecretStr.
-    value = body.model_dump(mode="json")
+    if type(body) in FLOW_INPUTS:
+        checked = None
+        try:
+            checked = type(body).model_validate(body.model_dump(exclude_unset=True))
+        except (ValueError, TypeError):
+            pass
+        if checked is None:
+            raise failure("ACCOUNT_INPUT_INVALID") from None
+        value = checked.model_dump(mode="json", exclude_unset=True)
+        fields = {
+            AccountFlowStart: ("account",),
+            AccountDynamicCodeRequest: ("image_code",),
+            AccountRegistrationSubmit: ("password", "dynamic_code"),
+            AccountRecoverySubmit: ("new_password", "dynamic_code"),
+        }.get(type(body), ())
+        for name in fields:
+            secret = getattr(checked, name)
+            if secret is not None:
+                value[name] = secret.get_secret_value()
+    else:
+        value = body.model_dump(mode="json")
     if type(body) is AccountLogin:
         for name in ("account", "secret", "image_code", "second_code"):
             secret = getattr(body, name)
             value[name] = secret.get_secret_value() if secret is not None else None
     elif type(body) is ImageCheckRequest:
         value["image_code"] = body.image_code.get_secret_value()
-    elif type(body) is not AccountRefresh:
+    elif type(body) is not AccountRefresh and type(body) not in FLOW_INPUTS:
         raise failure("ACCOUNT_INPUT_INVALID")
     encoded = json.dumps(
         value, ensure_ascii=False, separators=(",", ":"), allow_nan=False
@@ -88,7 +144,20 @@ def decode_input[T: BaseModel](payload: bytes, model: type[T]) -> T:
         pass
     if result is None:
         raise failure("ACCOUNT_INPUT_INVALID") from None
-    return cast(T, result)
+    return result
+
+
+def decode_public[T: BaseModel](payload: bytes, model: type[T]) -> T:
+    result = None
+    try:
+        if not 0 < len(payload) <= MAX_FRAME_BYTES:
+            raise ValueError
+        result = model.model_validate(json.loads(payload, object_pairs_hook=_pairs))
+    except (ValueError, TypeError, UnicodeError, RecursionError):
+        pass
+    if result is None:
+        raise failure("ACCOUNT_PROTOCOL_INVALID") from None
+    return result
 
 
 def reject_unknown(message: Message) -> None:

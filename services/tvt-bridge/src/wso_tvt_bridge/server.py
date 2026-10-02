@@ -14,6 +14,7 @@ from typing import Any, cast
 
 import grpc
 from pydantic import BaseModel
+from wso_api.tvt.flow_service import AccountFlowWorker
 from wso_api.tvt.session_service import AccountWorker
 from wso_contracts.tvt.account import (
     AccountIdentity,
@@ -24,6 +25,15 @@ from wso_contracts.tvt.account import (
     ImageChallengeView,
     ImageCheckRequest,
     ImageCheckView,
+)
+from wso_contracts.tvt.account_flows import (
+    AccountDynamicCodeRequest,
+    AccountFlowCancel,
+    AccountFlowReference,
+    AccountFlowStart,
+    AccountFlowView,
+    AccountRecoverySubmit,
+    AccountRegistrationSubmit,
 )
 from wso_core.tvt.account_projection import AccountFailure
 from wso_core.tvt.token_vault import token_budget
@@ -36,6 +46,7 @@ from .selected import (
     decode_input,
     endpoint,
     failure,
+    flow_failure,
     pem,
     required,
     validate_request,
@@ -54,6 +65,9 @@ class ServerConfig:
 
 
 class _Service(rpc.AccountBridgeV1Servicer):  # type: ignore[misc]
+    _reply = pb.AccountReply
+    _failure = staticmethod(failure)
+
     def __init__(
         self, worker: AccountWorker, config: ServerConfig, pool: SessionPool
     ) -> None:
@@ -81,7 +95,7 @@ class _Service(rpc.AccountBridgeV1Servicer):  # type: ignore[misc]
             context.abort(grpc.StatusCode.PERMISSION_DENIED, "ACCOUNT_DENIED")
         slot = None
         dispatched = False
-        reply = pb.AccountReply(failure_code="ACCOUNT_UNAVAILABLE")
+        reply = self._reply(failure_code="ACCOUNT_UNAVAILABLE")
         try:
             validate_request(request)
             body = (
@@ -126,9 +140,22 @@ class _Service(rpc.AccountBridgeV1Servicer):  # type: ignore[misc]
                 ):
                     raise failure("ACCOUNT_PROTOCOL_INVALID")
                 # Revalidation rejects model_construct/extra and stale mutated outputs.
-                clean = output.model_validate_json(result.model_dump_json())
+                try:
+                    clean = output.model_validate_json(result.model_dump_json())
+                except (ValueError, TypeError):
+                    raise failure("ACCOUNT_PROTOCOL_INVALID") from None
+                if (
+                    output is AccountFlowView
+                    and body is not None
+                    and any(
+                        getattr(clean, name, None) != getattr(body, name)
+                        for name in ("region", "brand", "purpose", "flow_id")
+                        if hasattr(body, name)
+                    )
+                ):
+                    raise failure("ACCOUNT_PROTOCOL_INVALID")
                 payload = clean.model_dump_json().encode("utf-8")
-                reply = pb.AccountReply(public_json=payload)
+                reply = self._reply(public_json=payload)
                 if reply.ByteSize() > MAX_FRAME_BYTES:
                     raise failure("ACCOUNT_PROTOCOL_INVALID")
                 remaining()
@@ -136,15 +163,15 @@ class _Service(rpc.AccountBridgeV1Servicer):  # type: ignore[misc]
             code = (
                 "UNKNOWN_OUTCOME"
                 if dispatched and exc.code == "ACCOUNT_DEADLINE_EXCEEDED"
-                else failure(exc.code).code
+                else self._failure(exc.code).code
             )
-            reply = pb.AccountReply(failure_code=code)
+            reply = self._reply(failure_code=code)
         except Exception:  # noqa: BLE001 - redact untrusted executor/config errors
             # Never log exception/response/request, including validation error inputs.
-            reply = pb.AccountReply(failure_code="ACCOUNT_UNAVAILABLE")
+            reply = self._reply(failure_code="ACCOUNT_UNAVAILABLE")
         finally:
             if slot is not None and not self.pool.settle(slot):
-                reply = pb.AccountReply(failure_code="UNKNOWN_OUTCOME")
+                reply = self._reply(failure_code="UNKNOWN_OUTCOME")
         return reply
 
     def Login(self, request: Any, context: grpc.ServicerContext) -> Any:
@@ -189,6 +216,130 @@ class _Service(rpc.AccountBridgeV1Servicer):  # type: ignore[misc]
         return self._execute(request, context, self.worker.logout, AccountLogoutView)
 
 
+class _FlowService(_Service, rpc.FlowBridgeV1Servicer):  # type: ignore[misc]
+    _reply = pb.FlowReply
+    _failure = staticmethod(flow_failure)
+
+    def __init__(
+        self, worker: AccountFlowWorker | None, config: ServerConfig, pool: SessionPool
+    ) -> None:
+        self.flow_worker, self.config, self.pool = worker, config, pool
+
+    @staticmethod
+    def _unavailable(*args: Any, **kwargs: Any) -> AccountFlowView:
+        raise failure("ACCOUNT_UNAVAILABLE")
+
+    def Start(self, request: Any, context: grpc.ServicerContext) -> Any:
+        invoke = (
+            self.flow_worker.start
+            if self.flow_worker is not None
+            else self._unavailable
+        )
+        return self._execute(
+            request, context, invoke, AccountFlowView, AccountFlowStart, "private_json"
+        )
+
+    def State(self, request: Any, context: grpc.ServicerContext) -> Any:
+        invoke = (
+            self.flow_worker.state
+            if self.flow_worker is not None
+            else self._unavailable
+        )
+        return self._execute(
+            request,
+            context,
+            invoke,
+            AccountFlowView,
+            AccountFlowReference,
+            "private_json",
+        )
+
+    def Existence(self, request: Any, context: grpc.ServicerContext) -> Any:
+        invoke = (
+            self.flow_worker.existence
+            if self.flow_worker is not None
+            else self._unavailable
+        )
+        return self._execute(
+            request,
+            context,
+            invoke,
+            AccountFlowView,
+            AccountFlowReference,
+            "private_json",
+        )
+
+    def Image(self, request: Any, context: grpc.ServicerContext) -> Any:
+        invoke = (
+            self.flow_worker.image
+            if self.flow_worker is not None
+            else self._unavailable
+        )
+        return self._execute(
+            request,
+            context,
+            invoke,
+            AccountFlowView,
+            AccountFlowReference,
+            "private_json",
+        )
+
+    def IssueCode(self, request: Any, context: grpc.ServicerContext) -> Any:
+        invoke = (
+            self.flow_worker.issue_code
+            if self.flow_worker is not None
+            else self._unavailable
+        )
+        return self._execute(
+            request,
+            context,
+            invoke,
+            AccountFlowView,
+            AccountDynamicCodeRequest,
+            "private_json",
+        )
+
+    def Register(self, request: Any, context: grpc.ServicerContext) -> Any:
+        invoke = (
+            self.flow_worker.register
+            if self.flow_worker is not None
+            else self._unavailable
+        )
+        return self._execute(
+            request,
+            context,
+            invoke,
+            AccountFlowView,
+            AccountRegistrationSubmit,
+            "private_json",
+        )
+
+    def Recover(self, request: Any, context: grpc.ServicerContext) -> Any:
+        invoke = (
+            self.flow_worker.recover
+            if self.flow_worker is not None
+            else self._unavailable
+        )
+        return self._execute(
+            request,
+            context,
+            invoke,
+            AccountFlowView,
+            AccountRecoverySubmit,
+            "private_json",
+        )
+
+    def Cancel(self, request: Any, context: grpc.ServicerContext) -> Any:
+        invoke = (
+            self.flow_worker.cancel
+            if self.flow_worker is not None
+            else self._unavailable
+        )
+        return self._execute(
+            request, context, invoke, AccountFlowView, AccountFlowCancel, "private_json"
+        )
+
+
 class AccountRpcServer:
     def __init__(
         self,
@@ -196,6 +347,7 @@ class AccountRpcServer:
         worker: AccountWorker,
         *,
         dispose: Callable[[], None] = lambda: None,
+        flow_worker: AccountFlowWorker | None = None,
     ) -> None:
         target = endpoint(config.bind, bind=True)
         if (
@@ -215,26 +367,48 @@ class AccountRpcServer:
         self._lock = Lock()
         self._closed = False
         self._started = False
-        self.pool = SessionPool(capacity=config.capacity, dispose=dispose)
+        self._cleanup_proved = False
+        # Retain the disposer (and quarantined worker ownership) for this epoch.
+        self._dispose = dispose
+
+        def dispose_resources() -> None:
+            try:
+                self._dispose()
+            except Exception:  # noqa: BLE001 -- fixed uncertainty, never private errors
+                self._cleanup_proved = False
+            else:
+                self._cleanup_proved = True
+
+        self.pool = SessionPool(capacity=config.capacity, dispose=dispose_resources)
         self._threads = ThreadPoolExecutor(
             max_workers=config.capacity, thread_name_prefix="account-rpc"
         )
-        self._server = grpc.server(
-            self._threads, options=GRPC_OPTIONS, maximum_concurrent_rpcs=config.capacity
-        )
-        rpc.add_AccountBridgeV1Servicer_to_server(
-            _Service(worker, config, self.pool), self._server
-        )
-        credentials = grpc.ssl_server_credentials(
-            [(config.key, config.certificate)],
-            root_certificates=config.ca,
-            require_client_auth=True,
-        )
+        native = None
         try:
+            native = grpc.server(
+                self._threads,
+                options=GRPC_OPTIONS,
+                maximum_concurrent_rpcs=config.capacity,
+            )
+            self._server = native
+            rpc.add_AccountBridgeV1Servicer_to_server(
+                _Service(worker, config, self.pool), self._server
+            )
+            rpc.add_FlowBridgeV1Servicer_to_server(
+                _FlowService(flow_worker, config, self.pool), self._server
+            )
+            credentials = grpc.ssl_server_credentials(
+                [(config.key, config.certificate)],
+                root_certificates=config.ca,
+                require_client_auth=True,
+            )
             self._port = self._server.add_secure_port(target, credentials)
             if not self._port:
                 raise ValueError
         except Exception:  # noqa: BLE001 - redact untrusted executor/config errors
+            if native is not None:
+                native.stop(0)
+            self.pool.close(grace=0)
             self._threads.shutdown(wait=False, cancel_futures=True)
             raise failure("ACCOUNT_UNAVAILABLE") from None
 
@@ -242,17 +416,24 @@ class AccountRpcServer:
         with self._lock:
             if self._closed or self._started:
                 raise failure("ACCOUNT_UNAVAILABLE")
-            self._server.start()
-            self._started = True
-            return self._port
+            try:
+                self._server.start()
+            except Exception:  # noqa: BLE001, S110 -- redact native startup errors
+                pass
+            else:
+                self._started = True
+                return self._port
+        self.close(grace=0)
+        raise failure("ACCOUNT_UNAVAILABLE") from None
 
     def close(self, grace: float = 1.0) -> bool:
         with self._lock:
-            self._closed = True
-            self._server.stop(0)
+            if not self._closed:
+                self._closed = True
+                self._server.stop(0)
         drained = self.pool.close(grace)
         self._threads.shutdown(wait=False, cancel_futures=True)
-        return drained
+        return drained and self._cleanup_proved
 
 
 def create_server_from_environment() -> AccountRpcServer:
@@ -265,7 +446,25 @@ def create_server_from_environment() -> AccountRpcServer:
     from wso_core.tvt.token_vault import TokenVault
 
     env = os.environ
-    vault = None
+    resources: list[Callable[[], None]] = []
+    disposed = False
+    disposal_lock = Lock()
+
+    def dispose() -> None:
+        nonlocal disposed
+        with disposal_lock:
+            if disposed:
+                return
+            disposed = True
+        proved = True
+        for close in reversed(resources):
+            try:
+                close()
+            except Exception:  # noqa: BLE001 -- clean all owned resources without private logs
+                proved = False
+        if not proved:
+            raise flow_failure("ACCOUNT_QUARANTINED") from None
+
     try:
         allowed = json.loads(required(env, "WSO_TVT_BRIDGE_CLIENT_SANS_JSON"))
         if type(allowed) is not list or any(type(item) is not str for item in allowed):
@@ -280,13 +479,33 @@ def create_server_from_environment() -> AccountRpcServer:
         provider = FileKeyProvider(Path(required(env, "WSO_CONNECTION_KEY_FILE")))
         provider.encryption_key()  # Fail at startup on absent/invalid key.
         vault = TokenVault(required(env, "WSO_WORKER_DATABASE_URL"), provider)
+        resources.append(vault.close)
         endpoints = load_account_endpoints()
+        from .flow_config import load_flow_configuration
+
+        flow_settings = load_flow_configuration(env, endpoints)
+        flow_worker = None
+        if flow_settings is not None:
+            from wso_api.tvt.flow_service import AccountFlowWorkerExecutor
+            from wso_core.tvt.flow_admission import FlowAdmission
+
+            admission = FlowAdmission(
+                required(env, "WSO_WORKER_DATABASE_URL"), flow_settings.key_commitment
+            )
+            resources.append(admission.close)
+            flow_worker = AccountFlowWorkerExecutor(
+                admission, endpoints, flow_settings.profiles, flow_settings.binding_key
+            )
+            resources.append(lambda: flow_worker.close(deadline_ms=1000))
         return AccountRpcServer(
             config,
             cast(AccountWorker, AccountWorkerExecutor(vault, endpoints)),
-            dispose=vault.close,
+            dispose=dispose,
+            flow_worker=flow_worker,
         )
     except Exception:  # noqa: BLE001 - redact untrusted executor/config errors
-        if vault is not None:
-            vault.close()
+        try:
+            dispose()
+        except AccountFailure:
+            pass
     raise failure("ACCOUNT_UNAVAILABLE") from None

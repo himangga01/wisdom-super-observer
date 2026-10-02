@@ -6,7 +6,8 @@ import os
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Self, TypeVar, cast
+from threading import Lock
+from typing import Any, Self, TypeVar
 
 import grpc
 from cryptography import x509
@@ -23,6 +24,15 @@ from wso_contracts.tvt.account import (
     ImageCheckRequest,
     ImageCheckView,
 )
+from wso_contracts.tvt.account_flows import (
+    AccountDynamicCodeRequest,
+    AccountFlowCancel,
+    AccountFlowReference,
+    AccountFlowStart,
+    AccountFlowView,
+    AccountRecoverySubmit,
+    AccountRegistrationSubmit,
+)
 from wso_core.tvt.account_projection import AccountFailure
 
 from .callback_registry import CallbackRegistry
@@ -33,9 +43,11 @@ from .selected import (
     MAX_FRAME_BYTES,
     PROTOCOL_VERSION,
     Budget,
+    decode_public,
     encode_input,
     endpoint,
     failure,
+    flow_failure,
     pem,
     reject_unknown,
     required,
@@ -63,7 +75,7 @@ def _certificate_chain(data: bytes) -> list[x509.Certificate]:
         is None
     ):
         raise ValueError
-    return cast(list[x509.Certificate], x509.load_pem_x509_certificates(data))
+    return x509.load_pem_x509_certificates(data)
 
 
 def _validate_tls(config: ClientConfig) -> None:
@@ -108,6 +120,9 @@ class AccountRpcClient:
         )
         self._channel = grpc.secure_channel(target, credentials, options=GRPC_OPTIONS)
         self._stub = rpc.AccountBridgeV1Stub(self._channel)
+        self._flow_stub = rpc.FlowBridgeV1Stub(self._channel)
+        self._close_lock = Lock()
+        self._closed = False
 
     def _call(
         self,
@@ -118,9 +133,11 @@ class AccountRpcClient:
         correlation_id: str,
         model: type[T],
         *,
-        body: AccountLogin | ImageCheckRequest | AccountRefresh | None = None,
+        body: BaseModel | None = None,
         body_field: str = "",
+        flow: bool = False,
     ) -> T:
+        safe_failure = flow_failure if flow else failure
         budget = Budget(deadline_ms)
         request = request_type(
             context=pb.RpcContext(
@@ -153,9 +170,19 @@ class AccountRpcClient:
             ):
                 raise failure("ACCOUNT_PROTOCOL_INVALID")
             if reply.failure_code:
-                raise failure(reply.failure_code)
-            answer = model.model_validate_json(reply.public_json)
+                raise safe_failure(reply.failure_code)
+            answer = decode_public(reply.public_json, model)
             if getattr(answer, "request_id", None) != correlation_id:
+                raise failure("ACCOUNT_PROTOCOL_INVALID")
+            if (
+                flow
+                and body is not None
+                and any(
+                    getattr(answer, name, None) != getattr(body, name)
+                    for name in ("region", "brand", "purpose", "flow_id")
+                    if hasattr(body, name)
+                )
+            ):
                 raise failure("ACCOUNT_PROTOCOL_INVALID")
             budget.remaining()
         except AccountFailure as exc:
@@ -178,8 +205,8 @@ class AccountRpcClient:
         if not deliver:
             raise failure("UNKNOWN_OUTCOME") from None
         if answer is None:
-            raise failure(code) from None
-        return cast(T, answer)
+            raise safe_failure(code) from None
+        return answer
 
     def login(
         self, ticket: str, body: AccountLogin, *, deadline_ms: int, correlation_id: str
@@ -269,9 +296,189 @@ class AccountRpcClient:
             AccountLogoutView,
         )
 
+    def start(
+        self,
+        ticket: str,
+        body: AccountFlowStart,
+        *,
+        deadline_ms: int,
+        correlation_id: str,
+    ) -> AccountFlowView:
+        if type(body) is not AccountFlowStart:
+            raise failure("ACCOUNT_INPUT_INVALID")
+        return self._call(
+            self._flow_stub.Start,
+            pb.FlowStartRequest,
+            ticket,
+            deadline_ms,
+            correlation_id,
+            AccountFlowView,
+            body=body,
+            body_field="private_json",
+            flow=True,
+        )
+
+    def state(
+        self,
+        ticket: str,
+        body: AccountFlowReference,
+        *,
+        deadline_ms: int,
+        correlation_id: str,
+    ) -> AccountFlowView:
+        if type(body) is not AccountFlowReference:
+            raise failure("ACCOUNT_INPUT_INVALID")
+        return self._call(
+            self._flow_stub.State,
+            pb.FlowStateRequest,
+            ticket,
+            deadline_ms,
+            correlation_id,
+            AccountFlowView,
+            body=body,
+            body_field="private_json",
+            flow=True,
+        )
+
+    def existence(
+        self,
+        ticket: str,
+        body: AccountFlowReference,
+        *,
+        deadline_ms: int,
+        correlation_id: str,
+    ) -> AccountFlowView:
+        if type(body) is not AccountFlowReference:
+            raise failure("ACCOUNT_INPUT_INVALID")
+        return self._call(
+            self._flow_stub.Existence,
+            pb.FlowExistenceRequest,
+            ticket,
+            deadline_ms,
+            correlation_id,
+            AccountFlowView,
+            body=body,
+            body_field="private_json",
+            flow=True,
+        )
+
+    def image(
+        self,
+        ticket: str,
+        body: AccountFlowReference,
+        *,
+        deadline_ms: int,
+        correlation_id: str,
+    ) -> AccountFlowView:
+        if type(body) is not AccountFlowReference:
+            raise failure("ACCOUNT_INPUT_INVALID")
+        return self._call(
+            self._flow_stub.Image,
+            pb.FlowImageRequest,
+            ticket,
+            deadline_ms,
+            correlation_id,
+            AccountFlowView,
+            body=body,
+            body_field="private_json",
+            flow=True,
+        )
+
+    def issue_code(
+        self,
+        ticket: str,
+        body: AccountDynamicCodeRequest,
+        *,
+        deadline_ms: int,
+        correlation_id: str,
+    ) -> AccountFlowView:
+        if type(body) is not AccountDynamicCodeRequest:
+            raise failure("ACCOUNT_INPUT_INVALID")
+        return self._call(
+            self._flow_stub.IssueCode,
+            pb.FlowIssueCodeRequest,
+            ticket,
+            deadline_ms,
+            correlation_id,
+            AccountFlowView,
+            body=body,
+            body_field="private_json",
+            flow=True,
+        )
+
+    def register(
+        self,
+        ticket: str,
+        body: AccountRegistrationSubmit,
+        *,
+        deadline_ms: int,
+        correlation_id: str,
+    ) -> AccountFlowView:
+        if type(body) is not AccountRegistrationSubmit:
+            raise failure("ACCOUNT_INPUT_INVALID")
+        return self._call(
+            self._flow_stub.Register,
+            pb.FlowRegisterRequest,
+            ticket,
+            deadline_ms,
+            correlation_id,
+            AccountFlowView,
+            body=body,
+            body_field="private_json",
+            flow=True,
+        )
+
+    def recover(
+        self,
+        ticket: str,
+        body: AccountRecoverySubmit,
+        *,
+        deadline_ms: int,
+        correlation_id: str,
+    ) -> AccountFlowView:
+        if type(body) is not AccountRecoverySubmit:
+            raise failure("ACCOUNT_INPUT_INVALID")
+        return self._call(
+            self._flow_stub.Recover,
+            pb.FlowRecoverRequest,
+            ticket,
+            deadline_ms,
+            correlation_id,
+            AccountFlowView,
+            body=body,
+            body_field="private_json",
+            flow=True,
+        )
+
+    def cancel(
+        self,
+        ticket: str,
+        body: AccountFlowCancel,
+        *,
+        deadline_ms: int,
+        correlation_id: str,
+    ) -> AccountFlowView:
+        if type(body) is not AccountFlowCancel:
+            raise failure("ACCOUNT_INPUT_INVALID")
+        return self._call(
+            self._flow_stub.Cancel,
+            pb.FlowCancelRequest,
+            ticket,
+            deadline_ms,
+            correlation_id,
+            AccountFlowView,
+            body=body,
+            body_field="private_json",
+            flow=True,
+        )
+
     def close(self) -> None:
-        self._registry.close()
-        self._channel.close()
+        with self._close_lock:
+            if self._closed:
+                return
+            self._closed = True
+            self._registry.close()
+            self._channel.close()
 
     def __enter__(self) -> Self:
         return self

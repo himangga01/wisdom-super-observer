@@ -801,7 +801,7 @@ def test_lost_worker_lease_retains_unknown_and_never_retries_write(operation_db)
             OperationService(db).get(prepared.operation_id)["state"]
             == "UNKNOWN_OUTCOME"
         )
-    with pytest.raises(JobFailure) as error, actor_db(operation_db, "owner") as db:
+    with pytest.raises(JobFailure) as error, actor_db(operation_db) as db:
         OperationService(db).prepare(payload, "crash-new")
     assert error.value.status == 409
 
