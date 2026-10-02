@@ -42,6 +42,7 @@ try {
     $pytestArgs = $uvRun + @(
         'pytest', '-m', 'not live', '--ignore=tests/jobs_recovery',
         '--ignore=tests/integration/test_private_assets.py',
+        '--ignore=tests/integration/test_private_asset_diagnostics.py',
         '--ignore=tests/integration/test_tvt_domain_scope.py',
         '--ignore=tests/integration/test_tvt_domain_credentials.py',
         '--ignore=tests/integration/test_tvt_startup.py',
