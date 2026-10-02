@@ -34,6 +34,10 @@ KNOWN_PATHS = frozenset(
         "/user/info/get",
         "/user/token/renewal",
         "/user/logout",
+        "/user/info/phone/is-exist",
+        "/user/info/email/is-exist",
+        "/user/register",
+        "/user/info/password/reset",
     }
 )
 
@@ -207,6 +211,20 @@ class AccountProtocol:
         data["password"] = _proof(account, password, nonce, timestamp)
         data["uuid"] = _proof(account, uuid, nonce, timestamp)
         return self._request("/user/login", basic, data)
+
+    def _prelogin_request(
+        self,
+        path: str,
+        data: dict[str, JsonValue],
+        *,
+        version: str = "1.0",
+        sign: str = "",
+    ) -> AccountRequest:
+        """Private shared envelope helper; token is deliberately unavailable."""
+        basic = self._basic(version=version)
+        if sign:
+            basic["sign"] = sign
+        return self._request(path, basic, data)
 
     def image_challenge(self, *, customer_app_id: str = "") -> AccountRequest:
         data: dict[str, JsonValue] = {}

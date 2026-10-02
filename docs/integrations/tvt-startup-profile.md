@@ -84,6 +84,7 @@ $profileRoot = (Resolve-Path '.superpowers/sdd/2026-09-27-superlive-plus-web-par
 $profilePath = Join-Path $profileRoot 'W03-policy-profile-local.json'
 $publicOrigin = $env:WSO_PUBLIC_ORIGIN
 if ([string]::IsNullOrWhiteSpace($publicOrigin)) { throw 'Set the actual WSO_PUBLIC_ORIGIN before generation.' }
+$routeFlags = @() # Select exactly one reviewed variant from the table below.
 
 & .\.venv\Scripts\python.exe scripts/dev/write_tvt_startup_profile.py `
   --public-origin $publicOrigin `
@@ -91,11 +92,22 @@ if ([string]::IsNullOrWhiteSpace($publicOrigin)) { throw 'Set the actual WSO_PUB
   --default-locale en `
   --timezone Asia/Seoul `
   --output-root $profileRoot `
-  --output $profilePath
+  --output $profilePath @routeFlags
 if ($LASTEXITCODE -ne 0) { throw 'Startup profile generation failed.' }
 $env:WSO_TVT_STARTUP_PROFILE = [System.IO.File]::ReadAllText($profilePath, [System.Text.Encoding]::UTF8)
 # Start the API using the project's existing command in this same process environment.
 ```
+
+Choose the route flags before running that command. Each assignment below is an
+exact variant. Enable settings after reviewing its included route; enable account
+after reviewing its included route and separate account deployment prerequisites.
+
+| Local menu routes | PowerShell assignment before the generator command |
+| --- | --- |
+| None (default) | `$routeFlags = @()` |
+| Settings only | `$routeFlags = @('--enable-settings')` |
+| Account only | `$routeFlags = @('--enable-account')` |
+| Account then settings | `$routeFlags = @('--enable-account', '--enable-settings')` |
 
 The output path must end in `.json`, resolve inside the explicit existing output
 root, have an existing parent and not be a symlink. An existing file is rejected;
@@ -114,18 +126,32 @@ and all four `locale:kind:source-digest:content-digest` records in `en` then
 `zh-Hans`, terms then privacy order. It is independent of origin/default locale,
 and changes when a reviewed source policy or its transformed content changes.
 
-## Settings and validation limits
+## Local menu opt-ins and validation limits
 
-`local_routes` defaults to an empty list. After reviewing the included settings
-route, explicitly add `--enable-settings` to allow only `/tvt/settings` in the
-existing startup menu. No other menu, provider or device/media capability is
-enabled. The flag checks that the existing TVT web route is included; it does not
-claim that browser acceptance or APK comparison has passed.
+`local_routes` defaults to an empty list. `--enable-settings` adds
+`/tvt/settings`; `--enable-account` independently adds `/tvt/account`. With both
+flags, the validated profile emits each route once in account, then settings
+order. The existing startup menu maps the account route to `local-account` /
+`Account` and the settings route to `local-settings` / `Settings`. An absent
+registration hides that menu item and denies direct navigation. The account flag
+checks that both the TVT catch-all web route and account session component are
+included; a missing file fails generation before writing output. No provider,
+device or media capability is enabled by either flag.
+
+The account page still requires an authenticated selected tenant and accepted
+startup consent. Account use separately requires the API's configured account
+RPC client, a deployed worker and an explicitly validated account endpoint
+profile; the startup flag does not configure any of them. Follow
+[account runtime deployment](tvt-account-runtime.md) for these prerequisites and
+[account browser contract](tvt-account-ui.md) for route and authority behavior.
 
 Without valid `WSO_TVT_STARTUP_PROFILE`, the existing authenticated startup logic
 continues to return fixed `503 startup_unavailable`; generation does not change
-that server behavior. Focused Python and React SSR tests, static checks, exact
-source verification and deterministic regeneration are implementation evidence.
-Actual HTTPS serving, desktop/mobile keyboard and visual review, first-run
+that server behavior. Earlier focused Python and React SSR tests, static checks,
+exact source verification and deterministic regeneration apply to their frozen
+W03 implementation. This W05 opt-in has its own focused writer tests and static
+checks. It does not establish production deployment, vendor service acceptance or
+account availability. Actual HTTPS serving, desktop/mobile keyboard and visual
+review, first-run
 consent acceptance against the APK, provider/device execution and runtime parity
 remain pending. No `MATCHED` case or release promotion is asserted here.

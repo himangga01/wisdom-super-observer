@@ -123,6 +123,7 @@ def build_profile(
     timezone: str,
     ui_locale: str = "ko",
     enable_settings: bool = False,
+    enable_account: bool = False,
 ) -> StartupProfile:
     origin = trusted_origin(public_origin)
     if not re.fullmatch(r"[A-Z]{2}(?:-[A-Z0-9]{1,16})?", region):
@@ -134,6 +135,14 @@ def build_profile(
         and not (ROOT / "apps/web/src/app/tvt/[[...path]]/page.tsx").is_file()
     ):
         raise ValueError("settings web route is not included")
+    if enable_account and not all(
+        path.is_file()
+        for path in (
+            ROOT / "apps/web/src/app/tvt/[[...path]]/page.tsx",
+            ROOT / "apps/web/src/features/tvt/account/SessionBoundary.tsx",
+        )
+    ):
+        raise ValueError("account web route or component is not included")
     documents = reviewed_documents()
     # The revision includes all locales, original asset digests and derivation.
     revision = "\n".join(
@@ -163,7 +172,14 @@ def build_profile(
             "default_timezone": timezone,
             "supported_locales": list(LOCALES),
             **references,
-            "local_routes": ["/tvt/settings"] if enable_settings else [],
+            "local_routes": [
+                path
+                for path, enabled in (
+                    ("/tvt/account", enable_account),
+                    ("/tvt/settings", enable_settings),
+                )
+                if enabled
+            ],
         }
     )
 
@@ -212,6 +228,7 @@ def main() -> None:
     parser.add_argument("--timezone", required=True)
     parser.add_argument("--ui-locale", choices=("ko",), default="ko")
     parser.add_argument("--enable-settings", action="store_true")
+    parser.add_argument("--enable-account", action="store_true")
     parser.add_argument("--output-root", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--replace", action="store_true")
@@ -224,6 +241,7 @@ def main() -> None:
             timezone=args.timezone,
             ui_locale=args.ui_locale,
             enable_settings=args.enable_settings,
+            enable_account=args.enable_account,
         )
         write_profile(
             profile,
@@ -234,7 +252,9 @@ def main() -> None:
     except (ValueError, OSError, KeyError, TypeError) as exc:
         parser.error(str(exc))
     print(
-        "Wrote validated SuperLivePlus startup profile; settings "
+        "Wrote validated SuperLivePlus startup profile; account "
+        + ("enabled" if args.enable_account else "disabled")
+        + ", settings "
         + ("enabled" if args.enable_settings else "disabled")
     )
 

@@ -154,6 +154,7 @@ def test_foundation_excludes_only_dormant_domain_modules(gate, switches):
     core_ignores = {
         "--ignore=tests/jobs_recovery",
         "--ignore=tests/integration/test_private_assets.py",
+        "--ignore=tests/integration/test_private_asset_diagnostics.py",
         f"--ignore={SCOPE}",
         f"--ignore={CREDENTIALS}",
     }

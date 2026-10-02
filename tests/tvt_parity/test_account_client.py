@@ -687,3 +687,37 @@ def test_trusted_configuration_rejects_unapproved_origin_and_identity(monkeypatc
         with pytest.raises(c.AccountClientError) as error:
             c.AccountClient(scope(), policy, **arguments)
         assert error.value.__context__ is None
+
+
+@pytest.mark.parametrize(
+    "operation", ["login", "challenge", "profile", "renew", "logout"]
+)
+@pytest.mark.parametrize("code", [1005, 1007])
+def test_prelogin_dynamic_states_do_not_expand_existing_operation_success(
+    monkeypatch, operation, code
+):
+    c, client, boundary, _ = build(
+        monkeypatch,
+        reply(
+            {"token": PRIVATE, "idCode": PRIVATE, "imgCodeImgData": PRIVATE}, code=code
+        ),
+        linked=operation in {"profile", "renew", "logout"},
+    )
+    if operation == "login":
+        result = client.login(
+            scope(), credentials(c), deadline_ms=3000, correlation_id=CORRELATION
+        )
+    elif operation == "challenge":
+        result = client.challenge(
+            scope(), c.ImageChallenge(), deadline_ms=3000, correlation_id=CORRELATION
+        )
+    else:
+        result = getattr(client, operation)(
+            identity(), token(c), deadline_ms=3000, correlation_id=CORRELATION
+        )
+    assert not result.ok and result.value is None
+    assert (
+        result.native_msgcode == code
+        and result.error_code == "ACCOUNT_UPSTREAM_REJECTED"
+    )
+    assert len(boundary.requests) == 1 and PRIVATE not in repr(result)

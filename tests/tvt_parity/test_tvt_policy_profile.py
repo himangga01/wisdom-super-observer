@@ -179,6 +179,49 @@ def test_profile_is_actual_validated_contract_with_local_policy_routes(monkeypat
 
 
 @pytest.mark.parametrize(
+    "settings,expected",
+    [
+        (False, ["/tvt/account"]),
+        (True, ["/tvt/account", "/tvt/settings"]),
+    ],
+)
+def test_account_route_requires_independent_opt_in_and_keeps_menu_order(
+    settings, expected
+):
+    profile = build(enable_account=True, enable_settings=settings)
+    assert profile.local_routes == expected
+    assert [(entry.id, entry.path) for entry in menu(profile)] == [
+        ("local-account", "/tvt/account")
+    ] + ([("local-settings", "/tvt/settings")] if settings else [])
+
+
+@pytest.mark.parametrize(
+    "include_route,include_component", [(False, True), (True, False)]
+)
+def test_account_opt_in_refuses_missing_web_route_or_component(
+    tmp_path, monkeypatch, include_route, include_component
+):
+    generator = module("scripts/dev/write_tvt_startup_profile.py")
+    if include_route:
+        route = tmp_path / "apps/web/src/app/tvt/[[...path]]/page.tsx"
+        route.parent.mkdir(parents=True)
+        route.touch()
+    if include_component:
+        component = tmp_path / "apps/web/src/features/tvt/account/SessionBoundary.tsx"
+        component.parent.mkdir(parents=True)
+        component.touch()
+    monkeypatch.setattr(generator, "ROOT", tmp_path)
+    with pytest.raises(ValueError, match="account web route"):
+        generator.build_profile(
+            public_origin="https://wso.example.test",
+            region="KR",
+            default_locale="en",
+            timezone="UTC",
+            enable_account=True,
+        )
+
+
+@pytest.mark.parametrize(
     "origin",
     [
         "http://wso.test",
@@ -257,6 +300,50 @@ def test_profile_cli_is_bounded_atomic_and_never_overwrites_env(tmp_path):
     )
     assert env.read_text() == "KEEP"
     assert not list(tmp_path.glob("*.tmp"))
+
+
+@pytest.mark.parametrize(
+    "flags,expected",
+    [
+        ([], []),
+        (["--enable-settings"], ["/tvt/settings"]),
+        (["--enable-account"], ["/tvt/account"]),
+        (["--enable-settings", "--enable-account"], ["/tvt/account", "/tvt/settings"]),
+    ],
+)
+def test_profile_cli_writes_explicit_account_route_combinations(
+    tmp_path, flags, expected
+):
+    output = tmp_path / "startup.json"
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts/dev/write_tvt_startup_profile.py"),
+            "--public-origin",
+            "https://wso.example.test",
+            "--region",
+            "KR",
+            "--default-locale",
+            "en",
+            "--timezone",
+            "Asia/Seoul",
+            "--output-root",
+            str(tmp_path),
+            "--output",
+            str(output),
+            *flags,
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert (
+        StartupProfile.model_validate_json(
+            output.read_text(encoding="utf-8")
+        ).local_routes
+        == expected
+    )
 
 
 @pytest.mark.parametrize(

@@ -218,6 +218,8 @@ class AccountClient:
         *,
         deadline_ms: int,
         correlation_id: str,
+        decode_codes: frozenset[int] = frozenset({200}),
+        response_evidence: Callable[[AccountResponse], None] | None = None,
     ) -> AccountResult[T]:
         correlation = _correlation(correlation_id)
         if type(deadline_ms) is not int or not 1 <= deadline_ms <= 60_000:
@@ -266,6 +268,10 @@ class AccountClient:
                         received.private_body,
                         max_body_bytes=self._max_body,
                     )
+                    if response_evidence is not None:
+                        # Private bounded evidence only; this does not select
+                        # success, decode operation data or admit credentials.
+                        response_evidence(response)
                     if response.native_msgcode == 404:
                         dc_hint: AccountDc | None = None
                         try:
@@ -290,7 +296,7 @@ class AccountClient:
                         )
                     elif (
                         not 200 <= response.http_status <= 299
-                        or response.native_msgcode != 200
+                        or response.native_msgcode not in decode_codes
                     ):
                         result = AccountResult(
                             response.http_status,
