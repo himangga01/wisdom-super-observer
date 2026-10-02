@@ -1,0 +1,130 @@
+name: Account browser fixture
+
+on:
+  push:
+    branches: [main, 'codex/**']
+    paths: ['scripts/test-tvt-account/**', 'playwright.tvt-account.config.ts', 'tests/tvt_parity/e2e/login.spec.ts', 'apps/web/src/**', 'packages/**', 'services/api/**', 'services/tvt-bridge/**', '.github/workflows/account-browser.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: account-browser-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  account-browser:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      CI: 'true'
+      WSO_TEST_ACCOUNT_BROWSER: '1'
+      WSO_CI_DISPOSABLE_POSTGRES: '1'
+      WSO_TEST_PYTHON: ${{ github.workspace }}/.venv/bin/python
+      NEXT_TELEMETRY_DISABLED: '1'
+      WSO_TEST_RECOVERY_DATABASE_NAME: wso_ci_test
+      WSO_TEST_RECOVERY_DATABASE_OWNER: postgres
+      WSO_TEST_VALKEY_IMAGE: valkey/valkey@sha256:48332870af354a799964c0012ae1194a0bf2bf894eb508f945810596dc2d8d11
+    steps:
+      - name: Check out reviewed source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Python 3.12.10
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12.10'
+      - name: Node 24.21.0
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24.21.0'
+      - name: pnpm 11.25.0
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          version: '11.25.0'
+          run_install: false
+      - name: Synchronize immutable dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install uv==0.12.19
+          python -m uv sync --locked --all-packages --group dev
+          pnpm install --frozen-lockfile
+          pnpm exec playwright install --with-deps chrome
+      - name: Provision owned PostgreSQL 17.11
+        shell: bash
+        run: |
+          set -euo pipefail
+          task_owner="$(python -c 'import uuid; print(uuid.uuid4().hex)')"
+          task_container="wso-ci-postgres-${task_owner}"
+          task_volume="wso-ci-postgres-data-${task_owner}"
+          export POSTGRES_PASSWORD="$(python -c 'import secrets; print(secrets.token_urlsafe(36))')"
+          printf '::add-mask::%s\n' "$POSTGRES_PASSWORD"
+          printf 'WSO_CI_RUNTIME_OWNER=%s\n' "$task_owner" >> "$GITHUB_ENV"
+          # Remove only this uniquely labelled fixture if initialization fails.
+          cleanup_failed_setup() {
+            if [[ "${task_ready:-false}" == true ]]; then return; fi
+            if docker container inspect "$task_container" >/dev/null 2>&1; then
+              [[ "$(docker container inspect --format '{{index .Config.Labels "wso.ci.owner"}}' "$task_container")" == "$task_owner" ]] || return 1
+              docker container rm --force "$task_container" >/dev/null
+            fi
+            if docker volume inspect "$task_volume" >/dev/null 2>&1; then
+              [[ "$(docker volume inspect --format '{{index .Labels "wso.ci.owner"}}' "$task_volume")" == "$task_owner" ]] || return 1
+              docker volume rm "$task_volume" >/dev/null
+            fi
+          }
+          trap cleanup_failed_setup EXIT
+          timeout 180 docker pull postgres:17.11
+          task_image="$(docker image inspect --format '{{index .RepoDigests 0}}' postgres:17.11)"
+          [[ "$task_image" =~ ^postgres@sha256:[0-9a-f]{64}$ ]]
+          printf 'PostgreSQL pulled image: %s\n' "$task_image" | tee -a "$GITHUB_STEP_SUMMARY"
+          docker volume create --label "wso.ci.owner=$task_owner" "$task_volume" >/dev/null
+          docker run --detach --name "$task_container" --label "wso.ci.owner=$task_owner" \
+            --env POSTGRES_PASSWORD --env POSTGRES_DB=wso_ci_test \
+            --publish 127.0.0.1::5432 --log-driver none \
+            --mount "type=volume,source=$task_volume,target=/var/lib/postgresql/data" \
+            "$task_image" postgres -c log_statement=none -c log_min_error_statement=panic \
+            -c log_connections=off -c log_disconnections=off >/dev/null
+          task_started=false
+          for task_attempt in $(seq 1 45); do
+            if timeout 5 docker exec "$task_container" pg_isready -h 127.0.0.1 -U postgres -d wso_ci_test >/dev/null 2>&1; then
+              task_started=true; break
+            fi
+            sleep 1
+          done
+          [[ "$task_started" == true ]]
+          task_endpoint="$(docker port "$task_container" 5432/tcp)"
+          [[ "$task_endpoint" =~ ^127\.0\.0\.1:[0-9]+$ ]]
+          export WSO_CI_RUNTIME_OWNER="$task_owner"
+          export WSO_CI_ADMIN_DATABASE_URL="postgresql+psycopg://postgres:${POSTGRES_PASSWORD}@${task_endpoint}/wso_ci_test"
+          printf '::add-mask::%s\n' "$WSO_CI_ADMIN_DATABASE_URL"
+          .venv/bin/python scripts/dev/provision-ci-postgres.py
+          unset POSTGRES_PASSWORD WSO_CI_ADMIN_DATABASE_URL
+          task_ready=true
+      - name: Host contracts and real account browser flows
+        shell: bash
+        run: |
+          set -euo pipefail
+          .venv/bin/python -m pytest tests/contract/test_account_web_fixture.py -q
+          node scripts/test-tvt-account/server.mjs --browser
+      - name: Remove owned PostgreSQL fixture
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          task_owner="${WSO_CI_RUNTIME_OWNER:-}"
+          [[ -n "$task_owner" ]] || exit 0
+          [[ "$task_owner" =~ ^[0-9a-f]{32}$ ]]
+          task_container="wso-ci-postgres-${task_owner}"
+          task_volume="wso-ci-postgres-data-${task_owner}"
+          if docker container inspect "$task_container" >/dev/null 2>&1; then
+            [[ "$(docker container inspect --format '{{index .Config.Labels "wso.ci.owner"}}' "$task_container")" == "$task_owner" ]]
+            docker container rm --force "$task_container" >/dev/null
+          fi
+          if docker volume inspect "$task_volume" >/dev/null 2>&1; then
+            [[ "$(docker volume inspect --format '{{index .Labels "wso.ci.owner"}}' "$task_volume")" == "$task_owner" ]]
+            docker volume rm "$task_volume" >/dev/null
+          fi
+      # No artifact upload: browser traces, auth-state and runtime credentials
+      # can carry secrets. GitHub logs/summary retain only checks and versions.
