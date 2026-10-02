@@ -64,13 +64,243 @@ def test_flow_revision_has_a_separate_protected_authority_boundary():
     assert module.down_revision == "0009_asset_read_denial"
 
 
+def flow_linux_table_roster():
+    # Root e216 offline0010 inventory: 65 canonical public/private tables.
+    # SQL (strict LF) SHA256: 5b0b4e165056d76d3e488164bdfe84a76fac09a17ec35ce315cbbd22f72cd19e
+    # Source0010 SHA256: a8c39baf215e3b8fea4b92e5df96c21bf1701b9edbb7d61f62e27860af2e5958
+    return frozenset(
+        {
+            ("public", "alembic_version"),
+            ("public", "assets"),
+            ("public", "audit_events"),
+            ("public", "connections"),
+            ("public", "inbox_dedup"),
+            ("public", "job_assets"),
+            ("public", "job_connections"),
+            ("public", "job_items"),
+            ("public", "jobs"),
+            ("public", "memberships"),
+            ("public", "outbox"),
+            ("public", "store_connections"),
+            ("public", "store_memberships"),
+            ("public", "stores"),
+            ("public", "tenants"),
+            ("public", "users"),
+            ("public", "web_sessions"),
+            ("wso_private", "asset_audit_outbox"),
+            ("wso_private", "asset_cleanup"),
+            ("wso_private", "asset_job_kinds"),
+            ("wso_private", "asset_read_leases"),
+            ("wso_private", "asset_reconciliation"),
+            ("wso_private", "asset_settings"),
+            ("wso_private", "asset_tickets"),
+            ("wso_private", "asset_uploads"),
+            ("wso_private", "connection_handles"),
+            ("wso_private", "connection_leases"),
+            ("wso_private", "connection_revocations"),
+            ("wso_private", "connection_secrets"),
+            ("wso_private", "dispatch_ready"),
+            ("wso_private", "domain_credential_capabilities"),
+            ("wso_private", "domain_credential_connections"),
+            ("wso_private", "job_contexts"),
+            ("wso_private", "job_kinds"),
+            ("wso_private", "job_settings"),
+            ("wso_private", "operation_constraint_backup"),
+            ("wso_private", "operation_holds"),
+            ("wso_private", "operation_target_observations"),
+            ("wso_private", "operation_tickets"),
+            ("wso_private", "operations"),
+            ("wso_private", "tenant_contexts"),
+            ("wso_private", "tenant_grants"),
+            ("wso_private", "tvt_account_challenges"),
+            ("wso_private", "tvt_account_sessions"),
+            ("wso_private", "tvt_account_storage"),
+            ("wso_private", "tvt_account_tickets"),
+            ("wso_private", "tvt_account_tokens"),
+            ("wso_private", "tvt_capability_snapshots"),
+            ("wso_private", "tvt_channels"),
+            ("wso_private", "tvt_device_links"),
+            ("wso_private", "tvt_device_store_links"),
+            ("wso_private", "tvt_flow_intents"),
+            ("wso_private", "tvt_flow_policies"),
+            ("wso_private", "tvt_flow_tickets"),
+            ("wso_private", "tvt_flows"),
+            ("wso_private", "tvt_identities"),
+            ("wso_private", "tvt_identity_grants"),
+            ("wso_private", "tvt_upstream_grants"),
+            ("wso_private", "tvt_user_consents"),
+            ("wso_private", "tvt_user_preferences"),
+            ("wso_private", "tyco_capability_snapshots"),
+            ("wso_private", "tyco_identities"),
+            ("wso_private", "tyco_identity_grants"),
+            ("wso_private", "tyco_panels"),
+            ("wso_private", "tyco_upstream_grants"),
+        }
+    )
+
+
+def verify_flow_recovery_fixture(db):
+    """Read-only validation of the optional trusted job recovery fixture."""
+    identity = db.execute(
+        text("""
+            SELECT pg_get_userbyid(c.relowner) AS recovery_owner,
+                   c.relrowsecurity,c.relforcerowsecurity,c.relkind::text,
+                   c.relpersistence::text,c.relispartition,
+                   ARRAY(SELECT ROW(a.grantor,a.grantee,a.privilege_type,a.is_grantable)::text
+                         FROM aclexplode(coalesce(c.relacl,acldefault('r',c.relowner))) a
+                         WHERE a.grantee=c.relowner ORDER BY 1)
+                   = ARRAY(SELECT ROW(a.grantor,a.grantee,a.privilege_type,a.is_grantable)::text
+                           FROM aclexplode(acldefault('r',c.relowner)) a ORDER BY 1),
+                   NOT c.relhasrules
+                   AND NOT EXISTS(SELECT 1 FROM pg_trigger t
+                                  WHERE t.tgrelid=c.oid AND NOT t.tgisinternal)
+                   AND NOT EXISTS(SELECT 1 FROM pg_inherits i
+                                  WHERE i.inhrelid=c.oid OR i.inhparent=c.oid)
+                   AND (SELECT count(*) FROM pg_index i WHERE i.indrelid=c.oid)=1
+            FROM pg_class c
+            WHERE c.oid='public.job_recovery_effects'::regclass
+        """)
+    ).one()
+    assert tuple(identity) == ("wso_migrator", True, True, "r", "p", False, True, True)
+    columns = db.execute(
+        text("""
+            SELECT a.attname::text,format_type(a.atttypid,a.atttypmod),a.attnotnull,
+                   pg_get_expr(d.adbin,d.adrelid),a.attidentity::text,
+                   a.attgenerated::text,a.attacl IS NULL
+            FROM pg_attribute a LEFT JOIN pg_attrdef d
+              ON d.adrelid=a.attrelid AND d.adnum=a.attnum
+            WHERE a.attrelid='public.job_recovery_effects'::regclass
+              AND a.attnum>0 AND NOT a.attisdropped ORDER BY a.attnum
+        """)
+    ).all()
+    assert [tuple(row) for row in columns] == [
+        ("tenant_id", "uuid", True, None, "", "", True),
+        ("job_id", "uuid", True, None, "", "", True),
+        ("effect_count", "bigint", True, None, "", "", True),
+    ]
+    constraints = db.execute(
+        text("""
+            SELECT c.contype::text,
+                   ARRAY(SELECT a.attname::text
+                         FROM unnest(c.conkey) WITH ORDINALITY k(attnum,ordinal)
+                         JOIN pg_attribute a ON a.attrelid=c.conrelid AND a.attnum=k.attnum
+                         ORDER BY k.ordinal),n.nspname::text,r.relname::text,
+                   ARRAY(SELECT a.attname::text
+                         FROM unnest(c.confkey) WITH ORDINALITY k(attnum,ordinal)
+                         JOIN pg_attribute a ON a.attrelid=c.confrelid AND a.attnum=k.attnum
+                         ORDER BY k.ordinal),
+                   CASE WHEN c.contype='f' THEN c.confupdtype::text END,
+                   CASE WHEN c.contype='f' THEN c.confdeltype::text END,
+                   CASE WHEN c.contype='f' THEN c.confmatchtype::text END,
+                   CASE WHEN c.contype='c' THEN c.connoinherit END,
+                   c.condeferrable,c.condeferred,c.convalidated,
+                   regexp_replace(pg_get_expr(c.conbin,c.conrelid),'[[:space:]()]','','g')
+            FROM pg_constraint c LEFT JOIN pg_class r ON r.oid=c.confrelid
+            LEFT JOIN pg_namespace n ON n.oid=r.relnamespace
+            WHERE c.conrelid='public.job_recovery_effects'::regclass ORDER BY c.contype
+        """)
+    ).all()
+    assert [tuple(row) for row in constraints] == [
+        (
+            "c",
+            ["effect_count"],
+            None,
+            None,
+            [],
+            None,
+            None,
+            None,
+            False,
+            False,
+            False,
+            True,
+            "effect_count>0",
+        ),
+        (
+            "f",
+            ["job_id"],
+            "public",
+            "jobs",
+            ["id"],
+            "a",
+            "c",
+            "s",
+            None,
+            False,
+            False,
+            True,
+            None,
+        ),
+        (
+            "p",
+            ["job_id"],
+            None,
+            None,
+            [],
+            None,
+            None,
+            None,
+            None,
+            False,
+            False,
+            True,
+            None,
+        ),
+    ]
+    policies = db.execute(
+        text("""
+            SELECT p.polname::text,p.polcmd::text,p.polpermissive,
+                   ARRAY(SELECT CASE WHEN role_oid=0 THEN 'PUBLIC' ELSE pg_get_userbyid(role_oid) END
+                         FROM unnest(p.polroles) roles(role_oid) ORDER BY 1),
+                   pg_get_expr(p.polqual,p.polrelid),pg_get_expr(p.polwithcheck,p.polrelid)
+            FROM pg_policy p WHERE p.polrelid='public.job_recovery_effects'::regclass
+            ORDER BY p.polname
+        """)
+    ).all()
+    assert len(policies) == 1
+    policy = tuple(policies[0])
+    assert policy[:4] == ("recovery_worker", "*", True, ["wso_job_worker"])
+    assert all(
+        expression is not None
+        and re.sub(r"[\s()]", "", expression).replace("public.", "")
+        == "job_id=wso_current_job_id"
+        for expression in policy[4:]
+    )
+    acls = db.execute(
+        text("""
+            SELECT pg_get_userbyid(a.grantor),
+                   CASE WHEN a.grantee=0 THEN 'PUBLIC' ELSE pg_get_userbyid(a.grantee) END,
+                   a.privilege_type,a.is_grantable
+            FROM pg_class c,
+                 LATERAL aclexplode(coalesce(c.relacl,acldefault('r',c.relowner))) a
+            WHERE c.oid='public.job_recovery_effects'::regclass AND a.grantee<>c.relowner
+            ORDER BY 1,2,3
+        """)
+    ).all()
+    assert [tuple(row) for row in acls] == [
+        ("wso_migrator", "wso_job_worker", "INSERT", False),
+        ("wso_migrator", "wso_job_worker", "SELECT", False),
+        ("wso_migrator", "wso_job_worker", "UPDATE", False),
+    ]
+
+
+def verify_flow_linux_tables(db, tables):
+    canonical = flow_linux_table_roster()
+    observed = frozenset(tuple(row) for row in tables)
+    recovery = ("public", "job_recovery_effects")
+    assert len(tables) == len(observed)
+    assert observed in (canonical, canonical | {recovery})
+    if recovery in observed:
+        verify_flow_recovery_fixture(db)
+
+
 def flow_source_expectations():
     if sys.platform == "win32":
         return "wso_test", 16384, "postgres", "0003a_assets", 36
     if sys.platform == "linux":
         # The container guard proves the fresh CI resource. Its OID is observed
         # and retained in source custody, rather than borrowed from Windows.
-        return "wso_ci_test", None, "postgres", "0010_tvt_account_flows", 40
+        return "wso_ci_test", None, "postgres", "0010_tvt_account_flows", 65
     raise ValueError("W06 requires the managed Windows or Linux CI source")
 
 
@@ -109,13 +339,24 @@ def flow_source_snapshot(source):
         assert row[0] == name and row[2] == owner and observed_revision == revision
         assert type(row[1]) is int and row[1] > 0
         assert oid is None or row[1] == oid
-        tables = db.execute(
-            text(
-                "SELECT n.nspname,c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname IN ('public','wso_private') AND c.relkind='r' ORDER BY 1,2"
-            )
-        ).all()
+        if sys.platform == "linux":
+            table_objects = db.execute(
+                text(
+                    "SELECT n.nspname,c.relname,c.relkind::text FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname IN ('public','wso_private') AND c.relkind IN ('r','p','f') ORDER BY 1,2"
+                )
+            ).all()
+            # Foreign table data must never be read by foundation_contents.
+            assert all(kind == "r" for _, _, kind in table_objects)
+            tables = [(schema, table) for schema, table, _ in table_objects]
+            verify_flow_linux_tables(db, tables)
+        else:
+            tables = db.execute(
+                text(
+                    "SELECT n.nspname,c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname IN ('public','wso_private') AND c.relkind='r' ORDER BY 1,2"
+                )
+            ).all()
         contents = foundation_contents(db, tables)
-        assert len(contents) == count
+        assert len(contents) == (len(tables) if sys.platform == "linux" else count)
         return tuple(row), observed_revision, contents
 
 
