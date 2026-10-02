@@ -158,3 +158,22 @@ it("retains settings input when the authoritative read after saving is unavailab
   expect(screen.getByLabelText("시간대")).toHaveValue("Europe/London");
   expect(screen.queryByText("설정을 저장했습니다.")).toBeNull();
 });
+
+it("admits registered account navigation, preserves tenant and gates login on current consent", async () => {
+  let accepted = false;
+  vi.stubGlobal("fetch", async (request: Request) => {
+    if (new URL(request.url).pathname.endsWith("/consent")) { accepted = true; return json({ ...base.consent, status: "accepted", decided_at: "2026-10-02T00:00:00Z" }); }
+    return json({ ...base, menu: [...base.menu, { id: "local-account", label: "Account", path: "/tvt/account" }], consent: accepted ? { ...base.consent, status: "accepted", decided_at: "2026-10-02T00:00:00Z" } : base.consent });
+  });
+  mount("/tvt/account");
+  expect(await screen.findByRole("link", { name: "계정" })).toHaveAttribute("href", `/tvt/account?tenant_id=${tenant}`);
+  expect(screen.queryByLabelText("비밀번호")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "동의" }));
+  expect(await screen.findByLabelText("비밀번호")).toBeVisible();
+});
+it("rejects mismatched account menu labels and duplicate registrations", async () => {
+  for (const menu of [[{ id: "local-account", label: "Settings", path: "/tvt/account" }], [{ id: "local-account", label: "Account", path: "/tvt/account" }, { id: "local-account", label: "Account", path: "/tvt/account" }]]) {
+    vi.stubGlobal("fetch", async () => json({ ...base, menu })); const view = mount("/tvt/account");
+    expect(await screen.findByRole("alert")).toHaveTextContent("서비스 정보를 불러올 수 없습니다"); view.unmount();
+  }
+});

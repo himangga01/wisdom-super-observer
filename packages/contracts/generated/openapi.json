@@ -1402,6 +1402,7 @@
             "items": {
               "$ref": "#/components/schemas/StartupMenuEntry"
             },
+            "maxItems": 2,
             "title": "Menu",
             "type": "array"
           },
@@ -1562,17 +1563,26 @@
         "additionalProperties": false,
         "properties": {
           "id": {
-            "const": "local-settings",
+            "enum": [
+              "local-settings",
+              "local-account"
+            ],
             "title": "Id",
             "type": "string"
           },
           "label": {
-            "const": "Settings",
+            "enum": [
+              "Settings",
+              "Account"
+            ],
             "title": "Label",
             "type": "string"
           },
           "path": {
-            "const": "/tvt/settings",
+            "enum": [
+              "/tvt/settings",
+              "/tvt/account"
+            ],
             "title": "Path",
             "type": "string"
           }

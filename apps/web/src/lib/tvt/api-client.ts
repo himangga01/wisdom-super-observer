@@ -27,7 +27,10 @@ const bootstrapSchema = z.object({
   selected_tenant_id: tenantSchema, profile_id: version, brand: z.literal("SuperLivePlus"), region: version,
   locale, timezone, supported_locales: z.array(locale).min(1).max(50), consent: consentSchema,
   identity: z.object({ state: z.enum(["unlinked", "linked"]), accounts: z.array(z.object({ id: tenantSchema, brand: z.string().min(1).max(64), region: z.string().min(1).max(64) })).max(200) }).refine(value => value.state === "linked" ? value.accounts.length > 0 : value.accounts.length === 0),
-  menu: z.array(z.object({ id: z.literal("local-settings"), label: z.literal("Settings"), path: z.literal("/tvt/settings") })).max(1),
+  menu: z.array(z.union([
+    z.object({ id: z.literal("local-settings"), label: z.literal("Settings"), path: z.literal("/tvt/settings") }),
+    z.object({ id: z.literal("local-account"), label: z.literal("Account"), path: z.literal("/tvt/account") }),
+  ])).max(2).refine(value => new Set(value.map(entry => entry.id)).size === value.length),
 }).refine(value => value.supported_locales.includes(value.locale));
 export function publicBootstrap(value: unknown, tenant: string): Bootstrap {
   const result = bootstrapSchema.parse(value);

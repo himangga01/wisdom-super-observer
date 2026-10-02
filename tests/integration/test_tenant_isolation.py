@@ -6,6 +6,7 @@ import io
 import os
 from contextlib import redirect_stdout
 from pathlib import Path
+from types import SimpleNamespace
 from uuid import UUID, uuid4
 
 import pytest
@@ -705,6 +706,16 @@ PRIVATE_TABLE_OWNERS = {
     "dispatch_ready": "wso_dispatch_owner",
     **dict.fromkeys(
         (
+            "operations",
+            "operation_holds",
+            "operation_tickets",
+            "operation_target_observations",
+            "operation_constraint_backup",
+        ),
+        "wso_operation_owner",
+    ),
+    **dict.fromkeys(
+        (
             "tvt_identities",
             "tvt_device_links",
             "tvt_channels",
@@ -736,8 +747,61 @@ def _assert_private_table_owners(tables):
         )
         assert table.relrowsecurity and table.relforcerowsecurity
         assert not table.rolsuper and not table.rolbypassrls and not table.rolcreaterole
-        if table.owner in {"wso_domain_owner", "wso_dispatch_owner"}:
+        if table.owner in {
+            "wso_domain_owner",
+            "wso_dispatch_owner",
+            "wso_operation_owner",
+        }:
             assert not table.rolcanlogin
+
+
+@pytest.mark.parametrize(
+    "drift",
+    [
+        {"relname": "unreviewed_operation_table"},
+        {"owner": "wso_migrator"},
+        {"rolsuper": True},
+        {"rolbypassrls": True},
+        {"rolcreaterole": True},
+        {"rolcanlogin": True},
+        {"relrowsecurity": False},
+        {"relforcerowsecurity": False},
+    ],
+    ids=[
+        "unknown-table",
+        "wrong-owner",
+        "super",
+        "bypass",
+        "create-role",
+        "login",
+        "rls",
+        "forced-rls",
+    ],
+)
+def test_private_table_inventory_rejects_operation_owner_drift(drift):
+    def row(name, owner):
+        return SimpleNamespace(
+            relname=name,
+            owner=owner,
+            relrowsecurity=True,
+            relforcerowsecurity=True,
+            rolsuper=False,
+            rolbypassrls=False,
+            rolcreaterole=False,
+            rolcanlogin=False,
+        )
+
+    operation = row("operations", "wso_operation_owner")
+    for attribute, value in drift.items():
+        setattr(operation, attribute, value)
+    with pytest.raises(AssertionError):
+        _assert_private_table_owners(
+            [
+                row("tenant_grants", "wso_migrator"),
+                row("tenant_contexts", "wso_migrator"),
+                operation,
+            ]
+        )
 
 
 def test_runtime_roles_do_not_own_grant_tables_or_functions(live_db) -> None:

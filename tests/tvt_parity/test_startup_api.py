@@ -196,6 +196,27 @@ def test_profile_unknown_brand_flag_unsafe_policy_and_missing_binding_fail_close
     ]
 
 
+def test_account_route_is_explicit_unique_and_has_exact_menu_pair():
+    from wso_contracts.tvt.startup import StartupMenuEntry
+    from wso_core.tvt.startup import StartupProfile, menu
+
+    from tests.integration.test_tvt_startup import profile_data
+
+    profile = StartupProfile.model_validate(
+        {**profile_data(), "local_routes": ["/tvt/settings", "/tvt/account"]}
+    )
+    assert [entry.model_dump() for entry in menu(profile)] == [
+        {"id": "local-settings", "label": "Settings", "path": "/tvt/settings"},
+        {"id": "local-account", "label": "Account", "path": "/tvt/account"},
+    ]
+    with pytest.raises(ValidationError):
+        StartupProfile.model_validate(
+            {**profile_data(), "local_routes": ["/tvt/account", "/tvt/account"]}
+        )
+    with pytest.raises(ValidationError):
+        StartupMenuEntry(id="local-account", label="Settings", path="/tvt/settings")
+
+
 def test_unhandled_auth_seam_failure_is_redacted_and_uncacheable():
     class FailingAuth(AuthService):
         def authenticate(self, request, **kwargs):

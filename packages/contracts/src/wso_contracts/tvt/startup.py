@@ -5,7 +5,7 @@ from typing import Annotated, Literal
 from uuid import UUID
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import Field, StrictStr, field_validator
+from pydantic import Field, StrictStr, field_validator, model_validator
 
 from wso_contracts.models import WireModel
 
@@ -64,9 +64,19 @@ class StartupIdentity(WireModel):
 
 
 class StartupMenuEntry(WireModel):
-    id: Literal["local-settings"]
-    label: Literal["Settings"]
-    path: Literal["/tvt/settings"]
+    id: Literal["local-settings", "local-account"]
+    label: Literal["Settings", "Account"]
+    path: Literal["/tvt/settings", "/tvt/account"]
+
+    @model_validator(mode="after")
+    def registered_pair(self) -> "StartupMenuEntry":
+        pairs = {
+            "local-settings": ("Settings", "/tvt/settings"),
+            "local-account": ("Account", "/tvt/account"),
+        }
+        if (self.label, self.path) != pairs[self.id]:
+            raise ValueError("unregistered menu entry")
+        return self
 
 
 class StartupBootstrap(WireModel):
@@ -79,7 +89,14 @@ class StartupBootstrap(WireModel):
     supported_locales: list[Locale]
     consent: StartupConsent
     identity: StartupIdentity
-    menu: list[StartupMenuEntry]
+    menu: list[StartupMenuEntry] = Field(max_length=2)
+
+    @field_validator("menu")
+    @classmethod
+    def unique_menu(cls, value: list[StartupMenuEntry]) -> list[StartupMenuEntry]:
+        if len({entry.id for entry in value}) != len(value):
+            raise ValueError("duplicate menu entry")
+        return value
 
 
 class StartupErrorDetails(WireModel):

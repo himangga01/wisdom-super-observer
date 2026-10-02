@@ -224,13 +224,33 @@ def test_rejected_parent_stimulus_preserves_signature_and_integrity_branch():
     h = AssetHarness.__new__(AssetHarness)
     data = b"\x89PNG\r\n\x1a\n" + b"x" * 64
     h.image = lambda: data
-    h.actors = [None, None]
+    h.deadlines = FixtureDeadlines(time.monotonic())
+    h.phase = FixturePhase.SETUP
+    h.callers = []
+    h.actors = [
+        SimpleNamespace(
+            tenant_id=f"tenant-{index}",
+            user_id=f"user-{index}",
+            expires_at=datetime.now(UTC) - timedelta(seconds=1),
+        )
+        for index in (0, 1)
+    ]
     h.asset_count = lambda: 2
     sessions = iter([{"asset_id": "pending"}, {"asset_id": "failed"}])
     h.require_begin = lambda *args, **kwargs: next(sessions)
     h.begin = lambda *args, **kwargs: SimpleNamespace(status_code=422)
     recovered = []
     h.recover_rejected = lambda session: recovered.append(session["asset_id"])
+
+    def new_actor(*, tenant_id, user_id):
+        assert recovered == ["pending"], "renewal preceded settled parent upload"
+        return SimpleNamespace(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            expires_at=datetime.now(UTC) + timedelta(seconds=600),
+        )
+
+    h.new_actor = new_actor
     h.row = lambda identifier: {"state": "REJECTED"}
 
     def put(session, body):
@@ -263,6 +283,10 @@ def test_rejected_parent_stimulus_preserves_signature_and_integrity_branch():
         {"id": "parent", "store_id": "store"}, {"id": "child"}, other_store="other"
     )
     assert recovered == ["pending", "failed"]
+    assert all(
+        actor.expires_at > datetime.now(UTC) + timedelta(seconds=300)
+        for actor in h.actors
+    )
 
 
 def test_authority_revocation_retains_audit_and_live_session_with_guarded_denials():

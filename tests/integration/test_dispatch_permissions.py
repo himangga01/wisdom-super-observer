@@ -204,6 +204,33 @@ def test_owners_runtime_flags_functions_and_projection_privilege_inventory():
         engine.dispose()
 
 
+def _assert_approved_job_kinds(kinds):
+    # Reviewed 0003 and 0008 admission contracts; unknown kinds/versions fail.
+    assert set(kinds) == {
+        ("IMPORT", 1),
+        ("REGISTRATION", 1),
+        ("TVT_ACCOUNT_OPERATION", 1),
+        ("TVT_DEVICE_OPERATION", 1),
+        ("TYCO_OPERATION", 1),
+    }, "unexpected job kind or payload version"
+
+
+@pytest.mark.parametrize(
+    "unapproved",
+    [("UNREVIEWED_OPERATION", 1), ("TVT_ACCOUNT_OPERATION", 2)],
+)
+def test_job_kind_inventory_rejects_unapproved_kind_or_version(unapproved):
+    approved = [
+        ("IMPORT", 1),
+        ("REGISTRATION", 1),
+        ("TVT_ACCOUNT_OPERATION", 1),
+        ("TVT_DEVICE_OPERATION", 1),
+        ("TYCO_OPERATION", 1),
+    ]
+    with pytest.raises(AssertionError, match="unexpected job kind or payload version"):
+        _assert_approved_job_kinds([*approved, unapproved])
+
+
 def test_migration_roundtrip_restores_t04_on_owned_disposable_database():
     from pathlib import Path
     from uuid import uuid4
@@ -240,11 +267,10 @@ def test_migration_roundtrip_restores_t04_on_owned_disposable_database():
             )
         command.upgrade(config, "head")
         with isolated.connect() as db:
-            assert (
+            _assert_approved_job_kinds(
                 db.execute(
-                    text("SELECT count(*) FROM wso_private.job_kinds")
-                ).scalar_one()
-                == 2
+                    text("SELECT kind,payload_version FROM wso_private.job_kinds")
+                ).all()
             )
         command.downgrade(config, "0002_connections")
         with isolated.connect() as db:

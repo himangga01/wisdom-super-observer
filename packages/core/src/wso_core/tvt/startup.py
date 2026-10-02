@@ -57,12 +57,14 @@ class StartupProfile(WireModel):
     supported_locales: list[Locale] = Field(min_length=1, max_length=64)
     terms: PolicyReference
     privacy: PolicyReference
-    local_routes: list[Literal["/tvt/settings"]] = Field(
-        default_factory=list, max_length=1
+    local_routes: list[Literal["/tvt/settings", "/tvt/account"]] = Field(
+        default_factory=list, max_length=2
     )
 
     @model_validator(mode="after")
     def trusted_references(self) -> Self:
+        if len(set(self.local_routes)) != len(self.local_routes):
+            raise ValueError("duplicate local route")
         PreferenceUpdate(locale=self.default_locale, timezone=self.default_timezone)
         if self.default_locale not in self.supported_locales or len(
             set(self.supported_locales)
@@ -101,13 +103,15 @@ def load_profile() -> StartupProfile | None:
 def menu(profile: StartupProfile) -> list[StartupMenuEntry]:
     # APK ef2.java:477 local config is unconditional. Explicit deployment
     # registration confirms the corresponding web route is actually present.
-    if "/tvt/settings" in profile.local_routes:
-        return [
-            StartupMenuEntry(
-                id="local-settings", label="Settings", path="/tvt/settings"
-            )
-        ]
-    return []
+    registered = {
+        "/tvt/settings": StartupMenuEntry(
+            id="local-settings", label="Settings", path="/tvt/settings"
+        ),
+        "/tvt/account": StartupMenuEntry(
+            id="local-account", label="Account", path="/tvt/account"
+        ),
+    }
+    return [registered[path] for path in profile.local_routes]
 
 
 class StartupRepository:

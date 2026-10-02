@@ -1093,19 +1093,19 @@ export interface components {
         StartupMenuEntry: {
             /**
              * Id
-             * @constant
+             * @enum {string}
              */
-            id: "local-settings";
+            id: "local-settings" | "local-account";
             /**
              * Label
-             * @constant
+             * @enum {string}
              */
-            label: "Settings";
+            label: "Settings" | "Account";
             /**
              * Path
-             * @constant
+             * @enum {string}
              */
-            path: "/tvt/settings";
+            path: "/tvt/settings" | "/tvt/account";
         };
         /** StoreList */
         StoreList: {

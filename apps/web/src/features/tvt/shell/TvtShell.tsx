@@ -7,6 +7,7 @@ import { TvtQueryProvider, startupKey } from "../../../lib/tvt/query-provider";
 import { ConsentGate } from "./ConsentGate";
 import { FeatureMenu } from "./FeatureMenu";
 import { DeepLinkResolver } from "./DeepLinkResolver";
+import { SessionBoundary } from "../account/SessionBoundary";
 
 export type TvtShellProps = { userId?: string; tenantId?: string; csrf?: string; path?: string; invalidSelection?: boolean };
 export function TvtShell(props: TvtShellProps) {
@@ -85,13 +86,17 @@ function Startup({ userId, tenantId, csrf = "", path = "/tvt" }: TvtShellProps &
   if (query.isPending) return <p role="status" aria-live="polite">서비스 정보를 불러오는 중입니다.</p>;
   if (!query.data) return <div className="wso-card p-6"><p role="alert">{query.error instanceof TvtError ? query.error.message : publicMessages[503].message}</p><button className="wso-button-secondary mt-4" onClick={() => void query.refetch()}>다시 시도</button><a className="wso-button-secondary ml-3" href="/stores">내 매장으로 이동</a></div>;
   const bootstrap = query.data;
+  const requery = async () => {
+    await queryClient.cancelQueries({ queryKey: key });
+    return queryClient.fetchQuery({ queryKey: key, queryFn: ({ signal }) => load(signal) });
+  };
   return <div className="tvt-shell space-y-6" lang="ko">
     <div className="flex flex-wrap items-start justify-between gap-4"><div><h1 className="text-2xl font-semibold">{bootstrap.brand}</h1><p className="mt-2 text-[var(--wso-muted)]">지역: {bootstrap.region}</p></div><FeatureMenu bootstrap={bootstrap} path={path} /></div>
     {(error || query.error) && <p ref={alert} tabIndex={-1} role="alert" className="tvt-error">{error || (query.error instanceof TvtError ? query.error.message : publicMessages[503].message)}</p>}
     {notice && <p role="status" className="text-[var(--wso-success)]">{notice}</p>}
     <DeepLinkResolver path={path} bootstrap={bootstrap}>
       <div className="tvt-panels">
-        <div className="space-y-4"><ConsentGate consent={bootstrap.consent} busy={busy} onDecision={body => void mutate(body, true)} />{path === "/tvt/settings" && <Settings key={`${bootstrap.locale}:${bootstrap.timezone}`} bootstrap={bootstrap} busy={busy} onSave={body => void mutate(body, false)} />}</div>
+        <div className="space-y-4"><ConsentGate consent={bootstrap.consent} busy={busy} onDecision={body => void mutate(body, true)} />{path === "/tvt/settings" && <Settings key={`${bootstrap.locale}:${bootstrap.timezone}`} bootstrap={bootstrap} busy={busy} onSave={body => void mutate(body, false)} />}{path === "/tvt/account" && <SessionBoundary userId={userId} bootstrap={bootstrap} csrf={csrf} requery={requery} />}</div>
         <aside className="wso-card self-start p-6" aria-label="계정 및 환경"><h2 className="text-lg font-semibold">계정 및 환경</h2><p role="status" className="mt-3">{bootstrap.identity.state === "linked" ? "연결된 TVT 계정이 있습니다." : "연결된 TVT 계정이 없습니다."}</p><p className="mt-3 text-[var(--wso-muted)]">언어: {bootstrap.locale}<br />시간대: {bootstrap.timezone}</p>{bootstrap.consent.decided_at && <p className="mt-3 text-xs text-[var(--wso-muted)]">동의 선택일: <time dateTime={bootstrap.consent.decided_at}>{new Intl.DateTimeFormat(bootstrap.locale, { timeZone: bootstrap.timezone, dateStyle: "medium", timeStyle: "short" }).format(new Date(bootstrap.consent.decided_at))}</time></p>}</aside>
       </div>
     </DeepLinkResolver>
