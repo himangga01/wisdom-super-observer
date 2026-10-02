@@ -513,6 +513,8 @@ export interface components {
             brand: string;
             /** Challenge Id */
             challenge_id?: string | null;
+            /** Country Code */
+            country_code?: string | null;
             /** Image Code */
             image_code?: string | null;
             /**

@@ -114,6 +114,18 @@
             ],
             "title": "Challenge Id"
           },
+          "country_code": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9]{1,4}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Country Code"
+          },
           "image_code": {
             "anyOf": [
               {

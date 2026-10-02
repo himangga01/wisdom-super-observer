@@ -3,7 +3,8 @@ import { z } from "zod";
 import type { components, paths } from "../../../../../packages/contracts/generated/tvt";
 import { tenantSchema } from "./api-client";
 
-export type AccountLogin = components["schemas"]["AccountLogin"];
+type PublishedAccountLogin = components["schemas"]["AccountLogin"];
+export type AccountLogin = Omit<PublishedAccountLogin, "mode" | "country_code"> & ({ mode: "email"; country_code?: null } | { mode: "phone"; country_code: string });
 export type AccountSelection = components["schemas"]["AccountSelection"];
 export type AccountIdentity = components["schemas"]["AccountIdentity"];
 export type AccountProfile = components["schemas"]["AccountProfileView"];
@@ -11,10 +12,14 @@ export type ImageChallenge = components["schemas"]["ImageChallengeView"];
 const scope = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,63}$/);
 const supportedText = (max: number) => z.string().min(1).max(max).refine(value => !/[\u0000\uD800-\uDFFF]/u.test(value) && Array.from(value).every(character => character.codePointAt(0)! <= 0xffff));
 export const selectionSchema = z.object({ region: scope, brand: scope }).strict();
-export const loginSchema = selectionSchema.extend({
-  mode: z.enum(["email", "phone"]), account: supportedText(512), secret: supportedText(4096),
+const loginFields = selectionSchema.extend({
+  secret: supportedText(4096),
   challenge_id: tenantSchema.nullable().optional(), image_code: supportedText(256).nullable().optional(), second_code: supportedText(256).nullable().optional(),
-}).strict().refine(value => (value.mode === "email" ? /^[^\s@]+@[^\s@]+\.[^\s@]+$/ : /^\+?[0-9]{4,32}$/).test(value.account) && Boolean(value.challenge_id) === Boolean(value.image_code));
+});
+export const loginSchema = z.discriminatedUnion("mode", [
+  loginFields.extend({ mode: z.literal("email"), account: supportedText(512).regex(/^[^\s@]+@[^\s@]+\.[^\s@]+$/), country_code: z.null().optional() }).strict(),
+  loginFields.extend({ mode: z.literal("phone"), account: z.string().min(1).max(32).regex(/^[0-9]+$/), country_code: z.string().min(1).max(4).regex(/^[0-9]+$/) }).strict(),
+]).refine(value => Boolean(value.challenge_id) === Boolean(value.image_code));
 export const imageCheckSchema = selectionSchema.extend({ challenge_id: tenantSchema, image_code: supportedText(256) }).strict();
 export const refreshSchema = z.object({ kind: z.literal("USER").default("USER"), expected_generation: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER), reason: z.enum(["manual", "upstream_expired", "reconnect"]).default("manual") }).strict();
 export const identitySchema = z.object({ identity_id: tenantSchema, region: scope, brand: scope, state: z.enum(["NEW", "AUTHENTICATING", "READY", "REFRESHING", "EXPIRED", "CLOSED"]), generation: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER), request_id: tenantSchema });

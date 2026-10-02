@@ -102,6 +102,9 @@ jobs:
           unset POSTGRES_PASSWORD WSO_CI_ADMIN_DATABASE_URL
           task_ready=true
       - name: Foundation, real job recovery and HTTPS browser checks
+        env:
+          WSO_TEST_ACCOUNT_RPC_RUNTIME: '1'
+          WSO_TEST_W02_OPERATION_DIAGNOSTIC: '1'
         shell: pwsh
         run: ./scripts/verify.ps1 -WithPostgres -WithAuthBrowser -WithJobBroker
       - name: Real Valkey 9.1.2 persistence fixture smoke

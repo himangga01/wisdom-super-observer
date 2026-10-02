@@ -277,7 +277,7 @@ class AccountWorkerExecutor:
         )
         credentials = LoginInput(
             1,
-            body.account.get_secret_value(),
+            body._native_account(),
             body.secret.get_secret_value(),
             str(uuid4()),
             endpoint.language,

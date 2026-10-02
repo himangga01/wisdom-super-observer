@@ -20,8 +20,10 @@ const image = { challenge_id: otherId, media_type: "image/png", image_base64: "i
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status, headers: { "Content-Type": "application/json" } });
 const error = (code: string, status: number) => json({ error: { code, message: "vendor-private-message" }, request_id: requestId }, status);
 function mount(userId = "test-actor", tenantId = tenant) { return render(<TvtShell userId={userId} tenantId={tenantId} csrf="test-csrf" path="/tvt/account" />); }
+function countryValue(locale: string) { return Array.from((screen.getByLabelText("국가 전화 코드") as HTMLSelectElement).options).find(option => option.value.startsWith(`${locale}:`))!.value; }
 function fill(mode = "email") {
-  fireEvent.change(screen.getByLabelText(mode === "email" ? "이메일" : "전화번호"), { target: { value: mode === "email" ? "synthetic@example.test" : "+82101234" } });
+  if (mode === "phone") fireEvent.change(screen.getByLabelText("국가 전화 코드"), { target: { value: countryValue("KR") } });
+  fireEvent.change(screen.getByLabelText(mode === "email" ? "이메일" : "전화번호"), { target: { value: mode === "email" ? "synthetic@example.test" : "00101234" } });
   fireEvent.change(screen.getByLabelText("비밀번호"), { target: { value: "ephemeral-password" } });
 }
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers(); });
@@ -48,7 +50,7 @@ it("submits email and phone with trusted selection and never stores secrets in q
   await screen.findByRole("alert"); expect(screen.getByLabelText("비밀번호")).toHaveValue("");
   fireEvent.change(screen.getByLabelText("로그인 방식"), { target: { value: "phone" } }); fill("phone"); fireEvent.click(screen.getByRole("button", { name: "TVT 로그인" }));
   await waitFor(() => expect(bodies).toHaveLength(2));
-  expect(bodies).toEqual([{ brand: "SuperLivePlus", region: "KR", mode: "email", account: "synthetic@example.test", secret: "ephemeral-password" }, { brand: "SuperLivePlus", region: "KR", mode: "phone", account: "+82101234", secret: "ephemeral-password" }]);
+  expect(bodies).toEqual([{ brand: "SuperLivePlus", region: "KR", mode: "email", account: "synthetic@example.test", secret: "ephemeral-password" }, { brand: "SuperLivePlus", region: "KR", mode: "phone", country_code: "82", account: "00101234", secret: "ephemeral-password" }]);
   expect(localStorage.length).toBe(0); expect(sessionStorage.length).toBe(0); expect(screen.queryByText("vendor-private-message")).toBeNull();
   for (const client of [...new Set(cache.mock.instances as QueryClient[])]) expect(JSON.stringify([client.getQueryCache().getAll().map(item => item.state.data), client.getMutationCache().getAll().map(item => item.state.variables)])).not.toContain("ephemeral-password");
 });
@@ -252,4 +254,147 @@ it("clears idle secrets and scoped profile memory when the page is hidden for na
   const password = screen.getByLabelText("비밀번호") as HTMLInputElement;
   fireEvent(window, new Event("pagehide"));
   expect(password.value).toBe(""); expect(screen.queryByText("Synthetic nickname")).toBeNull(); expect(screen.queryByLabelText("비밀번호")).toBeNull();
+});
+
+it.each([{}, { country_code: null }, { country_code: "" }, { country_code: "+82" }, { country_code: "12345" }, { country_code: 82 }, { country_code: "８２" }, { country_code: "82", country_name: "Korea" }, { country_code: "82", account: "+1234" }, { country_code: "82", account: "1".repeat(33) }])("rejects closed phone country input %j", changes => {
+  expect(loginSchema.safeParse({ brand: "SuperLivePlus", region: "KR", mode: "phone", account: "00101234", secret: "x", ...changes }).success).toBe(false);
+});
+it("accepts local zeros and email omitted/null country while rejecting email country", () => {
+  expect(loginSchema.safeParse({ brand: "SuperLivePlus", region: "KR", mode: "phone", country_code: "0001", account: "0", secret: "x" }).success).toBe(true);
+  for (const country of [{}, { country_code: null }]) expect(loginSchema.safeParse({ brand: "SuperLivePlus", region: "KR", mode: "email", account: "a@example.test", secret: "x", ...country }).success).toBe(true);
+  expect(loginSchema.safeParse({ brand: "SuperLivePlus", region: "KR", mode: "email", country_code: "82", account: "a@example.test", secret: "x" }).success).toBe(false);
+});
+it("requires explicit source country selection with unique locale options and shared numeric codes", async () => {
+  const bodies: unknown[] = [];
+  vi.stubGlobal("fetch", async (request: Request) => { if (new URL(request.url).pathname.endsWith("/login")) { bodies.push(await request.json()); return error("ACCOUNT_UPSTREAM_REJECTED", 502); } return json(base); });
+  mount(); await screen.findByLabelText("비밀번호");
+  fireEvent.change(screen.getByLabelText("로그인 방식"), { target: { value: "phone" } });
+  const selector = screen.getByLabelText("국가 전화 코드") as HTMLSelectElement;
+  expect(selector).toHaveValue(""); expect(selector.options).toHaveLength(197);
+  const options = Array.from(selector.options).slice(1);
+  expect(new Set(options.map(item => item.value)).size).toBe(196);
+  expect(options.find(item => item.value.startsWith("US:"))?.text).toContain("+1"); expect(options.find(item => item.value.startsWith("CA:"))?.text).toContain("+1");
+  fireEvent.change(screen.getByLabelText("전화번호"), { target: { value: "00101234" } }); fireEvent.change(screen.getByLabelText("비밀번호"), { target: { value: "x" } });
+  fireEvent.click(screen.getByRole("button", { name: "TVT 로그인" })); await screen.findByRole("alert"); expect(bodies).toHaveLength(0);
+  fireEvent.change(selector, { target: { value: countryValue("CA") } }); fireEvent.change(screen.getByLabelText("비밀번호"), { target: { value: "x" } });
+  fireEvent.click(screen.getByRole("button", { name: "TVT 로그인" })); await waitFor(() => expect(bodies).toHaveLength(1));
+  expect(bodies[0]).toEqual({ brand: "SuperLivePlus", region: "KR", mode: "phone", country_code: "1", account: "00101234", secret: "x" });
+  await waitFor(() => expect(screen.getByRole("button", { name: "TVT 로그인" })).toBeEnabled());
+  fireEvent.change(selector, { target: { value: countryValue("US") } }); fireEvent.change(screen.getByLabelText("비밀번호"), { target: { value: "x" } });
+  fireEvent.click(screen.getByRole("button", { name: "TVT 로그인" })); await waitFor(() => expect(bodies).toHaveLength(2)); expect(bodies[1]).toEqual(bodies[0]);
+});
+it.each(["mode", "country"])("aborts an owned image and ignores late image completion after %s change", async change => {
+  let release!: (response: Response) => void; let signal: AbortSignal | undefined;
+  const create = vi.fn(); vi.stubGlobal("URL", Object.assign(URL, { createObjectURL: create, revokeObjectURL: vi.fn() }));
+  vi.stubGlobal("fetch", async (request: Request) => { if (new URL(request.url).pathname.endsWith("/image")) { signal = request.signal; return new Promise<Response>(resolve => { release = resolve; }); } return json(base); });
+  mount(); await screen.findByLabelText("비밀번호"); fireEvent.change(screen.getByLabelText("로그인 방식"), { target: { value: "phone" } }); fill("phone");
+  fireEvent.change(screen.getByLabelText("추가 확인 코드"), { target: { value: "synthetic-second" } });
+  fireEvent.click(screen.getByRole("button", { name: "이미지 확인 요청" })); await waitFor(() => expect(release).toBeDefined());
+  fireEvent.change(screen.getByLabelText(change === "mode" ? "로그인 방식" : "국가 전화 코드"), { target: { value: change === "mode" ? "email" : countryValue("CA") } });
+  expect(signal?.aborted).toBe(true); expect(screen.getByLabelText("비밀번호")).toHaveValue(""); expect(screen.getByLabelText("추가 확인 코드")).toHaveValue("");
+  await act(async () => { release(json(image)); }); expect(create).not.toHaveBeenCalled(); expect(screen.queryByAltText("로그인 확인 이미지")).toBeNull();
+});
+it("keeps consumed image freshness across country and mode changes", async () => {
+  let logins = 0; const revoke = vi.fn(); vi.stubGlobal("URL", Object.assign(URL, { createObjectURL: () => "blob:country", revokeObjectURL: revoke }));
+  vi.stubGlobal("fetch", async (request: Request) => { const path = new URL(request.url).pathname; if (path.endsWith("/login")) { logins++; return error("ACCOUNT_UPSTREAM_REJECTED", 502); } if (path.endsWith("/image/check")) return json({ checked: true, request_id: requestId }); return json(path.endsWith("/image") ? image : base); });
+  mount(); fireEvent.click(await screen.findByRole("button", { name: "이미지 확인 요청" })); await screen.findByAltText("로그인 확인 이미지");
+  fireEvent.change(screen.getByLabelText("이미지 확인 코드"), { target: { value: "1234" } }); fireEvent.click(screen.getByRole("button", { name: "이미지 코드 확인" })); await screen.findByText(/확인 이미지를 새로 요청/);
+  fireEvent.change(screen.getByLabelText("로그인 방식"), { target: { value: "phone" } }); fill("phone"); fireEvent.change(screen.getByLabelText("국가 전화 코드"), { target: { value: countryValue("CA") } }); fireEvent.change(screen.getByLabelText("비밀번호"), { target: { value: "x" } });
+  fireEvent.click(screen.getByRole("button", { name: "TVT 로그인" })); await screen.findByText("사용한 확인 이미지를 다시 사용할 수 없습니다. 로그인하려면 새 확인 이미지를 요청하세요."); expect(logins).toBe(0); expect(revoke).toHaveBeenCalledWith("blob:country");
+});
+
+it.each([{ country_code: "82\n" }, { country_code: "82", account: "0012\n" }])("rejects trailing line separators in numeric phone fields %j", changes => {
+  expect(loginSchema.safeParse({ brand: "SuperLivePlus", region: "KR", mode: "phone", account: "00101234", secret: "x", ...changes }).success).toBe(false);
+});
+it("renders unique localized source labels even when the source Chinese names repeat", async () => {
+  document.documentElement.lang = "zh-CN";
+  try {
+    vi.stubGlobal("fetch", async () => json(base)); mount(); await screen.findByLabelText("비밀번호");
+    fireEvent.change(screen.getByLabelText("로그인 방식"), { target: { value: "phone" } });
+    const options = Array.from((screen.getByLabelText("국가 전화 코드") as HTMLSelectElement).options).slice(1);
+    expect(options.find(item => item.value.startsWith("KR:"))?.text).toContain("韩国");
+    expect(new Set(options.map(item => item.text)).size).toBe(196);
+  } finally { document.documentElement.lang = ""; }
+});
+
+it.each(["mode", "country"])("aborts phone login and rejects late success after %s changes", async change => {
+  let release!: (response: Response) => void; let signal: AbortSignal | undefined; let authorityReads = 0;
+  vi.stubGlobal("fetch", async (request: Request) => { if (new URL(request.url).pathname.endsWith("/login")) { signal = request.signal; return new Promise<Response>(resolve => { release = resolve; }); } authorityReads++; return json(base); });
+  mount(); await screen.findByLabelText("비밀번호"); fireEvent.change(screen.getByLabelText("로그인 방식"), { target: { value: "phone" } }); fill("phone");
+  fireEvent.click(screen.getByRole("button", { name: "TVT 로그인" })); await waitFor(() => expect(release).toBeDefined());
+  const before = authorityReads;
+  fireEvent.change(screen.getByLabelText(change === "mode" ? "로그인 방식" : "국가 전화 코드"), { target: { value: change === "mode" ? "email" : countryValue("CA") } });
+  await act(async () => { release(json(identity)); });
+  expect(signal?.aborted).toBe(true); expect(authorityReads).toBe(before); expect(screen.getByLabelText("비밀번호")).toHaveValue(""); expect(screen.queryByText("TVT 계정 로그인 상태를 확인했습니다.")).toBeNull();
+});
+it("country change clears an owned displayed challenge and all confirmation secrets", async () => {
+  const revoke = vi.fn(); vi.stubGlobal("URL", Object.assign(URL, { createObjectURL: () => "blob:country-change", revokeObjectURL: revoke }));
+  vi.stubGlobal("fetch", async (request: Request) => json(new URL(request.url).pathname.endsWith("/image") ? image : base));
+  mount(); await screen.findByLabelText("비밀번호"); fireEvent.change(screen.getByLabelText("로그인 방식"), { target: { value: "phone" } }); fill("phone");
+  fireEvent.click(screen.getByRole("button", { name: "이미지 확인 요청" })); await screen.findByAltText("로그인 확인 이미지");
+  fill("phone"); fireEvent.change(screen.getByLabelText("이미지 확인 코드"), { target: { value: "1234" } }); fireEvent.change(screen.getByLabelText("추가 확인 코드"), { target: { value: "synthetic-second" } });
+  const code = screen.getByLabelText("이미지 확인 코드") as HTMLInputElement;
+  fireEvent.change(screen.getByLabelText("국가 전화 코드"), { target: { value: countryValue("CA") } });
+  expect(code.value).toBe(""); expect(screen.getByLabelText("비밀번호")).toHaveValue(""); expect(screen.getByLabelText("추가 확인 코드")).toHaveValue(""); expect(screen.queryByAltText("로그인 확인 이미지")).toBeNull(); expect(revoke).toHaveBeenCalledWith("blob:country-change");
+});
+
+it.each([["country", "login"], ["country", "image"], ["country", "check"], ["mode", "login"], ["mode", "image"], ["mode", "check"]] as const)("preserves refilled inputs after %s changes while the old %s settles", async (change, kind) => {
+    let release!: (response: Response) => void;
+    vi.stubGlobal("URL", Object.assign(URL, { createObjectURL: () => "blob:ownership-old", revokeObjectURL: vi.fn() }));
+    vi.stubGlobal("fetch", async (request: Request) => {
+      const path = new URL(request.url).pathname;
+      const pending = kind === "login" ? path.endsWith("/login") : kind === "check" ? path.endsWith("/image/check") : path.endsWith("/image");
+      if (pending) return new Promise<Response>(resolve => { release = resolve; });
+      return json(path.endsWith("/image") ? image : base);
+    });
+    const view = mount(); await screen.findByLabelText("비밀번호");
+    fireEvent.change(screen.getByLabelText("로그인 방식"), { target: { value: "phone" } }); fill("phone");
+    if (kind === "check") {
+      fireEvent.click(screen.getByRole("button", { name: "이미지 확인 요청" })); await screen.findByAltText("로그인 확인 이미지");
+      fireEvent.change(screen.getByLabelText("이미지 확인 코드"), { target: { value: "1234" } });
+    }
+    fireEvent.click(screen.getByRole("button", { name: kind === "login" ? "TVT 로그인" : kind === "check" ? "이미지 코드 확인" : "이미지 확인 요청" }));
+    await waitFor(() => expect(release).toBeDefined());
+    fireEvent.change(screen.getByLabelText(change === "mode" ? "로그인 방식" : "국가 전화 코드"), { target: { value: change === "mode" ? "email" : countryValue("CA") } });
+    expect(screen.getByLabelText("비밀번호")).toHaveValue("");
+    fireEvent.change(screen.getByLabelText("비밀번호"), { target: { value: "replacement-password" } });
+    fireEvent.change(screen.getByLabelText("추가 확인 코드"), { target: { value: "replacement-second" } });
+    await act(async () => { release(json(kind === "image" ? image : kind === "check" ? { checked: true, request_id: requestId } : identity)); });
+    expect(screen.getByLabelText("비밀번호")).toHaveValue("replacement-password"); expect(screen.getByLabelText("추가 확인 코드")).toHaveValue("replacement-second");
+    view.unmount();
+});
+it("keeps a replacement login request and its form inputs owned when the old image settles", async () => {
+  let releaseOld!: (response: Response) => void; let releaseNew!: (response: Response) => void;
+  const bodies: Record<string, unknown>[] = [];
+  vi.stubGlobal("fetch", async (request: Request) => {
+    const path = new URL(request.url).pathname;
+    if (path.endsWith("/image")) return new Promise<Response>(resolve => { releaseOld = resolve; });
+    if (path.endsWith("/login")) { bodies.push(await request.json()); return new Promise<Response>(resolve => { releaseNew = resolve; }); }
+    return json(base);
+  });
+  mount(); await screen.findByLabelText("비밀번호"); fireEvent.change(screen.getByLabelText("로그인 방식"), { target: { value: "phone" } }); fill("phone");
+  fireEvent.click(screen.getByRole("button", { name: "이미지 확인 요청" })); await waitFor(() => expect(releaseOld).toBeDefined());
+  fireEvent.change(screen.getByLabelText("국가 전화 코드"), { target: { value: countryValue("CA") } });
+  fireEvent.change(screen.getByLabelText("비밀번호"), { target: { value: "replacement-password" } }); fireEvent.change(screen.getByLabelText("추가 확인 코드"), { target: { value: "replacement-second" } });
+  fireEvent.click(screen.getByRole("button", { name: "TVT 로그인" })); await waitFor(() => expect(releaseNew).toBeDefined());
+  await act(async () => { releaseOld(json(image)); });
+  expect(screen.getByLabelText("비밀번호")).toHaveValue("replacement-password"); expect(screen.getByLabelText("추가 확인 코드")).toHaveValue("replacement-second"); expect(screen.getByRole("button", { name: "TVT 로그인" })).toBeDisabled();
+  expect(bodies).toEqual([{ brand: "SuperLivePlus", region: "KR", mode: "phone", country_code: "1", account: "00101234", secret: "replacement-password", second_code: "replacement-second" }]);
+  await act(async () => { releaseNew(error("ACCOUNT_UPSTREAM_REJECTED", 502)); });
+  expect(screen.getByLabelText("비밀번호")).toHaveValue(""); expect(screen.getByLabelText("추가 확인 코드")).toHaveValue(""); expect(screen.getByRole("button", { name: "TVT 로그인" })).toBeEnabled();
+});
+it("preserves codes for a newly acquired challenge when an older rejected request finishes", async () => {
+  let rejectOld!: (cause: Error) => void; let images = 0;
+  vi.stubGlobal("URL", Object.assign(URL, { createObjectURL: () => "blob:ownership-new", revokeObjectURL: vi.fn() }));
+  vi.stubGlobal("fetch", async (request: Request) => {
+    if (new URL(request.url).pathname.endsWith("/image")) { images++; if (images === 1) return new Promise<Response>((_, reject) => { rejectOld = reject; }); return json({ ...image, challenge_id: "30000000-0000-4000-8000-000000000003" }); }
+    return json(base);
+  });
+  mount(); await screen.findByLabelText("비밀번호"); fireEvent.change(screen.getByLabelText("로그인 방식"), { target: { value: "phone" } }); fill("phone");
+  fireEvent.click(screen.getByRole("button", { name: "이미지 확인 요청" })); await waitFor(() => expect(rejectOld).toBeDefined());
+  fireEvent.change(screen.getByLabelText("국가 전화 코드"), { target: { value: countryValue("CA") } });
+  fireEvent.click(screen.getByRole("button", { name: "이미지 확인 요청" })); await screen.findByAltText("로그인 확인 이미지");
+  fireEvent.change(screen.getByLabelText("비밀번호"), { target: { value: "replacement-password" } }); fireEvent.change(screen.getByLabelText("추가 확인 코드"), { target: { value: "replacement-second" } }); fireEvent.change(screen.getByLabelText("이미지 확인 코드"), { target: { value: "replacement-image-code" } });
+  await act(async () => { rejectOld(new Error("synthetic delayed private transport rejection")); });
+  expect(screen.getByLabelText("비밀번호")).toHaveValue("replacement-password"); expect(screen.getByLabelText("추가 확인 코드")).toHaveValue("replacement-second"); expect(screen.getByLabelText("이미지 확인 코드")).toHaveValue("replacement-image-code"); expect(screen.getByAltText("로그인 확인 이미지")).toHaveAttribute("src", "blob:ownership-new");
 });

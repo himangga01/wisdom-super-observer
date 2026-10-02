@@ -3,6 +3,11 @@
 import { useEffect, useRef, useState } from "react";
 import { AccountError, imageCheckSchema, loginSchema, type AccountSelection, type ImageChallenge } from "../../../lib/tvt/account-api-client";
 import { useAccountSession } from "./SessionBoundary";
+import countries from "./countries.json";
+
+// Some source locales repeat or are blank; the source row keeps each option unique.
+const countryOptions = countries.map((country, index) => ({ ...country, value: `${country.locale}:${index}` }));
+const repeatedChineseLabels = new Set(countries.filter((country, index) => countries.some((other, otherIndex) => otherIndex !== index && other.zh === country.zh && other.code === country.code)).map(country => `${country.zh}:${country.code}`));
 
 function ownedImage(value: ImageChallenge): string {
   const decoded = atob(value.image_base64); const bytes = Uint8Array.from(decoded, character => character.charCodeAt(0));
@@ -14,6 +19,7 @@ function ownedImage(value: ImageChallenge): string {
 export function LoginForm({ tenantId, selection }: { tenantId: string; selection: AccountSelection }) {
   const session = useAccountSession();
   const [mode, setMode] = useState<"email" | "phone">("email"); const [busy, setBusy] = useState(false); const [error, setError] = useState(""); const [notice, setNotice] = useState("");
+  const [country, setCountry] = useState(""); const [countryLanguage, setCountryLanguage] = useState<"en" | "zh">("en");
   const [challenge, setChallenge] = useState<{ id: string; url: string; expires: number } | null>(null);
   const { requiresFreshImage, setRequiresFreshImage } = session;
   const form = useRef<HTMLFormElement>(null); const alert = useRef<HTMLParagraphElement>(null); const active = useRef<AbortController | null>(null); const imageUrl = useRef<string | null>(null); const expiryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -22,6 +28,10 @@ export function LoginForm({ tenantId, selection }: { tenantId: string; selection
     if (expiryTimer.current) clearTimeout(expiryTimer.current); expiryTimer.current = null;
     if (imageUrl.current) URL.revokeObjectURL(imageUrl.current); imageUrl.current = null; setChallenge(null);
     const code = form.current?.elements.namedItem("image_code"); if (code instanceof HTMLInputElement) code.value = "";
+  };
+  const changeInput = () => {
+    active.current?.abort(); active.current = null; clearSecrets(); clearImage();
+    setBusy(false); setError(""); setNotice("");
   };
   useEffect(() => {
     const node = form.current;
@@ -39,7 +49,8 @@ export function LoginForm({ tenantId, selection }: { tenantId: string; selection
     const values = new FormData(form.current!); const text = (name: string) => String(values.get(name) ?? "");
     if (kind !== "image" && challenge && Date.now() >= challenge.expires) { clearImage(); clearSecrets(); setRequiresFreshImage(true); setError("이미지 확인 시간이 만료되었습니다. 새 이미지를 요청하세요."); return; }
     if (kind === "login" && requiresFreshImage && !challenge) { clearSecrets(); setError("사용한 확인 이미지를 다시 사용할 수 없습니다. 로그인하려면 새 확인 이미지를 요청하세요."); return; }
-    const login = loginSchema.safeParse({ ...selection, mode, account: text("account"), secret: text("secret"), ...(challenge ? { challenge_id: challenge.id, image_code: text("image_code") } : {}), ...(text("second_code") ? { second_code: text("second_code") } : {}) });
+    const selectedCountry = countryOptions.find(option => option.value === country);
+    const login = loginSchema.safeParse({ ...selection, mode, ...(mode === "phone" ? { country_code: selectedCountry ? String(selectedCountry.code) : undefined } : {}), account: text("account"), secret: text("secret"), ...(challenge ? { challenge_id: challenge.id, image_code: text("image_code") } : {}), ...(text("second_code") ? { second_code: text("second_code") } : {}) });
     const check = imageCheckSchema.safeParse({ ...selection, challenge_id: challenge?.id, image_code: text("image_code") });
     if ((kind === "login" && !login.success) || (kind === "check" && !check.success)) { setError("계정과 비밀번호, 확인 코드 형식을 확인하세요."); clearSecrets(); return; }
     const controller = new AbortController(); active.current = controller; setBusy(true); setError(""); setNotice("");
@@ -63,15 +74,18 @@ export function LoginForm({ tenantId, selection }: { tenantId: string; selection
     } catch (cause) {
       if (!controller.signal.aborted && !(cause instanceof DOMException && cause.name === "AbortError")) await session.report(cause);
     } finally {
-      clearSecrets(); if (active.current === controller) active.current = null;
-      if (!controller.signal.aborted) setBusy(false);
+      if (active.current === controller) {
+        clearSecrets(); active.current = null;
+        if (!controller.signal.aborted) setBusy(false);
+      }
     }
   }
   return <section className="wso-card p-6" aria-labelledby="tvt-login-title"><h2 id="tvt-login-title" className="text-lg font-semibold">TVT 계정 로그인</h2><p className="mt-2 text-[var(--wso-muted)]">지역: {selection.region}</p>
     {error && <p ref={alert} role="alert" tabIndex={-1} className="tvt-error mt-4">{error}</p>}{notice && <p role="status" className="mt-4">{notice}</p>}
     <form ref={form} className="mt-5 space-y-4" aria-busy={busy} noValidate autoComplete="off" onSubmit={event => { event.preventDefault(); void request("login"); }}>
-      <div><label className="mb-2 block font-medium" htmlFor="tvt-login-mode">로그인 방식</label><select id="tvt-login-mode" className="tvt-input" value={mode} onChange={event => { const nextMode = event.target.value as "email" | "phone"; active.current?.abort(); active.current = null; clearSecrets(); clearImage(); form.current?.reset(); setBusy(false); setError(""); setNotice(""); setMode(nextMode); }}><option value="email">이메일</option><option value="phone">전화번호</option></select></div>
-      <div><label className="mb-2 block font-medium" htmlFor="tvt-account-name">{mode === "email" ? "이메일" : "전화번호"}</label><input key={mode} id="tvt-account-name" name="account" className="tvt-input" type={mode === "email" ? "email" : "tel"} maxLength={512} disabled={busy} required autoComplete="off" /></div>
+      <div><label className="mb-2 block font-medium" htmlFor="tvt-login-mode">로그인 방식</label><select id="tvt-login-mode" className="tvt-input" value={mode} onChange={event => { const nextMode = event.target.value as "email" | "phone"; if (nextMode === mode) return; changeInput(); form.current?.reset(); setCountry(""); setCountryLanguage(document.documentElement.lang.toLowerCase().startsWith("zh") ? "zh" : "en"); setMode(nextMode); }}><option value="email">이메일</option><option value="phone">전화번호</option></select></div>
+      {mode === "phone" && <div><label className="mb-2 block font-medium" htmlFor="tvt-country-code">국가 전화 코드</label><select id="tvt-country-code" className="tvt-input" value={country} required onChange={event => { if (event.target.value === country) return; changeInput(); setCountry(event.target.value); }}><option value="">국가 전화 코드를 선택하세요</option>{countryOptions.map(option => <option key={option.value} value={option.value}>{option[countryLanguage]}{countryLanguage === "zh" && repeatedChineseLabels.has(`${option.zh}:${option.code}`) ? ` / ${option.en}` : ""} (+{option.code})</option>)}</select></div>}
+      <div><label className="mb-2 block font-medium" htmlFor="tvt-account-name">{mode === "email" ? "이메일" : "전화번호"}</label><input key={mode} id="tvt-account-name" name="account" className="tvt-input" type={mode === "email" ? "email" : "tel"} inputMode={mode === "phone" ? "numeric" : "email"} maxLength={mode === "phone" ? 32 : 512} disabled={busy} required autoComplete="off" /></div>
       <div><label className="mb-2 block font-medium" htmlFor="tvt-password">비밀번호</label><input id="tvt-password" name="secret" className="tvt-input" type="password" maxLength={4096} disabled={busy} required autoComplete="off" /></div>
       {challenge && <div className="space-y-3"><img src={challenge.url} alt="로그인 확인 이미지" className="max-w-full rounded-lg" /><p className="text-xs text-[var(--wso-muted)]">이미지 확인은 120초 동안 유효하며 한 번 사용할 수 있습니다.</p><label className="block font-medium" htmlFor="tvt-image-code">이미지 확인 코드</label><input className="tvt-input" id="tvt-image-code" name="image_code" maxLength={256} disabled={busy} autoComplete="off" /><button className="wso-button-secondary" type="button" disabled={busy} onClick={() => void request("check")}>이미지 코드 확인</button></div>}
       <div><label className="mb-2 block font-medium" htmlFor="tvt-second-code">추가 확인 코드</label><input className="tvt-input" id="tvt-second-code" name="second_code" maxLength={256} disabled={busy} autoComplete="off" /><p className="mt-2 text-xs text-[var(--wso-muted)]">계정에 추가 확인이 필요한 경우 입력하세요.</p></div>

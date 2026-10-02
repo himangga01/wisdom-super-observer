@@ -44,6 +44,14 @@ EVIDENCE = (
     / ".superpowers/sdd/2026-09-27-superlive-plus-web-parity-implementation-plan/W05-account-api-runtime-evidence"
 )
 MIGRATION_SHA = "86f154d10c7cd14ca51aae9327982c80f60945f59820ccda1769ca777f510f6d"
+MIGRATION_LF_SHA = "fb8af73ebd92986efb2eb448db105cb755f2d77da301d2ba70ff39fbf2059608"
+
+
+def verify_migration_source(source: bytes) -> None:
+    assert hashlib.sha256(source).hexdigest() in {MIGRATION_SHA, MIGRATION_LF_SHA}
+    canonical = source.replace(b"\r\n", b"\n")
+    assert b"\r" not in canonical
+    assert hashlib.sha256(canonical).hexdigest() == MIGRATION_LF_SHA
 
 
 def receipt(name, value):
@@ -57,13 +65,8 @@ def receipt(name, value):
 def runtime_db():
     if os.getenv("WSO_TEST_ACCOUNT_RPC_RUNTIME") != "1":
         pytest.skip("requires explicit owned account RPC runtime activation")
-    assert (
-        hashlib.sha256(
-            (
-                ROOT / "infra/migrations/versions/0007_tvt_account_sessions.py"
-            ).read_bytes()
-        ).hexdigest()
-        == MIGRATION_SHA
+    verify_migration_source(
+        (ROOT / "infra/migrations/versions/0007_tvt_account_sessions.py").read_bytes()
     )
     roles = ("ADMIN", "APP", "IDENTITY", "MIGRATOR", "SESSION", "WORKER")
     assert all(os.getenv(f"WSO_TEST_{role}_DATABASE_URL") for role in roles)

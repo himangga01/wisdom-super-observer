@@ -31,6 +31,7 @@ class AccountLogin(AccountSelection):
     # Both APK phone and email password presenters call loginMode=1.
     mode: Literal["email", "phone"]
     account: Annotated[SecretStr, Field(min_length=1, max_length=512, repr=False)]
+    country_code: Annotated[StrictStr, Field(pattern=r"^[0-9]{1,4}$")] | None = None
     secret: PrivateText
     challenge_id: UUID | None = None
     image_code: VerificationText | None = Field(default=None, repr=False)
@@ -40,10 +41,12 @@ class AccountLogin(AccountSelection):
     def checked(self) -> "AccountLogin":
         value = self.account.get_secret_value()
         pattern = (
-            r"[^\s@]+@[^\s@]+\.[^\s@]+" if self.mode == "email" else r"\+?[0-9]{4,32}"
+            r"[^\s@]+@[^\s@]+\.[^\s@]+" if self.mode == "email" else r"[0-9]{1,32}"
         )
-        if re.fullmatch(pattern, value) is None or (self.challenge_id is None) != (
-            self.image_code is None
+        if (
+            (self.mode == "phone") != (self.country_code is not None)
+            or re.fullmatch(pattern, value) is None
+            or (self.challenge_id is None) != (self.image_code is None)
         ):
             raise ValueError("invalid account input")
         for secret in (self.account, self.secret, self.image_code, self.second_code):
@@ -53,6 +56,11 @@ class AccountLogin(AccountSelection):
             ):
                 raise ValueError("unsupported account input")
         return self
+
+    def _native_account(self) -> str:
+        """Worker-only APK u2 binding; never a serialized or repr field."""
+        value = self.account.get_secret_value()
+        return f"{self.country_code}+{value}" if self.mode == "phone" else value
 
 
 class ImageCheckRequest(AccountSelection):
