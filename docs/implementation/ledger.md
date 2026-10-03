@@ -4,6 +4,26 @@ Baseline: SuperLive Plus 1.18.1, APK SHA-256 `f57ff98226fcc7a0ec3587b077d5538fac
 
 This ledger tracks executable service work. The separate [parity ledger](../integrations/tvt-parity-ledger.md) tracks APK-versus-web evidence; a passing local test never means a user feature is matched.
 
+## Current remaining-work assessment — 2026-10-03
+
+The [canonical service-analysis report](../service-analysis.md) records published
+baseline `756946ca73cff31d7ebb23141873088b470a96b4`. Reviewed61 directory core/RPC/
+API/React/navigation/CI/browser-source and private security adapter files were
+published after all task reviews C0/I0/M0. Six readonly directory flows are reachable
+through trusted /tvt/devices opt-in; no observation grants device operations.
+
+Actual current GitHub foundation succeeded:4930Python/1optional private-vector
+skip,10recovery,315FE,26HTTPSauth, selectedPGzero skips, static/types/build/contracts/
+Valkey and cleanup. Account-browser45host+desktop1+mobile1 pass in separate owned
+lifetimes; these synthetic/precreated-session results do not replace direct root
+Chrome. Current Windows directory runtime with signedissuer/normalOIDC is in progress.
+
+Private SID acquisition and targeted native device-access source are in progress.
+Protected security/vault/write/API/UI, device/media and later domains remain.
+Earlier full14/native failures remain open. **MATCHED=0**, six G-P1 blocked and
+`release_ready=false`; no whole-service completion claim. Root direct Chrome
+acceptance has not run. Use the canonical report; older milestones retain dated proof.
+
 | Work item | Implementation status | Verification | Remaining gate |
 | --- | --- | --- | --- |
 | T01 workspace and typed health | Offline foundation implemented | API health 9 passed; frontend 2 tests, typecheck, lint and production build passed; local FE→API HTTP smoke showed `서비스 연결됨`; integrated script passed | Real dependency readiness, Compose runtime smoke |
@@ -15,7 +35,7 @@ This ledger tracks executable service work. The separate [parity ledger](../inte
 | W01 TVT bridge feasibility | Static handoff, frozen 199-operation manifest and declaration inventories implemented | 10 schema tests passed; 77 cases / 199 candidate operations; 281 request classes and 299 native declarations inventoried | Vendor rights, runtime fixtures and pilot; all six remote G-P1 families `BLOCKED` |
 | T05 durable jobs | Database-owned requests, outbox/inbox, restricted dispatcher/worker, fencing, cancellation, external uncertainty, status/items API and job-bound secret primitives implemented; task and milestone integration/fix reviews approved | [Actual Linux run 36716200713](https://github.com/himangga01/wisdom-super-observer/actions/runs/36716200713): 537 Python cases and all ten required real process/broker recovery cases, zero skips; no remaining Critical/Important review findings | Generic credential handlers fail CAPABILITY_UNSUPPORTED until the owning executor exists; no production IMPORT/REGISTRATION handler. Deployment and vendor effects remain pending |
 | T05A private assets | In progress; MinIO rejected for native installed-prefix multipart inventory/restart discovery; RustFS probe15 established the historical provider/authenticated baseline; full14 workflow/proof and fixture fix2 source gates approved | [Latest foundation run 36838223296](../engineering/linux-ci.md#linux-foundation-run-36838223296); [MinIO11 failure](../engineering/linux-ci.md#eleventh-sealed-private-asset-baseline-native-listing-contract-failure); [actual baseline probe15](../engineering/linux-ci.md#rustfs-baseline-probe15--2026-10-01); [approved full14 source transition](../engineering/linux-ci.md#full14-green-source-transition--approved-runtime-pending) | Probe15 at source `f779c69ad7fe434cb547a6f9555d20285aed387a` passed provider preflight/owned lifecycle and strict JUnit accepted one authenticated sealed656 RED in 48.35s (one failure, zero errors/skips); see [sanitized historical proof](evidence/2026-10-01-t05a-rustfs-baseline-red.json). This is not a current-route claim. R18 authority consumed. Current-HEAD Linux full14 has not run; T05A acceptance and APK parity remain pending. W02 runtime acceptance pending, `MATCHED=0`, six G-P1 blocked, `release_ready=false` |
-| W02–W25 service features | W02 first-model implementation is in progress; W03–W25 pending | The disjoint W02 model set passed 116 focused cases; review and account-HTTP source work are active. Runtime acceptance remains pending. T05A probe15 established its separate historical provider baseline; no APK `MATCHED` rows and `release_ready=false` | Complete W02 review and account-HTTP source/runtime evidence; all six remote G-P1 families remain `BLOCKED` |
+| W02–W25 service features | W02 primitives, W03 startup, W04/W05 account subset; published W06 registration/recovery core/RPC/API/React and W07 private readonly adapter; directory protected10 approved, RPC/API/UI pending, later domains incomplete | Source/controlled fixture evidence in the [2026-10-03 service analysis](../service-analysis.md), distinct from actual APK comparison | Remaining functions/reviews, changed-source CI, direct Chrome acceptance, comparative acceptance and deployment; `MATCHED=0`, six G-P1 families `BLOCKED`, `release_ready=false` |
 
 ## Previous integrated verification — 2026-09-30
 
