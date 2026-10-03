@@ -57,8 +57,8 @@ class StartupProfile(WireModel):
     supported_locales: list[Locale] = Field(min_length=1, max_length=64)
     terms: PolicyReference
     privacy: PolicyReference
-    local_routes: list[Literal["/tvt/settings", "/tvt/account"]] = Field(
-        default_factory=list, max_length=2
+    local_routes: list[Literal["/tvt/settings", "/tvt/account", "/tvt/devices"]] = (
+        Field(default_factory=list, max_length=3)
     )
 
     @model_validator(mode="after")
@@ -109,6 +109,9 @@ def menu(profile: StartupProfile) -> list[StartupMenuEntry]:
         ),
         "/tvt/account": StartupMenuEntry(
             id="local-account", label="Account", path="/tvt/account"
+        ),
+        "/tvt/devices": StartupMenuEntry(
+            id="local-devices", label="Devices", path="/tvt/devices"
         ),
     }
     return [registered[path] for path in profile.local_routes]

@@ -64,15 +64,16 @@ class StartupIdentity(WireModel):
 
 
 class StartupMenuEntry(WireModel):
-    id: Literal["local-settings", "local-account"]
-    label: Literal["Settings", "Account"]
-    path: Literal["/tvt/settings", "/tvt/account"]
+    id: Literal["local-settings", "local-account", "local-devices"]
+    label: Literal["Settings", "Account", "Devices"]
+    path: Literal["/tvt/settings", "/tvt/account", "/tvt/devices"]
 
     @model_validator(mode="after")
     def registered_pair(self) -> "StartupMenuEntry":
         pairs = {
             "local-settings": ("Settings", "/tvt/settings"),
             "local-account": ("Account", "/tvt/account"),
+            "local-devices": ("Devices", "/tvt/devices"),
         }
         if (self.label, self.path) != pairs[self.id]:
             raise ValueError("unregistered menu entry")
@@ -89,7 +90,7 @@ class StartupBootstrap(WireModel):
     supported_locales: list[Locale]
     consent: StartupConsent
     identity: StartupIdentity
-    menu: list[StartupMenuEntry] = Field(max_length=2)
+    menu: list[StartupMenuEntry] = Field(max_length=3)
 
     @field_validator("menu")
     @classmethod

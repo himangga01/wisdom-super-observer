@@ -8,6 +8,7 @@ import { ConsentGate } from "./ConsentGate";
 import { FeatureMenu } from "./FeatureMenu";
 import { DeepLinkResolver } from "./DeepLinkResolver";
 import { SessionBoundary } from "../account/SessionBoundary";
+import { DirectoryPage } from "../devices/DirectoryPage";
 
 export type TvtShellProps = { userId?: string; tenantId?: string; csrf?: string; path?: string; invalidSelection?: boolean };
 export function TvtShell(props: TvtShellProps) {
@@ -96,7 +97,7 @@ function Startup({ userId, tenantId, csrf = "", path = "/tvt" }: TvtShellProps &
     {notice && <p role="status" className="text-[var(--wso-success)]">{notice}</p>}
     <DeepLinkResolver path={path} bootstrap={bootstrap}>
       <div className="tvt-panels">
-        <div className="space-y-4"><ConsentGate consent={bootstrap.consent} busy={busy} onDecision={body => void mutate(body, true)} />{path === "/tvt/settings" && <Settings key={`${bootstrap.locale}:${bootstrap.timezone}`} bootstrap={bootstrap} busy={busy} onSave={body => void mutate(body, false)} />}{path === "/tvt/account" && <SessionBoundary userId={userId} bootstrap={bootstrap} csrf={csrf} requery={requery} />}</div>
+        <div className="space-y-4"><ConsentGate consent={bootstrap.consent} busy={busy} onDecision={body => void mutate(body, true)} />{path === "/tvt/settings" && <Settings key={`${bootstrap.locale}:${bootstrap.timezone}`} bootstrap={bootstrap} busy={busy} onSave={body => void mutate(body, false)} />}{path === "/tvt/account" && <SessionBoundary userId={userId} bootstrap={bootstrap} csrf={csrf} requery={requery} />}{path === "/tvt/devices" && <DirectoryPage userId={userId} bootstrap={bootstrap} csrf={csrf} requery={requery} />}</div>
         <aside className="wso-card self-start p-6" aria-label="계정 및 환경"><h2 className="text-lg font-semibold">계정 및 환경</h2><p role="status" className="mt-3">{bootstrap.identity.state === "linked" ? "연결된 TVT 계정이 있습니다." : "연결된 TVT 계정이 없습니다."}</p><p className="mt-3 text-[var(--wso-muted)]">언어: {bootstrap.locale}<br />시간대: {bootstrap.timezone}</p>{bootstrap.consent.decided_at && <p className="mt-3 text-xs text-[var(--wso-muted)]">동의 선택일: <time dateTime={bootstrap.consent.decided_at}>{new Intl.DateTimeFormat(bootstrap.locale, { timeZone: bootstrap.timezone, dateStyle: "medium", timeStyle: "short" }).format(new Date(bootstrap.consent.decided_at))}</time></p>}</aside>
       </div>
     </DeepLinkResolver>

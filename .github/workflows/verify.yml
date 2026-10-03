@@ -107,6 +107,9 @@ jobs:
           WSO_TEST_W02_OPERATION_DIAGNOSTIC: '1'
           WSO_TEST_W06_FLOW_ACCEPTANCE: '1'
           WSO_TEST_W06_API_ACCEPTANCE: '1'
+          WSO_TEST_W07_DIRECTORY_ACCEPTANCE: '1'
+          WSO_TEST_W07_API_ACCEPTANCE: '1'
+          WSO_TEST_W07_PARENT_SHA256: 'a8c39baf215e3b8fea4b92e5df96c21bf1701b9edbb7d61f62e27860af2e5958'
           WSO_TEST_W06_PARENT_SHA256: '3a2fc52bb33a86058d5f13d36f6112986f1ef4117032c64cc268e2e88f61572e'
         shell: pwsh
         run: ./scripts/verify.ps1 -WithPostgres -WithAuthBrowser -WithJobBroker

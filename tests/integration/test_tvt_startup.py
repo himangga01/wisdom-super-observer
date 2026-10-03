@@ -68,6 +68,42 @@ def profile_data():
     }
 
 
+def test_devices_profile_opt_in_is_local_explicit_and_default_off():
+    from wso_core.tvt.startup import StartupProfile, menu
+
+    data = profile_data()
+    data.pop("local_routes")
+    assert menu(StartupProfile.model_validate(data)) == []
+    assert [
+        entry.path for entry in menu(StartupProfile.model_validate(profile_data()))
+    ] == ["/tvt/settings"]
+    data["local_routes"] = ["/tvt/settings", "/tvt/account", "/tvt/devices"]
+    assert [
+        entry.model_dump() for entry in menu(StartupProfile.model_validate(data))
+    ] == [
+        {"id": "local-settings", "label": "Settings", "path": "/tvt/settings"},
+        {"id": "local-account", "label": "Account", "path": "/tvt/account"},
+        {"id": "local-devices", "label": "Devices", "path": "/tvt/devices"},
+    ]
+
+
+@pytest.mark.parametrize(
+    "routes",
+    [
+        ["/tvt/devices", "/tvt/devices"],
+        ["/tvt/devices/"],
+        ["/tvt/devices?enabled=true"],
+        ["/tvt/settings", "/tvt/account", "/tvt/devices", "/tvt/devices"],
+    ],
+)
+def test_devices_profile_rejects_duplicate_unknown_and_excess_routes(routes):
+    from pydantic import ValidationError
+    from wso_core.tvt.startup import StartupProfile
+
+    with pytest.raises(ValidationError):
+        StartupProfile.model_validate({**profile_data(), "local_routes": routes})
+
+
 def baseline(db):
     return (
         db.execute(

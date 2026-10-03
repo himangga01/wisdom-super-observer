@@ -65,6 +65,7 @@ def test_flow_revision_has_a_separate_protected_authority_boundary():
 
 
 def flow_linux_table_roster():
+    # Head0011 adds only wso_private.tvt_directory_tickets: canonical66.
     # Root e216 offline0010 inventory: 65 canonical public/private tables.
     # SQL (strict LF) SHA256: 5b0b4e165056d76d3e488164bdfe84a76fac09a17ec35ce315cbbd22f72cd19e
     # Source0010 SHA256: a8c39baf215e3b8fea4b92e5df96c21bf1701b9edbb7d61f62e27860af2e5958
@@ -121,6 +122,7 @@ def flow_linux_table_roster():
             ("wso_private", "tvt_channels"),
             ("wso_private", "tvt_device_links"),
             ("wso_private", "tvt_device_store_links"),
+            ("wso_private", "tvt_directory_tickets"),
             ("wso_private", "tvt_flow_intents"),
             ("wso_private", "tvt_flow_policies"),
             ("wso_private", "tvt_flow_tickets"),
@@ -300,7 +302,7 @@ def flow_source_expectations():
     if sys.platform == "linux":
         # The container guard proves the fresh CI resource. Its OID is observed
         # and retained in source custody, rather than borrowed from Windows.
-        return "wso_ci_test", None, "postgres", "0010_tvt_account_flows", 65
+        return "wso_ci_test", None, "postgres", "0011_tvt_directory_read_tickets", 66
     raise ValueError("W06 requires the managed Windows or Linux CI source")
 
 

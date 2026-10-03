@@ -1029,6 +1029,102 @@
         "title": "BeginUpload",
         "type": "object"
       },
+      "ChannelDetailRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "brand": {
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]*$",
+            "title": "Brand",
+            "type": "string"
+          },
+          "chl_index": {
+            "maximum": 2147483647.0,
+            "minimum": 0.0,
+            "title": "Chl Index",
+            "type": "integer"
+          },
+          "identity_id": {
+            "format": "uuid",
+            "title": "Identity Id",
+            "type": "string"
+          },
+          "method": {
+            "const": "channel_detail",
+            "default": "channel_detail",
+            "title": "Method",
+            "type": "string"
+          },
+          "region": {
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]*$",
+            "title": "Region",
+            "type": "string"
+          },
+          "sn": {
+            "title": "Sn",
+            "type": "string"
+          }
+        },
+        "required": [
+          "identity_id",
+          "region",
+          "brand",
+          "sn",
+          "chl_index"
+        ],
+        "title": "ChannelDetailRequest",
+        "type": "object"
+      },
+      "ChannelListRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "brand": {
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]*$",
+            "title": "Brand",
+            "type": "string"
+          },
+          "identity_id": {
+            "format": "uuid",
+            "title": "Identity Id",
+            "type": "string"
+          },
+          "method": {
+            "const": "channel_list",
+            "default": "channel_list",
+            "title": "Method",
+            "type": "string"
+          },
+          "region": {
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]*$",
+            "title": "Region",
+            "type": "string"
+          },
+          "sn_list": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Sn List",
+            "type": "array"
+          }
+        },
+        "required": [
+          "identity_id",
+          "region",
+          "brand",
+          "sn_list"
+        ],
+        "title": "ChannelListRequest",
+        "type": "object"
+      },
       "Checksum": {
         "additionalProperties": false,
         "properties": {
@@ -1317,6 +1413,195 @@
           "decision"
         ],
         "title": "ConsentUpdate",
+        "type": "object"
+      },
+      "DeviceDetailRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "brand": {
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]*$",
+            "title": "Brand",
+            "type": "string"
+          },
+          "identity_id": {
+            "format": "uuid",
+            "title": "Identity Id",
+            "type": "string"
+          },
+          "method": {
+            "const": "device_detail",
+            "default": "device_detail",
+            "title": "Method",
+            "type": "string"
+          },
+          "region": {
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]*$",
+            "title": "Region",
+            "type": "string"
+          },
+          "return_chl": {
+            "default": false,
+            "title": "Return Chl",
+            "type": "boolean"
+          },
+          "sn": {
+            "title": "Sn",
+            "type": "string"
+          }
+        },
+        "required": [
+          "identity_id",
+          "region",
+          "brand",
+          "sn"
+        ],
+        "title": "DeviceDetailRequest",
+        "type": "object"
+      },
+      "DeviceListRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "brand": {
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]*$",
+            "title": "Brand",
+            "type": "string"
+          },
+          "identity_id": {
+            "format": "uuid",
+            "title": "Identity Id",
+            "type": "string"
+          },
+          "method": {
+            "const": "device_list",
+            "default": "device_list",
+            "title": "Method",
+            "type": "string"
+          },
+          "page_num": {
+            "default": 0,
+            "maximum": 2147483647.0,
+            "minimum": 0.0,
+            "title": "Page Num",
+            "type": "integer"
+          },
+          "page_size": {
+            "default": 1000,
+            "maximum": 1000.0,
+            "minimum": 0.0,
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "region": {
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]*$",
+            "title": "Region",
+            "type": "string"
+          }
+        },
+        "required": [
+          "identity_id",
+          "region",
+          "brand"
+        ],
+        "title": "DeviceListRequest",
+        "type": "object"
+      },
+      "DirectoryMethod": {
+        "enum": [
+          "device_list",
+          "channel_list",
+          "device_detail",
+          "channel_detail",
+          "sent_shares",
+          "received_shares"
+        ],
+        "type": "string"
+      },
+      "DirectoryView": {
+        "additionalProperties": false,
+        "properties": {
+          "brand": {
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]*$",
+            "title": "Brand",
+            "type": "string"
+          },
+          "complete": {
+            "title": "Complete",
+            "type": "null"
+          },
+          "generation": {
+            "minimum": 1.0,
+            "title": "Generation",
+            "type": "integer"
+          },
+          "grants_operations": {
+            "const": false,
+            "default": false,
+            "title": "Grants Operations",
+            "type": "boolean"
+          },
+          "identity_id": {
+            "format": "uuid",
+            "title": "Identity Id",
+            "type": "string"
+          },
+          "method": {
+            "$ref": "#/components/schemas/DirectoryMethod"
+          },
+          "records": {
+            "items": {
+              "$ref": "#/components/schemas/ObservationObject"
+            },
+            "maxItems": 1000,
+            "title": "Records",
+            "type": "array"
+          },
+          "region": {
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]*$",
+            "title": "Region",
+            "type": "string"
+          },
+          "request_id": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total"
+          }
+        },
+        "required": [
+          "identity_id",
+          "region",
+          "brand",
+          "method",
+          "generation",
+          "request_id",
+          "records"
+        ],
+        "title": "DirectoryView",
         "type": "object"
       },
       "DownloadTicket": {
@@ -1776,6 +2061,514 @@
         "title": "MembershipView",
         "type": "object"
       },
+      "ObservationField": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "$ref": "#/components/schemas/ObservationName"
+          },
+          "opaque_kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "object",
+                  "array"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Opaque Kind"
+          },
+          "source_default": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Default"
+          },
+          "state": {
+            "enum": [
+              "missing",
+              "null",
+              "value"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "value": {
+            "$ref": "#/components/schemas/ObservationValue"
+          }
+        },
+        "required": [
+          "name",
+          "state"
+        ],
+        "title": "ObservationField",
+        "type": "object"
+      },
+      "ObservationName": {
+        "enum": [
+          "sn",
+          "name",
+          "userId",
+          "devName",
+          "mode",
+          "createTime",
+          "maxShareNum",
+          "type",
+          "chlIndex",
+          "chlName",
+          "chls",
+          "alarmInNum",
+          "alarmOutNum",
+          "chlNum",
+          "maxConnNum",
+          "maxMainstreamNum",
+          "maxSubstreamNum",
+          "maxPlaybackNum",
+          "poeChlNum",
+          "posNum",
+          "face",
+          "raid",
+          "talk",
+          "supportFun",
+          "videoForm",
+          "diskInterface",
+          "num",
+          "platformCaps",
+          "recMode",
+          "stream",
+          "res",
+          "fps",
+          "value",
+          "supEnct",
+          "ip",
+          "model",
+          "version",
+          "onlineTime",
+          "offlineTime",
+          "status",
+          "capability",
+          "apiVer",
+          "kernelVer",
+          "platformType",
+          "hVer",
+          "onvifVer",
+          "pCBAV",
+          "mac",
+          "verDate",
+          "verID",
+          "codeId",
+          "pCUI",
+          "pluginVer",
+          "sdkVer",
+          "aiVer",
+          "MCU",
+          "pN",
+          "deviceNumber",
+          "packContentFlag",
+          "customerId",
+          "cfgId",
+          "aiVersion",
+          "configId",
+          "lang",
+          "pcui",
+          "snPlain",
+          "versionId",
+          "whitelistVersion",
+          "workMode",
+          "checkStatus",
+          "delStatus",
+          "onlineStatus",
+          "checkTime",
+          "devInfo",
+          "chlInfos",
+          "id",
+          "devMode",
+          "recipientRemark",
+          "acceptTime",
+          "ownerType",
+          "resourceType",
+          "auth",
+          "recipientId",
+          "validData",
+          "shardIds",
+          "ownerId",
+          "devRemark",
+          "ownerRemark",
+          "devType"
+        ],
+        "type": "string"
+      },
+      "ObservationObject": {
+        "additionalProperties": false,
+        "properties": {
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/ObservationField"
+            },
+            "maxItems": 100,
+            "title": "Fields",
+            "type": "array"
+          },
+          "unknown_members": {
+            "default": 0,
+            "maximum": 10000.0,
+            "minimum": 0.0,
+            "title": "Unknown Members",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "fields"
+        ],
+        "title": "ObservationObject",
+        "type": "object"
+      },
+      "ObservationValue": {
+        "anyOf": [
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "integer"
+          },
+          {
+            "type": "number"
+          },
+          {
+            "type": "string"
+          },
+          {
+            "$ref": "#/components/schemas/ObservationObject"
+          },
+          {
+            "type": "null"
+          },
+          {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                },
+                {
+                  "$ref": "#/components/schemas/ObservationObject"
+                },
+                {
+                  "type": "null"
+                },
+                {
+                  "items": {
+                    "anyOf": [
+                      {
+                        "type": "boolean"
+                      },
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "$ref": "#/components/schemas/ObservationObject"
+                      },
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "items": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "integer"
+                            },
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "$ref": "#/components/schemas/ObservationObject"
+                            },
+                            {
+                              "type": "null"
+                            },
+                            {
+                              "items": {
+                                "anyOf": [
+                                  {
+                                    "type": "boolean"
+                                  },
+                                  {
+                                    "type": "integer"
+                                  },
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "$ref": "#/components/schemas/ObservationObject"
+                                  },
+                                  {
+                                    "type": "null"
+                                  },
+                                  {
+                                    "items": {
+                                      "anyOf": [
+                                        {
+                                          "type": "boolean"
+                                        },
+                                        {
+                                          "type": "integer"
+                                        },
+                                        {
+                                          "type": "number"
+                                        },
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "$ref": "#/components/schemas/ObservationObject"
+                                        },
+                                        {
+                                          "type": "null"
+                                        },
+                                        {
+                                          "items": {
+                                            "anyOf": [
+                                              {
+                                                "type": "boolean"
+                                              },
+                                              {
+                                                "type": "integer"
+                                              },
+                                              {
+                                                "type": "number"
+                                              },
+                                              {
+                                                "type": "string"
+                                              },
+                                              {
+                                                "$ref": "#/components/schemas/ObservationObject"
+                                              },
+                                              {
+                                                "type": "null"
+                                              },
+                                              {
+                                                "items": {
+                                                  "anyOf": [
+                                                    {
+                                                      "type": "boolean"
+                                                    },
+                                                    {
+                                                      "type": "integer"
+                                                    },
+                                                    {
+                                                      "type": "number"
+                                                    },
+                                                    {
+                                                      "type": "string"
+                                                    },
+                                                    {
+                                                      "$ref": "#/components/schemas/ObservationObject"
+                                                    },
+                                                    {
+                                                      "type": "null"
+                                                    },
+                                                    {
+                                                      "items": {
+                                                        "anyOf": [
+                                                          {
+                                                            "type": "boolean"
+                                                          },
+                                                          {
+                                                            "type": "integer"
+                                                          },
+                                                          {
+                                                            "type": "number"
+                                                          },
+                                                          {
+                                                            "type": "string"
+                                                          },
+                                                          {
+                                                            "$ref": "#/components/schemas/ObservationObject"
+                                                          },
+                                                          {
+                                                            "type": "null"
+                                                          },
+                                                          {
+                                                            "items": {
+                                                              "anyOf": [
+                                                                {
+                                                                  "type": "boolean"
+                                                                },
+                                                                {
+                                                                  "type": "integer"
+                                                                },
+                                                                {
+                                                                  "type": "number"
+                                                                },
+                                                                {
+                                                                  "type": "string"
+                                                                },
+                                                                {
+                                                                  "$ref": "#/components/schemas/ObservationObject"
+                                                                },
+                                                                {
+                                                                  "type": "null"
+                                                                },
+                                                                {
+                                                                  "items": {
+                                                                    "anyOf": [
+                                                                      {
+                                                                        "type": "boolean"
+                                                                      },
+                                                                      {
+                                                                        "type": "integer"
+                                                                      },
+                                                                      {
+                                                                        "type": "number"
+                                                                      },
+                                                                      {
+                                                                        "type": "string"
+                                                                      },
+                                                                      {
+                                                                        "$ref": "#/components/schemas/ObservationObject"
+                                                                      },
+                                                                      {
+                                                                        "type": "null"
+                                                                      },
+                                                                      {
+                                                                        "items": {
+                                                                          "anyOf": [
+                                                                            {
+                                                                              "type": "boolean"
+                                                                            },
+                                                                            {
+                                                                              "type": "integer"
+                                                                            },
+                                                                            {
+                                                                              "type": "number"
+                                                                            },
+                                                                            {
+                                                                              "type": "string"
+                                                                            },
+                                                                            {
+                                                                              "$ref": "#/components/schemas/ObservationObject"
+                                                                            },
+                                                                            {
+                                                                              "type": "null"
+                                                                            },
+                                                                            {
+                                                                              "items": {
+                                                                                "anyOf": [
+                                                                                  {
+                                                                                    "type": "boolean"
+                                                                                  },
+                                                                                  {
+                                                                                    "type": "integer"
+                                                                                  },
+                                                                                  {
+                                                                                    "type": "number"
+                                                                                  },
+                                                                                  {
+                                                                                    "type": "string"
+                                                                                  },
+                                                                                  {
+                                                                                    "$ref": "#/components/schemas/ObservationObject"
+                                                                                  },
+                                                                                  {
+                                                                                    "type": "null"
+                                                                                  }
+                                                                                ]
+                                                                              },
+                                                                              "maxItems": 1000,
+                                                                              "type": "array"
+                                                                            }
+                                                                          ]
+                                                                        },
+                                                                        "maxItems": 1000,
+                                                                        "type": "array"
+                                                                      }
+                                                                    ]
+                                                                  },
+                                                                  "maxItems": 1000,
+                                                                  "type": "array"
+                                                                }
+                                                              ]
+                                                            },
+                                                            "maxItems": 1000,
+                                                            "type": "array"
+                                                          }
+                                                        ]
+                                                      },
+                                                      "maxItems": 1000,
+                                                      "type": "array"
+                                                    }
+                                                  ]
+                                                },
+                                                "maxItems": 1000,
+                                                "type": "array"
+                                              }
+                                            ]
+                                          },
+                                          "maxItems": 1000,
+                                          "type": "array"
+                                        }
+                                      ]
+                                    },
+                                    "maxItems": 1000,
+                                    "type": "array"
+                                  }
+                                ]
+                              },
+                              "maxItems": 1000,
+                              "type": "array"
+                            }
+                          ]
+                        },
+                        "maxItems": 1000,
+                        "type": "array"
+                      }
+                    ]
+                  },
+                  "maxItems": 1000,
+                  "type": "array"
+                }
+              ]
+            },
+            "maxItems": 1000,
+            "type": "array"
+          }
+        ]
+      },
       "PolicyReference": {
         "additionalProperties": false,
         "properties": {
@@ -1822,6 +2615,130 @@
           "timezone"
         ],
         "title": "PreferenceUpdate",
+        "type": "object"
+      },
+      "ReceivedSharesRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "brand": {
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]*$",
+            "title": "Brand",
+            "type": "string"
+          },
+          "identity_id": {
+            "format": "uuid",
+            "title": "Identity Id",
+            "type": "string"
+          },
+          "method": {
+            "const": "received_shares",
+            "default": "received_shares",
+            "title": "Method",
+            "type": "string"
+          },
+          "page_num": {
+            "default": 0,
+            "maximum": 2147483647.0,
+            "minimum": 0.0,
+            "title": "Page Num",
+            "type": "integer"
+          },
+          "page_size": {
+            "default": 1000,
+            "maximum": 1000.0,
+            "minimum": 0.0,
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "region": {
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]*$",
+            "title": "Region",
+            "type": "string"
+          },
+          "resource_types": {
+            "default": [],
+            "items": {
+              "maximum": 2147483647.0,
+              "minimum": -2147483648.0,
+              "type": "integer"
+            },
+            "maxItems": 16,
+            "title": "Resource Types",
+            "type": "array"
+          }
+        },
+        "required": [
+          "identity_id",
+          "region",
+          "brand"
+        ],
+        "title": "ReceivedSharesRequest",
+        "type": "object"
+      },
+      "SentSharesRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "brand": {
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]*$",
+            "title": "Brand",
+            "type": "string"
+          },
+          "identity_id": {
+            "format": "uuid",
+            "title": "Identity Id",
+            "type": "string"
+          },
+          "method": {
+            "const": "sent_shares",
+            "default": "sent_shares",
+            "title": "Method",
+            "type": "string"
+          },
+          "page_num": {
+            "default": 0,
+            "maximum": 2147483647.0,
+            "minimum": 0.0,
+            "title": "Page Num",
+            "type": "integer"
+          },
+          "page_size": {
+            "default": 1000,
+            "maximum": 1000.0,
+            "minimum": 0.0,
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "region": {
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]*$",
+            "title": "Region",
+            "type": "string"
+          },
+          "resource_types": {
+            "default": [],
+            "items": {
+              "maximum": 2147483647.0,
+              "minimum": -2147483648.0,
+              "type": "integer"
+            },
+            "maxItems": 16,
+            "title": "Resource Types",
+            "type": "array"
+          }
+        },
+        "required": [
+          "identity_id",
+          "region",
+          "brand"
+        ],
+        "title": "SentSharesRequest",
         "type": "object"
       },
       "SessionCreated": {
@@ -1931,7 +2848,7 @@
             "items": {
               "$ref": "#/components/schemas/StartupMenuEntry"
             },
-            "maxItems": 2,
+            "maxItems": 3,
             "title": "Menu",
             "type": "array"
           },
@@ -2094,7 +3011,8 @@
           "id": {
             "enum": [
               "local-settings",
-              "local-account"
+              "local-account",
+              "local-devices"
             ],
             "title": "Id",
             "type": "string"
@@ -2102,7 +3020,8 @@
           "label": {
             "enum": [
               "Settings",
-              "Account"
+              "Account",
+              "Devices"
             ],
             "title": "Label",
             "type": "string"
@@ -2110,7 +3029,8 @@
           "path": {
             "enum": [
               "/tvt/settings",
-              "/tvt/account"
+              "/tvt/account",
+              "/tvt/devices"
             ],
             "title": "Path",
             "type": "string"
@@ -4759,6 +5679,864 @@
         "summary": "Consent",
         "tags": [
           "tvt-startup"
+        ]
+      }
+    },
+    "/api/v1/tvt/directory/channel-detail": {
+      "post": {
+        "operationId": "tvtDirectoryChannelDetail",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChannelDetailRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DirectoryView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Gateway Timeout"
+          }
+        },
+        "summary": "Channel Detail",
+        "tags": [
+          "tvt-directory"
+        ]
+      }
+    },
+    "/api/v1/tvt/directory/channel-list": {
+      "post": {
+        "operationId": "tvtDirectoryChannelList",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChannelListRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DirectoryView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Gateway Timeout"
+          }
+        },
+        "summary": "Channel List",
+        "tags": [
+          "tvt-directory"
+        ]
+      }
+    },
+    "/api/v1/tvt/directory/device-detail": {
+      "post": {
+        "operationId": "tvtDirectoryDeviceDetail",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceDetailRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DirectoryView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Gateway Timeout"
+          }
+        },
+        "summary": "Device Detail",
+        "tags": [
+          "tvt-directory"
+        ]
+      }
+    },
+    "/api/v1/tvt/directory/device-list": {
+      "post": {
+        "operationId": "tvtDirectoryDeviceList",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceListRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DirectoryView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Gateway Timeout"
+          }
+        },
+        "summary": "Device List",
+        "tags": [
+          "tvt-directory"
+        ]
+      }
+    },
+    "/api/v1/tvt/directory/received-shares": {
+      "post": {
+        "operationId": "tvtDirectoryReceivedShares",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReceivedSharesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DirectoryView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Gateway Timeout"
+          }
+        },
+        "summary": "Received Shares",
+        "tags": [
+          "tvt-directory"
+        ]
+      }
+    },
+    "/api/v1/tvt/directory/sent-shares": {
+      "post": {
+        "operationId": "tvtDirectorySentShares",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SentSharesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DirectoryView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Gateway Timeout"
+          }
+        },
+        "summary": "Sent Shares",
+        "tags": [
+          "tvt-directory"
         ]
       }
     },

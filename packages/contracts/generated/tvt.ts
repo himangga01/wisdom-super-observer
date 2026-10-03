@@ -451,6 +451,108 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tvt/directory/channel-detail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Channel Detail */
+        post: operations["tvtDirectoryChannelDetail"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tvt/directory/channel-list": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Channel List */
+        post: operations["tvtDirectoryChannelList"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tvt/directory/device-detail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Device Detail */
+        post: operations["tvtDirectoryDeviceDetail"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tvt/directory/device-list": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Device List */
+        post: operations["tvtDirectoryDeviceList"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tvt/directory/received-shares": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Received Shares */
+        post: operations["tvtDirectoryReceivedShares"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tvt/directory/sent-shares": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Sent Shares */
+        post: operations["tvtDirectorySentShares"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tvt/identities/challenges/image": {
         parameters: {
             query?: never;
@@ -1018,6 +1120,48 @@ export interface components {
             /** Scope */
             scope: components["schemas"]["TenantScope"] | components["schemas"]["StoreScope"];
         };
+        /** ChannelDetailRequest */
+        ChannelDetailRequest: {
+            /** Brand */
+            brand: string;
+            /** Chl Index */
+            chl_index: number;
+            /**
+             * Identity Id
+             * Format: uuid
+             */
+            identity_id: string;
+            /**
+             * Method
+             * @default channel_detail
+             * @constant
+             */
+            method: "channel_detail";
+            /** Region */
+            region: string;
+            /** Sn */
+            sn: string;
+        };
+        /** ChannelListRequest */
+        ChannelListRequest: {
+            /** Brand */
+            brand: string;
+            /**
+             * Identity Id
+             * Format: uuid
+             */
+            identity_id: string;
+            /**
+             * Method
+             * @default channel_list
+             * @constant
+             */
+            method: "channel_list";
+            /** Region */
+            region: string;
+            /** Sn List */
+            sn_list: string[];
+        };
         /** Checksum */
         Checksum: {
             /**
@@ -1119,6 +1263,90 @@ export interface components {
             decision: "accepted" | "declined";
             /** Version */
             version: string;
+        };
+        /** DeviceDetailRequest */
+        DeviceDetailRequest: {
+            /** Brand */
+            brand: string;
+            /**
+             * Identity Id
+             * Format: uuid
+             */
+            identity_id: string;
+            /**
+             * Method
+             * @default device_detail
+             * @constant
+             */
+            method: "device_detail";
+            /** Region */
+            region: string;
+            /**
+             * Return Chl
+             * @default false
+             */
+            return_chl: boolean;
+            /** Sn */
+            sn: string;
+        };
+        /** DeviceListRequest */
+        DeviceListRequest: {
+            /** Brand */
+            brand: string;
+            /**
+             * Identity Id
+             * Format: uuid
+             */
+            identity_id: string;
+            /**
+             * Method
+             * @default device_list
+             * @constant
+             */
+            method: "device_list";
+            /**
+             * Page Num
+             * @default 0
+             */
+            page_num: number;
+            /**
+             * Page Size
+             * @default 1000
+             */
+            page_size: number;
+            /** Region */
+            region: string;
+        };
+        /** @enum {string} */
+        DirectoryMethod: "device_list" | "channel_list" | "device_detail" | "channel_detail" | "sent_shares" | "received_shares";
+        /** DirectoryView */
+        DirectoryView: {
+            /** Brand */
+            brand: string;
+            /** Complete */
+            complete?: null;
+            /** Generation */
+            generation: number;
+            /**
+             * Grants Operations
+             * @default false
+             * @constant
+             */
+            grants_operations: false;
+            /**
+             * Identity Id
+             * Format: uuid
+             */
+            identity_id: string;
+            method: components["schemas"]["DirectoryMethod"];
+            /** Records */
+            records: components["schemas"]["ObservationObject"][];
+            /** Region */
+            region: string;
+            /** Request Id */
+            request_id: string;
+            /** Total */
+            total?: string | number | null;
         };
         /** DownloadTicket */
         DownloadTicket: {
@@ -1297,6 +1525,33 @@ export interface components {
              */
             tenant_id: string;
         };
+        /** ObservationField */
+        ObservationField: {
+            name: components["schemas"]["ObservationName"];
+            /** Opaque Kind */
+            opaque_kind?: ("object" | "array") | null;
+            /** Source Default */
+            source_default?: string | number | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "missing" | "null" | "value";
+            value?: components["schemas"]["ObservationValue"];
+        };
+        /** @enum {string} */
+        ObservationName: "sn" | "name" | "userId" | "devName" | "mode" | "createTime" | "maxShareNum" | "type" | "chlIndex" | "chlName" | "chls" | "alarmInNum" | "alarmOutNum" | "chlNum" | "maxConnNum" | "maxMainstreamNum" | "maxSubstreamNum" | "maxPlaybackNum" | "poeChlNum" | "posNum" | "face" | "raid" | "talk" | "supportFun" | "videoForm" | "diskInterface" | "num" | "platformCaps" | "recMode" | "stream" | "res" | "fps" | "value" | "supEnct" | "ip" | "model" | "version" | "onlineTime" | "offlineTime" | "status" | "capability" | "apiVer" | "kernelVer" | "platformType" | "hVer" | "onvifVer" | "pCBAV" | "mac" | "verDate" | "verID" | "codeId" | "pCUI" | "pluginVer" | "sdkVer" | "aiVer" | "MCU" | "pN" | "deviceNumber" | "packContentFlag" | "customerId" | "cfgId" | "aiVersion" | "configId" | "lang" | "pcui" | "snPlain" | "versionId" | "whitelistVersion" | "workMode" | "checkStatus" | "delStatus" | "onlineStatus" | "checkTime" | "devInfo" | "chlInfos" | "id" | "devMode" | "recipientRemark" | "acceptTime" | "ownerType" | "resourceType" | "auth" | "recipientId" | "validData" | "shardIds" | "ownerId" | "devRemark" | "ownerRemark" | "devType";
+        /** ObservationObject */
+        ObservationObject: {
+            /** Fields */
+            fields: components["schemas"]["ObservationField"][];
+            /**
+             * Unknown Members
+             * @default 0
+             */
+            unknown_members: number;
+        };
+        ObservationValue: boolean | number | string | components["schemas"]["ObservationObject"] | null | (boolean | number | string | components["schemas"]["ObservationObject"] | null | (boolean | number | string | components["schemas"]["ObservationObject"] | null | (boolean | number | string | components["schemas"]["ObservationObject"] | null | (boolean | number | string | components["schemas"]["ObservationObject"] | null | (boolean | number | string | components["schemas"]["ObservationObject"] | null | (boolean | number | string | components["schemas"]["ObservationObject"] | null | (boolean | number | string | components["schemas"]["ObservationObject"] | null | (boolean | number | string | components["schemas"]["ObservationObject"] | null | (boolean | number | string | components["schemas"]["ObservationObject"] | null | (boolean | number | string | components["schemas"]["ObservationObject"] | null | (boolean | number | string | components["schemas"]["ObservationObject"] | null | (boolean | number | string | components["schemas"]["ObservationObject"] | null)[])[])[])[])[])[])[])[])[])[])[])[];
         /** PolicyReference */
         PolicyReference: {
             /**
@@ -1313,6 +1568,72 @@ export interface components {
             locale: string;
             /** Timezone */
             timezone: string;
+        };
+        /** ReceivedSharesRequest */
+        ReceivedSharesRequest: {
+            /** Brand */
+            brand: string;
+            /**
+             * Identity Id
+             * Format: uuid
+             */
+            identity_id: string;
+            /**
+             * Method
+             * @default received_shares
+             * @constant
+             */
+            method: "received_shares";
+            /**
+             * Page Num
+             * @default 0
+             */
+            page_num: number;
+            /**
+             * Page Size
+             * @default 1000
+             */
+            page_size: number;
+            /** Region */
+            region: string;
+            /**
+             * Resource Types
+             * @default []
+             */
+            resource_types: number[];
+        };
+        /** SentSharesRequest */
+        SentSharesRequest: {
+            /** Brand */
+            brand: string;
+            /**
+             * Identity Id
+             * Format: uuid
+             */
+            identity_id: string;
+            /**
+             * Method
+             * @default sent_shares
+             * @constant
+             */
+            method: "sent_shares";
+            /**
+             * Page Num
+             * @default 0
+             */
+            page_num: number;
+            /**
+             * Page Size
+             * @default 1000
+             */
+            page_size: number;
+            /** Region */
+            region: string;
+            /**
+             * Resource Types
+             * @default []
+             */
+            resource_types: number[];
         };
         /** SessionCreated */
         SessionCreated: {
@@ -1420,17 +1741,17 @@ export interface components {
              * Id
              * @enum {string}
              */
-            id: "local-settings" | "local-account";
+            id: "local-settings" | "local-account" | "local-devices";
             /**
              * Label
              * @enum {string}
              */
-            label: "Settings" | "Account";
+            label: "Settings" | "Account" | "Devices";
             /**
              * Path
              * @enum {string}
              */
-            path: "/tvt/settings" | "/tvt/account";
+            path: "/tvt/settings" | "/tvt/account" | "/tvt/devices";
         };
         /** StoreList */
         StoreList: {
@@ -3322,6 +3643,702 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StartupErrorEnvelope"];
+                };
+            };
+        };
+    };
+    tvtDirectoryChannelDetail: {
+        parameters: {
+            query: {
+                tenant_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChannelDetailRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DirectoryView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountErrorEnvelope"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountErrorEnvelope"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountErrorEnvelope"];
+                };
+            };
+            /** @description Gateway Timeout */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountErrorEnvelope"];
+                };
+            };
+        };
+    };
+    tvtDirectoryChannelList: {
+        parameters: {
+            query: {
+                tenant_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChannelListRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DirectoryView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountErrorEnvelope"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountErrorEnvelope"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountErrorEnvelope"];
+                };
+            };
+            /** @description Gateway Timeout */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountErrorEnvelope"];
+                };
+            };
+        };
+    };
+    tvtDirectoryDeviceDetail: {
+        parameters: {
+            query: {
+                tenant_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeviceDetailRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DirectoryView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountErrorEnvelope"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountErrorEnvelope"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountErrorEnvelope"];
+                };
+            };
+            /** @description Gateway Timeout */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountErrorEnvelope"];
+                };
+            };
+        };
+    };
+    tvtDirectoryDeviceList: {
+        parameters: {
+            query: {
+                tenant_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeviceListRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DirectoryView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountErrorEnvelope"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountErrorEnvelope"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountErrorEnvelope"];
+                };
+            };
+            /** @description Gateway Timeout */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountErrorEnvelope"];
+                };
+            };
+        };
+    };
+    tvtDirectoryReceivedShares: {
+        parameters: {
+            query: {
+                tenant_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReceivedSharesRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DirectoryView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountErrorEnvelope"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountErrorEnvelope"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountErrorEnvelope"];
+                };
+            };
+            /** @description Gateway Timeout */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountErrorEnvelope"];
+                };
+            };
+        };
+    };
+    tvtDirectorySentShares: {
+        parameters: {
+            query: {
+                tenant_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SentSharesRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DirectoryView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountErrorEnvelope"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountErrorEnvelope"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountErrorEnvelope"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountErrorEnvelope"];
+                };
+            };
+            /** @description Gateway Timeout */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountErrorEnvelope"];
                 };
             };
         };

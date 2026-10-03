@@ -14,6 +14,7 @@ from typing import Any, cast
 
 import grpc
 from pydantic import BaseModel
+from wso_api.tvt.device_service import DirectoryWorker
 from wso_api.tvt.flow_service import AccountFlowWorker
 from wso_api.tvt.session_service import AccountWorker
 from wso_contracts.tvt.account import (
@@ -35,6 +36,7 @@ from wso_contracts.tvt.account_flows import (
     AccountRecoverySubmit,
     AccountRegistrationSubmit,
 )
+from wso_contracts.tvt.directory import REQUEST_TYPES, DirectoryRequest, DirectoryView
 from wso_core.tvt.account_projection import AccountFailure
 from wso_core.tvt.token_vault import token_budget
 
@@ -42,8 +44,12 @@ from .generated import tvt_bridge_pb2 as pb
 from .generated import tvt_bridge_pb2_grpc as rpc
 from .selected import (
     GRPC_OPTIONS,
+    MAX_DIRECTORY_FRAME_BYTES,
     MAX_FRAME_BYTES,
+    checked_directory_view,
+    decode_directory_input,
     decode_input,
+    directory_failure,
     endpoint,
     failure,
     flow_failure,
@@ -52,6 +58,10 @@ from .selected import (
     validate_request,
 )
 from .session_pool import SessionPool
+
+# Startup cannot return an owner on failure. Keep uncertain original callbacks
+# alive; no retry, worker recreation or sweep can release this quarantine.
+_BOOTSTRAP_QUARANTINE: list[tuple[Callable[[], object], ...]] = []
 
 
 @dataclass(frozen=True, slots=True, repr=False)
@@ -81,6 +91,7 @@ class _Service(rpc.AccountBridgeV1Servicer):  # type: ignore[misc]
         output: type[BaseModel],
         model: type[BaseModel] | None = None,
         field: str = "",
+        directory_method: str | None = None,
     ) -> Any:
         # TLS auth_context is authority for peer identity, never request metadata.
         auth = cast(Mapping[str, Sequence[bytes]], context.auth_context())
@@ -97,16 +108,29 @@ class _Service(rpc.AccountBridgeV1Servicer):  # type: ignore[misc]
         dispatched = False
         reply = self._reply(failure_code="ACCOUNT_UNAVAILABLE")
         try:
-            validate_request(request)
+            directory_end = (
+                time.monotonic()
+                + min(context.time_remaining() or 0, request.context.deadline_ms / 1000)
+                if directory_method
+                else None
+            )
+            validate_request(request, directory=directory_method is not None)
             body = (
-                decode_input(getattr(request, field), model)
+                decode_directory_input(getattr(request, field), directory_method)
+                if directory_method
+                else decode_input(getattr(request, field), model)
                 if model is not None
                 else None
             )
             rpc_left = context.time_remaining()
             if rpc_left is None or rpc_left <= 0:
                 raise failure("ACCOUNT_DEADLINE_EXCEEDED")
-            end = time.monotonic() + min(rpc_left, request.context.deadline_ms / 1000)
+            end = (
+                directory_end
+                if directory_end is not None
+                else time.monotonic()
+                + min(rpc_left, request.context.deadline_ms / 1000)
+            )
 
             def remaining() -> int:
                 left = int((end - time.monotonic()) * 1000)
@@ -141,7 +165,15 @@ class _Service(rpc.AccountBridgeV1Servicer):  # type: ignore[misc]
                     raise failure("ACCOUNT_PROTOCOL_INVALID")
                 # Revalidation rejects model_construct/extra and stale mutated outputs.
                 try:
-                    clean = output.model_validate_json(result.model_dump_json())
+                    clean = (
+                        checked_directory_view(
+                            cast(DirectoryView, result),
+                            cast(DirectoryRequest, body),
+                            request.context.correlation_id,
+                        )
+                        if directory_method
+                        else output.model_validate_json(result.model_dump_json())
+                    )
                 except (ValueError, TypeError):
                     raise failure("ACCOUNT_PROTOCOL_INVALID") from None
                 if (
@@ -156,7 +188,9 @@ class _Service(rpc.AccountBridgeV1Servicer):  # type: ignore[misc]
                     raise failure("ACCOUNT_PROTOCOL_INVALID")
                 payload = clean.model_dump_json().encode("utf-8")
                 reply = self._reply(public_json=payload)
-                if reply.ByteSize() > MAX_FRAME_BYTES:
+                if reply.ByteSize() > (
+                    MAX_DIRECTORY_FRAME_BYTES if directory_method else MAX_FRAME_BYTES
+                ):
                     raise failure("ACCOUNT_PROTOCOL_INVALID")
                 remaining()
         except AccountFailure as exc:
@@ -340,14 +374,61 @@ class _FlowService(_Service, rpc.FlowBridgeV1Servicer):  # type: ignore[misc]
         )
 
 
+class _DirectoryService(_Service, rpc.DirectoryBridgeV1Servicer):  # type: ignore[misc]
+    _reply = pb.DirectoryReply
+    _failure = staticmethod(directory_failure)
+
+    def __init__(
+        self, worker: DirectoryWorker | None, config: ServerConfig, pool: SessionPool
+    ) -> None:
+        self.directory_worker, self.config, self.pool = worker, config, pool
+
+    def _directory(
+        self, request: Any, context: grpc.ServicerContext, method: str
+    ) -> Any:
+        def invoke(ticket: str, body: Any, **kwargs: Any) -> DirectoryView:
+            if self.directory_worker is None:
+                raise failure("ACCOUNT_UNAVAILABLE")
+            return self.directory_worker.execute(method, ticket, body, **kwargs)
+
+        return self._execute(
+            request,
+            context,
+            invoke,
+            DirectoryView,
+            cast(type[BaseModel], REQUEST_TYPES[method]),
+            "query_json",
+            method,
+        )
+
+    def DeviceList(self, request: Any, context: grpc.ServicerContext) -> Any:
+        return self._directory(request, context, "device_list")
+
+    def ChannelList(self, request: Any, context: grpc.ServicerContext) -> Any:
+        return self._directory(request, context, "channel_list")
+
+    def DeviceDetail(self, request: Any, context: grpc.ServicerContext) -> Any:
+        return self._directory(request, context, "device_detail")
+
+    def ChannelDetail(self, request: Any, context: grpc.ServicerContext) -> Any:
+        return self._directory(request, context, "channel_detail")
+
+    def SentShares(self, request: Any, context: grpc.ServicerContext) -> Any:
+        return self._directory(request, context, "sent_shares")
+
+    def ReceivedShares(self, request: Any, context: grpc.ServicerContext) -> Any:
+        return self._directory(request, context, "received_shares")
+
+
 class AccountRpcServer:
     def __init__(
         self,
         config: ServerConfig,
         worker: AccountWorker,
         *,
-        dispose: Callable[[], None] = lambda: None,
+        dispose: Callable[[], object] = lambda: None,
         flow_worker: AccountFlowWorker | None = None,
+        directory_worker: DirectoryWorker | None = None,
     ) -> None:
         target = endpoint(config.bind, bind=True)
         if (
@@ -373,7 +454,9 @@ class AccountRpcServer:
 
         def dispose_resources() -> None:
             try:
-                self._dispose()
+                closed = self._dispose()
+                if closed is not None and closed is not True:
+                    raise directory_failure("ACCOUNT_QUARANTINED")
             except Exception:  # noqa: BLE001 -- fixed uncertainty, never private errors
                 self._cleanup_proved = False
             else:
@@ -396,6 +479,9 @@ class AccountRpcServer:
             )
             rpc.add_FlowBridgeV1Servicer_to_server(
                 _FlowService(flow_worker, config, self.pool), self._server
+            )
+            rpc.add_DirectoryBridgeV1Servicer_to_server(
+                _DirectoryService(directory_worker, config, self.pool), self._server
             )
             credentials = grpc.ssl_server_credentials(
                 [(config.key, config.certificate)],
@@ -446,24 +532,30 @@ def create_server_from_environment() -> AccountRpcServer:
     from wso_core.tvt.token_vault import TokenVault
 
     env = os.environ
-    resources: list[Callable[[], None]] = []
+    resources: list[Callable[[], object]] = []
+    disposal_proved = False
     disposed = False
     disposal_lock = Lock()
 
-    def dispose() -> None:
-        nonlocal disposed
+    def dispose() -> object:
+        nonlocal disposed, disposal_proved
         with disposal_lock:
             if disposed:
-                return
+                return None if disposal_proved else False
             disposed = True
         proved = True
         for close in reversed(resources):
             try:
-                close()
+                closed = close()
+                if closed is not None and closed is not True:
+                    proved = False
             except Exception:  # noqa: BLE001 -- clean all owned resources without private logs
                 proved = False
+        disposal_proved = proved
         if not proved:
+            _BOOTSTRAP_QUARANTINE.append(tuple(resources))
             raise flow_failure("ACCOUNT_QUARANTINED") from None
+        return None
 
     try:
         allowed = json.loads(required(env, "WSO_TVT_BRIDGE_CLIENT_SANS_JSON"))
@@ -497,11 +589,30 @@ def create_server_from_environment() -> AccountRpcServer:
                 admission, endpoints, flow_settings.profiles, flow_settings.binding_key
             )
             resources.append(lambda: flow_worker.close(deadline_ms=1000))
+        from .directory_config import load_directory_configuration
+
+        directory_policies = load_directory_configuration(env, endpoints)
+        directory_worker = None
+        if directory_policies is not None:
+            from wso_api.tvt.device_service import DirectoryWorkerExecutor
+            from wso_core.tvt.directory_admission import DirectoryAdmission
+
+            directory_admission = DirectoryAdmission(
+                required(env, "WSO_WORKER_DATABASE_URL"), directory_policies, provider
+            )
+            resources.append(directory_admission.close)
+            directory_worker = DirectoryWorkerExecutor(directory_admission, endpoints)
+            resources.append(lambda: directory_worker.close(deadline_ms=1000))
         return AccountRpcServer(
             config,
             cast(AccountWorker, AccountWorkerExecutor(vault, endpoints)),
             dispose=dispose,
             flow_worker=flow_worker,
+            **(
+                {"directory_worker": directory_worker}
+                if directory_worker is not None
+                else {}
+            ),
         )
     except Exception:  # noqa: BLE001 - redact untrusted executor/config errors
         try:

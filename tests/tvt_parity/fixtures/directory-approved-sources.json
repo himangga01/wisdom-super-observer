@@ -1,0 +1,83 @@
+{
+  "source_family": "W07-protected-directory10-and-RPC9-Fix1",
+  "root_source_approval": true,
+  "parent_sha256": "a8c39baf215e3b8fea4b92e5df96c21bf1701b9edbb7d61f62e27860af2e5958",
+  "sources": {
+    "packages/contracts/src/wso_contracts/tvt/directory.py": {
+      "raw_sha256": "8f762a0993d7296bc6c6a0684bef0a9f3c31b9083bacf82cee8f39333cbb81c4",
+      "canonical_lf_sha256": "a933322dba71026b758a522b7f8264cb4157ca1dc36f8cbb7ce14c1ef4042aa3"
+    },
+    "infra/migrations/versions/0011_tvt_directory_read_tickets.py": {
+      "raw_sha256": "d9a7b30e8bf286602ef059a66c24f916ddf31fcb8075430c0c64dee12ac258e0",
+      "canonical_lf_sha256": "e6b2cdb4d7252a1fc15bc9bc47c0cb7a6119bed20742dbc978639890ce41ad1a"
+    },
+    "packages/core/src/wso_core/tvt/directory_admission.py": {
+      "raw_sha256": "08d10ba590d57fb71f35c790ae03fc24553ace65a623369434d295c911118abc",
+      "canonical_lf_sha256": "7abbff0aa2124434059ad5f5517c4374519b9c81b0b34b2c9da682255c9fadb2"
+    },
+    "services/api/src/wso_api/tvt/device_service.py": {
+      "raw_sha256": "56d029bfc0f99468ea4ce51a2fb8abf3fda99dcac045ecce0ae99a417175fcc1",
+      "canonical_lf_sha256": "cd2d81ee02be61adf7173e553d297dfd360dbb61c91c03006bf03474ee8ec9a7"
+    },
+    "tests/tvt_parity/test_directory_service.py": {
+      "raw_sha256": "15792a2ba91860578f7db75a9348c13495b415067dc38160e4a4d0834804f75b",
+      "canonical_lf_sha256": "f11c0623f151485a443299c11cb1b8da52d618fbb6e2cc9e7ecda54954734c2a"
+    },
+    "tests/integration/test_tvt_directory_admission.py": {
+      "raw_sha256": "fd378890d0ef7a68da9f0e8904fa515b7d8a34655bab6524a5004471e8cbb47c",
+      "canonical_lf_sha256": "13ac6f973c41f57ca3c320ff0f1012c76cc3c1ce0c0de3c777ac6849a76b0c5e"
+    },
+    "tests/integration/test_tenant_isolation.py": {
+      "raw_sha256": "eeec39dfdb91596e5b6f1b1acccfd09dd570e4788801d8c052c82ae5832b9173",
+      "canonical_lf_sha256": "9692d015e23d090ad7a82766b46dd38d2a8ca90137d4f1d7e5fa73989fde1870"
+    },
+    "tests/integration/test_tvt_account_flow_admission.py": {
+      "raw_sha256": "2631dd3040cbb0ff87c7af162ac0d6737c1feec08d951a9b5623ea3822bff6fd",
+      "canonical_lf_sha256": "2631dd3040cbb0ff87c7af162ac0d6737c1feec08d951a9b5623ea3822bff6fd"
+    },
+    "tests/contract/test_flow_fixture_portability.py": {
+      "raw_sha256": "1c3911ca4e62290d3b20c039f7c0b6f6e54367c0b53b6e98cf08756803d57333",
+      "canonical_lf_sha256": "1c3911ca4e62290d3b20c039f7c0b6f6e54367c0b53b6e98cf08756803d57333"
+    },
+    "docs/integrations/tvt-directory-service.md": {
+      "raw_sha256": "ea6c6999a4c25b7b9765df5c145341a9b28eb13ce8707c5fa20695328dc9907f",
+      "canonical_lf_sha256": "ace675f0cd3379c3ea5716d8c7866a3514a56863950ecfda498fa4074b9e940d"
+    },
+    "packages/contracts/proto/tvt_bridge.proto": {
+      "raw_sha256": "79912d203e1eebe40fba93ed64c941a34ba42227542f271fafdcdd8506695d38",
+      "canonical_lf_sha256": "316db10a78361efa88aa0a1bd52d1daee82daa8f6394331d7830d77314c947e1"
+    },
+    "services/tvt-bridge/src/wso_tvt_bridge/generated/tvt_bridge_pb2.py": {
+      "raw_sha256": "a696751a4a34fe2eddd5708f750f87042fa3b5ee17c53cf38b58c643262059ca",
+      "canonical_lf_sha256": "a696751a4a34fe2eddd5708f750f87042fa3b5ee17c53cf38b58c643262059ca"
+    },
+    "services/tvt-bridge/src/wso_tvt_bridge/generated/tvt_bridge_pb2_grpc.py": {
+      "raw_sha256": "d0819b81384e840b9c6889e78ddf682433d2518ba8dea024ec3ef8c52f4f25e4",
+      "canonical_lf_sha256": "d0819b81384e840b9c6889e78ddf682433d2518ba8dea024ec3ef8c52f4f25e4"
+    },
+    "services/tvt-bridge/src/wso_tvt_bridge/client.py": {
+      "raw_sha256": "50b5d1ab230faede8f83bc3b6c9ab0b46cbc31d7811db3b3abc88e0511c01647",
+      "canonical_lf_sha256": "f2551d51c45ed6c2eac164ee5604b7f4178b30be177cd4b3f019a530499e6b84"
+    },
+    "services/tvt-bridge/src/wso_tvt_bridge/server.py": {
+      "raw_sha256": "f32548f60a2ae0fd0354ae2d7123851d4251ad2c3dc6567a99d02faa8a956f9c",
+      "canonical_lf_sha256": "d48698b9c3827be7eb40c7f71bf8c333855c90aa0959dbd2286e133e1436322e"
+    },
+    "services/tvt-bridge/src/wso_tvt_bridge/selected.py": {
+      "raw_sha256": "0377a282f8099d0d0584df49b7b3974b6d30946943236c9959adb8c78ac5ca63",
+      "canonical_lf_sha256": "ec9197110948fe103d34b89a4af03bfeef59870d81f23ad90f7c4b0c9bf6c2ae"
+    },
+    "services/tvt-bridge/src/wso_tvt_bridge/directory_config.py": {
+      "raw_sha256": "14936bb3b1037c6f756897438b5707273669e7364393e60371b70b8a3d14e4de",
+      "canonical_lf_sha256": "14936bb3b1037c6f756897438b5707273669e7364393e60371b70b8a3d14e4de"
+    },
+    "tests/tvt_parity/test_directory_rpc.py": {
+      "raw_sha256": "d61439f293adfa059dad98e8b9150d2f4fa6df4a4a00d77de24a068519985ecc",
+      "canonical_lf_sha256": "15623c52624e27929e45eae81d96401cc5fb01ef6daf351022fe52cee9a7ab14"
+    },
+    "docs/integrations/tvt-directory-rpc.md": {
+      "raw_sha256": "0723ace7df49cade8fa1b2dfafb9fbefa734838c6de6d55b402c5c4c4864e56d",
+      "canonical_lf_sha256": "edd830caa029c9bf43f9a47a955b9c7fb033837681e21a7a3af8872292cc25e7"
+    }
+  }
+}

@@ -683,3 +683,290 @@ class FlowBridgeV1:
             timeout,
             metadata,
             _registered_method=True)
+
+
+class DirectoryBridgeV1Stub:
+    """Missing associated documentation comment in .proto file."""
+
+    def __init__(self, channel):
+        """Constructor.
+
+        Args:
+            channel: A grpc.Channel.
+        """
+        self.DeviceList = channel.unary_unary(
+                '/wso.tvt.account.v1.DirectoryBridgeV1/DeviceList',
+                request_serializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.DirectoryDeviceListRequest.SerializeToString,
+                response_deserializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.DirectoryReply.FromString,
+                _registered_method=True)
+        self.ChannelList = channel.unary_unary(
+                '/wso.tvt.account.v1.DirectoryBridgeV1/ChannelList',
+                request_serializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.DirectoryChannelListRequest.SerializeToString,
+                response_deserializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.DirectoryReply.FromString,
+                _registered_method=True)
+        self.DeviceDetail = channel.unary_unary(
+                '/wso.tvt.account.v1.DirectoryBridgeV1/DeviceDetail',
+                request_serializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.DirectoryDeviceDetailRequest.SerializeToString,
+                response_deserializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.DirectoryReply.FromString,
+                _registered_method=True)
+        self.ChannelDetail = channel.unary_unary(
+                '/wso.tvt.account.v1.DirectoryBridgeV1/ChannelDetail',
+                request_serializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.DirectoryChannelDetailRequest.SerializeToString,
+                response_deserializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.DirectoryReply.FromString,
+                _registered_method=True)
+        self.SentShares = channel.unary_unary(
+                '/wso.tvt.account.v1.DirectoryBridgeV1/SentShares',
+                request_serializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.DirectorySentSharesRequest.SerializeToString,
+                response_deserializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.DirectoryReply.FromString,
+                _registered_method=True)
+        self.ReceivedShares = channel.unary_unary(
+                '/wso.tvt.account.v1.DirectoryBridgeV1/ReceivedShares',
+                request_serializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.DirectoryReceivedSharesRequest.SerializeToString,
+                response_deserializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.DirectoryReply.FromString,
+                _registered_method=True)
+
+
+class DirectoryBridgeV1Servicer:
+    """Missing associated documentation comment in .proto file."""
+
+    def DeviceList(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ChannelList(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def DeviceDetail(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ChannelDetail(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def SentShares(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ReceivedShares(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+
+def add_DirectoryBridgeV1Servicer_to_server(servicer, server):
+    rpc_method_handlers = {
+            'DeviceList': grpc.unary_unary_rpc_method_handler(
+                    servicer.DeviceList,
+                    request_deserializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.DirectoryDeviceListRequest.FromString,
+                    response_serializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.DirectoryReply.SerializeToString,
+            ),
+            'ChannelList': grpc.unary_unary_rpc_method_handler(
+                    servicer.ChannelList,
+                    request_deserializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.DirectoryChannelListRequest.FromString,
+                    response_serializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.DirectoryReply.SerializeToString,
+            ),
+            'DeviceDetail': grpc.unary_unary_rpc_method_handler(
+                    servicer.DeviceDetail,
+                    request_deserializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.DirectoryDeviceDetailRequest.FromString,
+                    response_serializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.DirectoryReply.SerializeToString,
+            ),
+            'ChannelDetail': grpc.unary_unary_rpc_method_handler(
+                    servicer.ChannelDetail,
+                    request_deserializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.DirectoryChannelDetailRequest.FromString,
+                    response_serializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.DirectoryReply.SerializeToString,
+            ),
+            'SentShares': grpc.unary_unary_rpc_method_handler(
+                    servicer.SentShares,
+                    request_deserializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.DirectorySentSharesRequest.FromString,
+                    response_serializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.DirectoryReply.SerializeToString,
+            ),
+            'ReceivedShares': grpc.unary_unary_rpc_method_handler(
+                    servicer.ReceivedShares,
+                    request_deserializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.DirectoryReceivedSharesRequest.FromString,
+                    response_serializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.DirectoryReply.SerializeToString,
+            ),
+    }
+    generic_handler = grpc.method_handlers_generic_handler(
+            'wso.tvt.account.v1.DirectoryBridgeV1', rpc_method_handlers)
+    server.add_generic_rpc_handlers((generic_handler,))
+    server.add_registered_method_handlers('wso.tvt.account.v1.DirectoryBridgeV1', rpc_method_handlers)
+
+
+ # This class is part of an EXPERIMENTAL API.
+class DirectoryBridgeV1:
+    """Missing associated documentation comment in .proto file."""
+
+    @staticmethod
+    def DeviceList(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/wso.tvt.account.v1.DirectoryBridgeV1/DeviceList',
+            wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.DirectoryDeviceListRequest.SerializeToString,
+            wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.DirectoryReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ChannelList(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/wso.tvt.account.v1.DirectoryBridgeV1/ChannelList',
+            wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.DirectoryChannelListRequest.SerializeToString,
+            wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.DirectoryReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def DeviceDetail(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/wso.tvt.account.v1.DirectoryBridgeV1/DeviceDetail',
+            wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.DirectoryDeviceDetailRequest.SerializeToString,
+            wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.DirectoryReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ChannelDetail(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/wso.tvt.account.v1.DirectoryBridgeV1/ChannelDetail',
+            wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.DirectoryChannelDetailRequest.SerializeToString,
+            wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.DirectoryReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def SentShares(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/wso.tvt.account.v1.DirectoryBridgeV1/SentShares',
+            wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.DirectorySentSharesRequest.SerializeToString,
+            wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.DirectoryReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ReceivedShares(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/wso.tvt.account.v1.DirectoryBridgeV1/ReceivedShares',
+            wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.DirectoryReceivedSharesRequest.SerializeToString,
+            wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.DirectoryReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)

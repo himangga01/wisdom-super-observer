@@ -19,8 +19,8 @@ ROOT = Path(__file__).resolve().parents[2]
 PIN = "3a2fc52bb33a86058d5f13d36f6112986f1ef4117032c64cc268e2e88f61572e"
 SOURCE = ROOT / "tests/integration/test_tvt_account_flow_admission.py"
 
-# Independent canonical inputs copied from Root e216 offline0010 inventory.
-# Offline SQL (strict LF) SHA256: 5b0b4e165056d76d3e488164bdfe84a76fac09a17ec35ce315cbbd22f72cd19e
+# Root e216 offline0010 inventory plus only the directory0011 table.
+# Parent0010 offline SQL (strict LF) SHA256: 5b0b4e165056d76d3e488164bdfe84a76fac09a17ec35ce315cbbd22f72cd19e
 APPROVED_LINUX_TABLES = (
     "public.alembic_version",
     "public.assets",
@@ -73,6 +73,7 @@ APPROVED_LINUX_TABLES = (
     "wso_private.tvt_channels",
     "wso_private.tvt_device_links",
     "wso_private.tvt_device_store_links",
+    "wso_private.tvt_directory_tickets",
     "wso_private.tvt_flow_intents",
     "wso_private.tvt_flow_policies",
     "wso_private.tvt_flow_tickets",
@@ -137,8 +138,8 @@ class ReadOnlySource:
             "owner": "postgres",
             "revision": "0003a_assets"
             if platform == "win32"
-            else "0010_tvt_account_flows",
-            "count": 36 if platform == "win32" else 65,
+            else "0011_tvt_directory_read_tickets",
+            "count": 36 if platform == "win32" else 66,
         } | changes
         canonical = [tuple(name.split(".")) for name in APPROVED_LINUX_TABLES]
         self.tables = (
@@ -146,7 +147,7 @@ class ReadOnlySource:
             if platform == "win32"
             else canonical[: self.identity["count"]]
         )
-        if platform == "linux" and self.identity["count"] > 65:
+        if platform == "linux" and self.identity["count"] > 66:
             self.tables += [("public", "job_recovery_effects")]
         self.recovery = {
             "identity": ("wso_migrator", True, True, "r", "p", False, True, True),
@@ -268,7 +269,7 @@ def snapshot_helpers(platform, events, *, guard_error=False):
 
 
 @pytest.mark.parametrize(
-    "platform,count,name", [("win32", 36, "wso_test"), ("linux", 65, "wso_ci_test")]
+    "platform,count,name", [("win32", 36, "wso_test"), ("linux", 66, "wso_ci_test")]
 )
 def test_snapshot_validates_platform_source_and_keeps_all_owner_row_digests(
     platform, count, name
@@ -576,15 +577,15 @@ def test_real_linux_guard_refuses_container_owner_mismatch(tmp_path):
 
 
 @pytest.mark.parametrize(
-    "with_recovery", [False, True], ids=["canonical65", "known-recovery66"]
+    "with_recovery", [False, True], ids=["canonical66", "known-recovery67"]
 )
 def test_linux_accepts_exact_canonical_roster_and_validated_optional_fixture(
     with_recovery,
 ):
     events = []
-    source = ReadOnlySource("linux", events, count=66 if with_recovery else 65)
+    source = ReadOnlySource("linux", events, count=67 if with_recovery else 66)
     actual = snapshot_helpers("linux", events)["flow_source_snapshot"](source)
-    assert len(actual[2]) == (66 if with_recovery else 65)
+    assert len(actual[2]) == (67 if with_recovery else 66)
     assert actual[0] == ("wso_ci_test", 16385, "postgres")
     assert (
         any(event == ("recovery-read", "identity") for event in events) is with_recovery
@@ -635,7 +636,7 @@ def test_linux_refuses_any_noncanonical_roster_even_at_accepted_count(mutation):
 )
 def test_optional_recovery_identity_and_owner_acl_are_exact(field, index, value):
     events = []
-    source = ReadOnlySource("linux", events, count=66)
+    source = ReadOnlySource("linux", events, count=67)
     changed = list(source.recovery[field])
     changed[index] = value
     source.recovery[field] = tuple(changed)
@@ -676,7 +677,7 @@ def test_optional_recovery_identity_and_owner_acl_are_exact(field, index, value)
 )
 def test_optional_recovery_schema_policy_and_acl_mismatches_fail_closed(mutation):
     events = []
-    source = ReadOnlySource("linux", events, count=66)
+    source = ReadOnlySource("linux", events, count=67)
     if mutation.startswith("column-") or mutation == "nullable":
         position = {
             "column-name": 0,
@@ -748,7 +749,7 @@ def test_optional_recovery_schema_policy_and_acl_mismatches_fail_closed(mutation
 
 def test_optional_recovery_public_qualified_policy_is_accepted():
     events = []
-    source = ReadOnlySource("linux", events, count=66)
+    source = ReadOnlySource("linux", events, count=67)
     source.recovery["policies"] = [
         (
             "recovery_worker",
@@ -760,11 +761,19 @@ def test_optional_recovery_public_qualified_policy_is_accepted():
         )
     ]
     assert (
-        len(snapshot_helpers("linux", events)["flow_source_snapshot"](source)[2]) == 66
+        len(snapshot_helpers("linux", events)["flow_source_snapshot"](source)[2]) == 67
     )
 
 
 def test_linux_roster_is_bound_to_reviewed0010_source_bytes():
+    assert hashlib.sha256(
+        (
+            ROOT / "infra/migrations/versions/0011_tvt_directory_read_tickets.py"
+        ).read_bytes()
+    ).hexdigest() in {
+        "d9a7b30e8bf286602ef059a66c24f916ddf31fcb8075430c0c64dee12ac258e0",
+        "e6b2cdb4d7252a1fc15bc9bc47c0cb7a6119bed20742dbc978639890ce41ad1a",
+    }
     assert (
         hashlib.sha256(
             (ROOT / "infra/migrations/versions/0010_tvt_account_flows.py").read_bytes()
@@ -779,7 +788,7 @@ def test_linux_roster_is_bound_to_reviewed0010_source_bytes():
 @pytest.mark.parametrize("field,value", [("fk_match", "f"), ("check_noinherit", True)])
 def test_optional_recovery_constraint_match_and_inheritance_are_exact(field, value):
     events = []
-    source = ReadOnlySource("linux", events, count=66)
+    source = ReadOnlySource("linux", events, count=67)
     source.recovery[field] = value
     with pytest.raises((AssertionError, ValueError)):
         snapshot_helpers("linux", events)["flow_source_snapshot"](source)
@@ -876,7 +885,7 @@ def test_linux_catalog_rejects_nonordinary_table_objects_before_any_row_read(
 
 
 @pytest.mark.parametrize(
-    "recovery", [False, True], ids=["canonical65", "ordinary-recovery66"]
+    "recovery", [False, True], ids=["canonical66", "ordinary-recovery67"]
 )
 def test_linux_real_catalog_predicate_accepts_canonical_ordinary_inventory(recovery):
     events = []
@@ -888,7 +897,7 @@ def test_linux_real_catalog_predicate_accepts_canonical_ordinary_inventory(recov
         result = catalog_snapshot_helpers("linux", events)["flow_source_snapshot"](
             source
         )
-        assert len(result[2]) == (66 if recovery else 65)
+        assert len(result[2]) == (67 if recovery else 66)
         assert len(source.inventory_queries) == 1
         assert events.count("foundation-row-read") == 1
         assert (("recovery-read", "identity") in events) is recovery

@@ -7,7 +7,7 @@ import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from threading import Lock
-from typing import Any, Self, TypeVar
+from typing import Any, Self, TypeVar, cast
 
 import grpc
 from cryptography import x509
@@ -33,6 +33,16 @@ from wso_contracts.tvt.account_flows import (
     AccountRecoverySubmit,
     AccountRegistrationSubmit,
 )
+from wso_contracts.tvt.directory import (
+    ChannelDetailRequest,
+    ChannelListRequest,
+    DeviceDetailRequest,
+    DeviceListRequest,
+    DirectoryRequest,
+    DirectoryView,
+    ReceivedSharesRequest,
+    SentSharesRequest,
+)
 from wso_core.tvt.account_projection import AccountFailure
 
 from .callback_registry import CallbackRegistry
@@ -40,10 +50,14 @@ from .generated import tvt_bridge_pb2 as pb
 from .generated import tvt_bridge_pb2_grpc as rpc
 from .selected import (
     GRPC_OPTIONS,
+    MAX_DIRECTORY_FRAME_BYTES,
     MAX_FRAME_BYTES,
     PROTOCOL_VERSION,
     Budget,
+    decode_directory_public,
     decode_public,
+    directory_failure,
+    encode_directory_input,
     encode_input,
     endpoint,
     failure,
@@ -121,6 +135,7 @@ class AccountRpcClient:
         self._channel = grpc.secure_channel(target, credentials, options=GRPC_OPTIONS)
         self._stub = rpc.AccountBridgeV1Stub(self._channel)
         self._flow_stub = rpc.FlowBridgeV1Stub(self._channel)
+        self._directory_stub = rpc.DirectoryBridgeV1Stub(self._channel)
         self._close_lock = Lock()
         self._closed = False
 
@@ -136,8 +151,15 @@ class AccountRpcClient:
         body: BaseModel | None = None,
         body_field: str = "",
         flow: bool = False,
+        directory_method: str | None = None,
     ) -> T:
-        safe_failure = flow_failure if flow else failure
+        safe_failure = (
+            directory_failure if directory_method else flow_failure if flow else failure
+        )
+        if directory_method and (
+            type(deadline_ms) is not int or not 1 <= deadline_ms <= 10000
+        ):
+            raise failure("ACCOUNT_INPUT_INVALID")
         budget = Budget(deadline_ms)
         request = request_type(
             context=pb.RpcContext(
@@ -148,8 +170,14 @@ class AccountRpcClient:
             )
         )
         if body is not None:
-            setattr(request, body_field, encode_input(body))
-        validate_request(request)
+            setattr(
+                request,
+                body_field,
+                encode_directory_input(directory_method, cast(DirectoryRequest, body))
+                if directory_method
+                else encode_input(body),
+            )
+        validate_request(request, directory=directory_method is not None)
         slot = self._registry.admit(correlation_id)
         answer = None
         code = "ACCOUNT_UNAVAILABLE"
@@ -165,13 +193,22 @@ class AccountRpcClient:
             reply = pending.result()
             budget.remaining()
             reject_unknown(reply)
-            if reply.ByteSize() > MAX_FRAME_BYTES or bool(reply.failure_code) == bool(
-                reply.public_json
-            ):
+            if reply.ByteSize() > (
+                MAX_DIRECTORY_FRAME_BYTES if directory_method else MAX_FRAME_BYTES
+            ) or bool(reply.failure_code) == bool(reply.public_json):
                 raise failure("ACCOUNT_PROTOCOL_INVALID")
             if reply.failure_code:
                 raise safe_failure(reply.failure_code)
-            answer = decode_public(reply.public_json, model)
+            answer = (
+                cast(
+                    T,
+                    decode_directory_public(
+                        reply.public_json, cast(DirectoryRequest, body), correlation_id
+                    ),
+                )
+                if directory_method
+                else decode_public(reply.public_json, model)
+            )
             if getattr(answer, "request_id", None) != correlation_id:
                 raise failure("ACCOUNT_PROTOCOL_INVALID")
             if (
@@ -470,6 +507,126 @@ class AccountRpcClient:
             body=body,
             body_field="private_json",
             flow=True,
+        )
+
+    def directory_device_list(
+        self,
+        ticket: str,
+        body: DeviceListRequest,
+        *,
+        deadline_ms: int,
+        correlation_id: str,
+    ) -> DirectoryView:
+        return self._call(
+            self._directory_stub.DeviceList,
+            pb.DirectoryDeviceListRequest,
+            ticket,
+            deadline_ms,
+            correlation_id,
+            DirectoryView,
+            body=body,
+            body_field="query_json",
+            directory_method="device_list",
+        )
+
+    def directory_channel_list(
+        self,
+        ticket: str,
+        body: ChannelListRequest,
+        *,
+        deadline_ms: int,
+        correlation_id: str,
+    ) -> DirectoryView:
+        return self._call(
+            self._directory_stub.ChannelList,
+            pb.DirectoryChannelListRequest,
+            ticket,
+            deadline_ms,
+            correlation_id,
+            DirectoryView,
+            body=body,
+            body_field="query_json",
+            directory_method="channel_list",
+        )
+
+    def directory_device_detail(
+        self,
+        ticket: str,
+        body: DeviceDetailRequest,
+        *,
+        deadline_ms: int,
+        correlation_id: str,
+    ) -> DirectoryView:
+        return self._call(
+            self._directory_stub.DeviceDetail,
+            pb.DirectoryDeviceDetailRequest,
+            ticket,
+            deadline_ms,
+            correlation_id,
+            DirectoryView,
+            body=body,
+            body_field="query_json",
+            directory_method="device_detail",
+        )
+
+    def directory_channel_detail(
+        self,
+        ticket: str,
+        body: ChannelDetailRequest,
+        *,
+        deadline_ms: int,
+        correlation_id: str,
+    ) -> DirectoryView:
+        return self._call(
+            self._directory_stub.ChannelDetail,
+            pb.DirectoryChannelDetailRequest,
+            ticket,
+            deadline_ms,
+            correlation_id,
+            DirectoryView,
+            body=body,
+            body_field="query_json",
+            directory_method="channel_detail",
+        )
+
+    def directory_sent_shares(
+        self,
+        ticket: str,
+        body: SentSharesRequest,
+        *,
+        deadline_ms: int,
+        correlation_id: str,
+    ) -> DirectoryView:
+        return self._call(
+            self._directory_stub.SentShares,
+            pb.DirectorySentSharesRequest,
+            ticket,
+            deadline_ms,
+            correlation_id,
+            DirectoryView,
+            body=body,
+            body_field="query_json",
+            directory_method="sent_shares",
+        )
+
+    def directory_received_shares(
+        self,
+        ticket: str,
+        body: ReceivedSharesRequest,
+        *,
+        deadline_ms: int,
+        correlation_id: str,
+    ) -> DirectoryView:
+        return self._call(
+            self._directory_stub.ReceivedShares,
+            pb.DirectoryReceivedSharesRequest,
+            ticket,
+            deadline_ms,
+            correlation_id,
+            DirectoryView,
+            body=body,
+            body_field="query_json",
+            directory_method="received_shares",
         )
 
     def close(self) -> None:

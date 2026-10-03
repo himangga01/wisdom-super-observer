@@ -519,9 +519,9 @@ def coordinate():
     EVIDENCE.mkdir(parents=True, exist_ok=True)
     sources = source_snapshot()
     for source, expected in {
-        "tests/integration/test_tvt_account_rpc.py": "66645e9aec541012b2553a8918b7b3475f51ffb219f8814ae0e1abfc8907d895",
+        "tests/integration/test_tvt_account_rpc.py": "e6acb9b4bf862b722a60ee96e1ca93cbf5e6f08e0e6e779bbeacb8acca34b0df",
         "tests/tvt_parity/test_bridge_mtls.py": "c28624e5dcbc871a0fc76126cd5bd1d9dfeb04087c9281c05fd3e95ddeb8aeb5",
-        "services/api/src/wso_api/main.py": "831b6897698be41187888da8c1bbbde6a96865125dd0a4f56b71903520ee3410",
+        "services/api/src/wso_api/main.py": "3a4f030701e8a032718ae85b029b38bec2e4c13a805ce84d11a49ba8a10c76c3",
         "infra/migrations/versions/0007_tvt_account_sessions.py": "fb8af73ebd92986efb2eb448db105cb755f2d77da301d2ba70ff39fbf2059608",
     }.items():
         if sources.get(source, {}).get("canonical_lf_sha256") != expected:

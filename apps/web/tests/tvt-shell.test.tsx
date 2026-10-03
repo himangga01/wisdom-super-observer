@@ -6,7 +6,9 @@ import { renderToString } from "react-dom/server";
 import { QueryClient } from "@tanstack/react-query";
 import { ServiceShell } from "../src/components/service-shell";
 import { TvtShell } from "../src/features/tvt/shell/TvtShell";
-import { startupClient, type Bootstrap } from "../src/lib/tvt/api-client";
+import { publicBootstrap, startupClient, type Bootstrap } from "../src/lib/tvt/api-client";
+import { allowedLocalPath } from "../src/features/tvt/shell/DeepLinkResolver";
+import { FeatureMenu } from "../src/features/tvt/shell/FeatureMenu";
 import { startupKey } from "../src/lib/tvt/query-provider";
 const tenant = "10000000-0000-4000-8000-000000000001";
 const otherTenant = "10000000-0000-4000-8000-000000000002";
@@ -176,4 +178,100 @@ it("rejects mismatched account menu labels and duplicate registrations", async (
     vi.stubGlobal("fetch", async () => json({ ...base, menu })); const view = mount("/tvt/account");
     expect(await screen.findByRole("alert")).toHaveTextContent("서비스 정보를 불러올 수 없습니다"); view.unmount();
   }
+});
+
+const devicesEntry = { id: "local-devices", label: "Devices", path: "/tvt/devices" } as const;
+const linkedDevices = () => ({ ...base, consent: { ...base.consent, status: "accepted" as const, decided_at: "2026-10-03T00:00:00Z" }, identity: { state: "linked" as const, accounts: [{ id: otherTenant, brand: "SuperLivePlus", region: "KR" }] }, menu: [...base.menu, { id: "local-account", label: "Account", path: "/tvt/account" } as const, devicesEntry] });
+it("parses the exact third registration and preserves all previous menu tuples", () => {
+  const result = publicBootstrap(linkedDevices(), tenant);
+  expect(result.menu.map(item => item.path)).toEqual(["/tvt/settings", "/tvt/account", "/tvt/devices"]);
+  expect(allowedLocalPath("/tvt/devices", result)).toBe(true);
+  expect(allowedLocalPath("/tvt/settings", result)).toBe(true);
+  expect(allowedLocalPath("/tvt/account", result)).toBe(true);
+});
+it("rejects every cross-paired devices tuple, duplicates, excess and unknown paths", () => {
+  for (const id of ["local-settings", "local-account", "local-devices"]) for (const label of ["Settings", "Account", "Devices"]) for (const path of ["/tvt/settings", "/tvt/account", "/tvt/devices"]) {
+    const valid = (id === "local-settings" && label === "Settings" && path === "/tvt/settings") || (id === "local-account" && label === "Account" && path === "/tvt/account") || (id === "local-devices" && label === "Devices" && path === "/tvt/devices");
+    if (!valid) expect(() => publicBootstrap({ ...base, menu: [{ id, label, path }] }, tenant)).toThrow();
+  }
+  for (const menu of [[devicesEntry, devicesEntry], [...linkedDevices().menu, devicesEntry], [{ ...devicesEntry, path: "/tvt/devices/" }], [{ ...devicesEntry, path: "/tvt/devices?enabled=true" }]]) expect(() => publicBootstrap({ ...base, menu }, tenant)).toThrow();
+});
+it("requires all three tuple members at the navigation and deep-link boundaries", () => {
+  for (const changed of [{ id: "local-account" }, { label: "Account" }, { path: "/tvt/devices/" }]) {
+    const bootstrap = { ...base, menu: [{ ...devicesEntry, ...changed }] } as unknown as Bootstrap;
+    expect(allowedLocalPath("/tvt/devices", bootstrap)).toBe(false);
+    const view = render(<FeatureMenu bootstrap={bootstrap} path="/tvt/devices" />);
+    expect(screen.queryByRole("link", { name: "장치" })).toBeNull(); view.unmount();
+  }
+});
+it("composes the real directory with current tenant, linked identity, CSRF and authoritative requery", async () => {
+  const requests: Request[] = []; let revoked = false;
+  vi.stubGlobal("fetch", async (request: Request) => {
+    requests.push(request);
+    if (new URL(request.url).pathname.includes("/directory/")) { revoked = true; return new Response(JSON.stringify({ error: { code: "unauthenticated", message: "private" }, request_id: "nav-test-1" }), { status: 401, headers: { "Content-Type": "application/json", "X-Request-ID": "nav-test-1" } }); }
+    return revoked ? json({}, 401) : json(linkedDevices());
+  });
+  mount("/tvt/devices");
+  expect(await screen.findByRole("link", { name: "장치" })).toHaveAttribute("href", `/tvt/devices?tenant_id=${tenant}`);
+  expect(screen.getByRole("link", { name: "장치" })).toHaveAttribute("aria-current", "page");
+  expect(screen.getByRole("region", { name: "TVT 기기 디렉터리" })).toBeVisible();
+  expect(requests).toHaveLength(1);
+  fireEvent.change(screen.getByLabelText("연결된 TVT 계정"), { target: { value: otherTenant } });
+  expect(requests).toHaveLength(1);
+  fireEvent.click(screen.getByRole("button", { name: "기기 목록 조회" }));
+  await screen.findByRole("link", { name: "웹 다시 로그인" });
+  const directory = requests[1];
+  expect(new URL(directory.url).pathname).toBe("/api/tvt/directory/device-list");
+  expect(new URL(directory.url).searchParams.get("tenant_id")).toBe(tenant);
+  expect(directory.headers.get("x-csrf-token")).toBe("local-test-csrf");
+  expect(await directory.clone().json()).toEqual({ method: "device_list", identity_id: otherTenant, brand: "SuperLivePlus", region: "KR", page_num: 0, page_size: 1000 });
+  fireEvent.click(screen.getByRole("button", { name: "현재 계정 다시 확인" }));
+  await screen.findByRole("link", { name: "다시 로그인" });
+  expect(screen.queryByRole("region", { name: "TVT 기기 디렉터리" })).toBeNull();
+  expect(requests.map(request => new URL(request.url).pathname)).toEqual(["/api/tvt/bootstrap", "/api/tvt/directory/device-list", "/api/tvt/bootstrap"]);
+});
+it.each(["/tvt/devices", "/tvt/devices/", "/tvt/devices?enabled=true"])("denies unauthorized devices deep link %s with zero directory reads", async path => {
+  const requests: Request[] = [];
+  vi.stubGlobal("fetch", async (request: Request) => { requests.push(request); return json({ ...linkedDevices(), menu: base.menu }); });
+  mount(path);
+  expect(await screen.findByRole("alert")).toHaveTextContent("이 페이지를 사용할 수 없습니다");
+  expect(screen.queryByRole("link", { name: "장치" })).toBeNull();
+  expect(screen.queryByRole("region", { name: "TVT 기기 디렉터리" })).toBeNull();
+  expect(requests.map(request => new URL(request.url).pathname)).toEqual(["/api/tvt/bootstrap"]);
+});
+it.each(["pending", "declined", "unlinked"])("does no directory reads when registered but %s", async state => {
+  const current = linkedDevices();
+  const bootstrap = state === "unlinked" ? { ...current, identity: base.identity } : { ...current, consent: { ...current.consent, status: state, decided_at: state === "pending" ? null : current.consent.decided_at } };
+  const requests: Request[] = [];
+  vi.stubGlobal("fetch", async (request: Request) => { requests.push(request); return json(bootstrap); });
+  mount("/tvt/devices"); await screen.findByRole("link", { name: "장치" });
+  expect(screen.queryByRole("button", { name: "기기 목록 조회" })).toBeNull();
+  expect(requests.map(request => new URL(request.url).pathname)).toEqual(["/api/tvt/bootstrap"]);
+});
+it("unmounts the directory on user scope change and uses the new user bootstrap", async () => {
+  const requests: Request[] = []; const cache = vi.spyOn(QueryClient.prototype, "getQueryCache");
+  vi.stubGlobal("fetch", async (request: Request) => { requests.push(request); return json(linkedDevices()); });
+  const view = mount("/tvt/devices"); await screen.findByLabelText("연결된 TVT 계정");
+  fireEvent.change(screen.getByLabelText("연결된 TVT 계정"), { target: { value: otherTenant } });
+  expect(screen.getByRole("button", { name: "기기 목록 조회" })).toBeVisible();
+  view.rerender(<TvtShell userId="new-user" tenantId={tenant} csrf="new-csrf" path="/tvt/devices" />);
+  await screen.findByLabelText("연결된 TVT 계정");
+  expect(screen.getByLabelText("연결된 TVT 계정")).toHaveValue("");
+  expect(screen.queryByRole("button", { name: "기기 목록 조회" })).toBeNull();
+  const clients = [...new Set(cache.mock.instances)] as QueryClient[];
+  expect(clients.some(client => client.getQueryData(startupKey({ userId: "new-user", tenantId: tenant })) !== undefined)).toBe(true);
+  expect(requests.map(request => new URL(request.url).pathname)).toEqual(["/api/tvt/bootstrap", "/api/tvt/bootstrap"]);
+});
+it("cannot enable devices through vendor flags or while user and tenant are unavailable", async () => {
+  const requests: Request[] = [];
+  vi.stubGlobal("fetch", async (request: Request) => { requests.push(request); return json({ ...linkedDevices(), menu: [], tyco_enabled: true, devices_enabled: true }); });
+  const view = render(<TvtShell path="/tvt/devices" />);
+  expect(screen.getByRole("link", { name: "로그인" })).toBeVisible();
+  view.rerender(<TvtShell userId="local-test-user" path="/tvt/devices" />);
+  expect(screen.getByRole("link", { name: "내 매장으로 이동" })).toBeVisible();
+  expect(requests).toHaveLength(0);
+  view.rerender(<TvtShell userId="local-test-user" tenantId={tenant} path="/tvt/devices" />);
+  expect(await screen.findByRole("alert")).toHaveTextContent("이 페이지를 사용할 수 없습니다");
+  expect(screen.queryByRole("link", { name: "장치" })).toBeNull();
+  expect(requests.map(request => new URL(request.url).pathname)).toEqual(["/api/tvt/bootstrap"]);
 });

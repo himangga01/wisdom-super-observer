@@ -257,6 +257,111 @@ def test_anonymous_invalid_input_is_still_signed_out():
         )
 
 
+def test_devices_registered_tuple_is_closed_and_all_three_are_bounded():
+    from wso_contracts.tvt.startup import StartupMenuEntry
+
+    entries = [
+        {"id": "local-settings", "label": "Settings", "path": "/tvt/settings"},
+        {"id": "local-account", "label": "Account", "path": "/tvt/account"},
+        {"id": "local-devices", "label": "Devices", "path": "/tvt/devices"},
+    ]
+    for entry in entries:
+        assert StartupMenuEntry.model_validate(entry).model_dump() == entry
+    for identifier in ("local-settings", "local-account", "local-devices"):
+        for label in ("Settings", "Account", "Devices"):
+            for path in ("/tvt/settings", "/tvt/account", "/tvt/devices"):
+                candidate = {"id": identifier, "label": label, "path": path}
+                if candidate in entries:
+                    continue
+                with pytest.raises(ValidationError):
+                    StartupMenuEntry.model_validate(candidate)
+    with pytest.raises(ValidationError):
+        StartupMenuEntry.model_validate({**entries[2], "enabled": True})
+    with pytest.raises(ValidationError):
+        StartupMenuEntry.model_validate({**entries[2], "path": "/tvt/devices/"})
+
+
+@pytest.mark.parametrize(
+    "routes", [[], ["/tvt/settings"], ["/tvt/settings", "/tvt/account", "/tvt/devices"]]
+)
+def test_http_bootstrap_devices_menu_comes_only_from_trusted_profile(
+    monkeypatch, routes
+):
+    from contextlib import contextmanager
+
+    from wso_contracts.tvt.startup import StartupBootstrap, StartupIdentity
+    from wso_core.tvt.startup import StartupProfile, StartupRepository
+
+    from tests.integration.test_tvt_startup import profile_data
+
+    profile = StartupProfile.model_validate({**profile_data(), "local_routes": routes})
+    tenant = uuid4()
+    boundary = import_module("wso_api.tvt.startup")
+
+    # Replace only protected SQL execution; real session and public serialization remain.
+    class Rows:
+        def __init__(self, values):
+            self.values = values
+
+        def mappings(self):
+            return self
+
+        def one_or_none(self):
+            return self.values[0]
+
+        def __iter__(self):
+            return iter(self.values)
+
+    class Session:
+        def execute(self, statement, params=None):
+            if "startup_read" in str(statement):
+                return Rows(
+                    [
+                        {
+                            "locale": "en",
+                            "timezone": "UTC",
+                            "status": None,
+                            "decided_at": None,
+                        }
+                    ]
+                )
+            return Rows([])
+
+    @contextmanager
+    def repository(request, tenant_id, service, principal):
+        yield StartupRepository(Session(), profile)
+
+    monkeypatch.setattr(boundary, "repository", repository)
+    with client() as api:
+        api.cookies.set("__Host-wso-session", "valid")
+        response = api.get(
+            "/api/v1/tvt/bootstrap",
+            params={"tenant_id": str(tenant), "devices_enabled": "true"},
+        )
+        assert response.status_code == 200
+        result = StartupBootstrap.model_validate(response.json())
+        assert result.selected_tenant_id == tenant
+        assert result.identity == StartupIdentity(state="unlinked", accounts=[])
+        assert [entry.path for entry in result.menu] == routes
+        devices = {"id": "local-devices", "label": "Devices", "path": "/tvt/devices"}
+        with pytest.raises(ValidationError) as duplicate:
+            StartupBootstrap.model_validate(
+                {**response.json(), "menu": [devices, devices]}
+            )
+        assert duplicate.value.errors()[0]["type"] == "value_error"
+        with pytest.raises(ValidationError) as excess:
+            StartupBootstrap.model_validate({**response.json(), "menu": [devices] * 4})
+        assert excess.value.errors()[0]["type"] == "too_long"
+        for invalid in (
+            [*response.json()["menu"], *response.json()["menu"]],
+            [{"id": "local-devices", "label": "Account", "path": "/tvt/devices"}],
+        ):
+            if not invalid:
+                continue
+            with pytest.raises(ValidationError):
+                StartupBootstrap.model_validate({**response.json(), "menu": invalid})
+
+
 @pytest.mark.parametrize("method,path", [("post", "consent"), ("put", "preferences")])
 @pytest.mark.parametrize(
     "cookie,status,code",

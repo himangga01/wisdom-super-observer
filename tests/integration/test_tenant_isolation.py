@@ -682,6 +682,7 @@ PRIVATE_TABLE_OWNERS = {
             "tvt_flow_tickets",
             "tvt_flow_intents",
             "tvt_flow_policies",
+            "tvt_directory_tickets",
         ),
         "wso_account_owner",
     ),

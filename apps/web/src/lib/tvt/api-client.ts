@@ -30,7 +30,8 @@ const bootstrapSchema = z.object({
   menu: z.array(z.union([
     z.object({ id: z.literal("local-settings"), label: z.literal("Settings"), path: z.literal("/tvt/settings") }),
     z.object({ id: z.literal("local-account"), label: z.literal("Account"), path: z.literal("/tvt/account") }),
-  ])).max(2).refine(value => new Set(value.map(entry => entry.id)).size === value.length),
+    z.object({ id: z.literal("local-devices"), label: z.literal("Devices"), path: z.literal("/tvt/devices") }),
+  ])).max(3).refine(value => new Set(value.map(entry => entry.id)).size === value.length),
 }).refine(value => value.supported_locales.includes(value.locale));
 export function publicBootstrap(value: unknown, tenant: string): Bootstrap {
   const result = bootstrapSchema.parse(value);

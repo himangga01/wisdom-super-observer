@@ -50,3 +50,20 @@ service FlowBridgeV1 {
   rpc Recover(FlowRecoverRequest) returns (FlowReply);
   rpc Cancel(FlowCancelRequest) returns (FlowReply);
 }
+
+// Private closed selectors, with authority retained in SQL RpcContext reservations.
+message DirectoryDeviceListRequest { RpcContext context = 1; bytes query_json = 2; }
+message DirectoryChannelListRequest { RpcContext context = 1; bytes query_json = 2; }
+message DirectoryDeviceDetailRequest { RpcContext context = 1; bytes query_json = 2; }
+message DirectoryChannelDetailRequest { RpcContext context = 1; bytes query_json = 2; }
+message DirectorySentSharesRequest { RpcContext context = 1; bytes query_json = 2; }
+message DirectoryReceivedSharesRequest { RpcContext context = 1; bytes query_json = 2; }
+message DirectoryReply { bytes public_json = 1; string failure_code = 2; }
+service DirectoryBridgeV1 {
+  rpc DeviceList(DirectoryDeviceListRequest) returns (DirectoryReply);
+  rpc ChannelList(DirectoryChannelListRequest) returns (DirectoryReply);
+  rpc DeviceDetail(DirectoryDeviceDetailRequest) returns (DirectoryReply);
+  rpc ChannelDetail(DirectoryChannelDetailRequest) returns (DirectoryReply);
+  rpc SentShares(DirectorySentSharesRequest) returns (DirectoryReply);
+  rpc ReceivedShares(DirectoryReceivedSharesRequest) returns (DirectoryReply);
+}

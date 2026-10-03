@@ -412,3 +412,153 @@ def test_config_requires_explicit_single_viewport_without_silent_skips():
         else:
             assert result.returncode == 0, result.stderr
             assert result.stdout.strip() == viewport
+
+
+@pytest.fixture
+def current_source_guard():
+    """Execute coordinate's literal guard alone, without its service imports."""
+    import ast
+
+    tree = ast.parse(RUNTIME.read_text(encoding="utf-8"))
+    coordinate = next(
+        node for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "coordinate"
+    )
+    guard = next(
+        node for node in coordinate.body
+        if isinstance(node, ast.For)
+        and ast.unparse(node.target) == "(source, expected)"
+    )
+    code = compile(ast.Module(body=[guard], type_ignores=[]), str(RUNTIME), "exec")
+
+    def check(sources):
+        exec(code, {"sources": sources})  # noqa: S102 - isolated real source guard
+
+    return check
+
+
+@pytest.fixture
+def approved_source_snapshot():
+    # Independent root-approved identities. Never accept a hash computed from
+    # arbitrary live source or from the guard's own dictionary.
+    return {
+        "tests/integration/test_tvt_account_rpc.py": {
+            "canonical_lf_sha256": "e6acb9b4bf862b722a60ee96e1ca93cbf5e6f08e0e6e779bbeacb8acca34b0df"
+        },
+        "tests/tvt_parity/test_bridge_mtls.py": {
+            "canonical_lf_sha256": "c28624e5dcbc871a0fc76126cd5bd1d9dfeb04087c9281c05fd3e95ddeb8aeb5"
+        },
+        "services/api/src/wso_api/main.py": {
+            "canonical_lf_sha256": "3a4f030701e8a032718ae85b029b38bec2e4c13a805ce84d11a49ba8a10c76c3"
+        },
+        "infra/migrations/versions/0007_tvt_account_sessions.py": {
+            "canonical_lf_sha256": "fb8af73ebd92986efb2eb448db105cb755f2d77da301d2ba70ff39fbf2059608"
+        },
+    }
+
+
+@pytest.fixture
+def approved_current_sources(approved_source_snapshot):
+    import hashlib
+
+    result = {}
+    for source in (
+        "tests/integration/test_tvt_account_rpc.py",
+        "services/api/src/wso_api/main.py",
+    ):
+        canonical = (ROOT / source).read_bytes().replace(b"\r\n", b"\n")
+        assert b"\r" not in canonical
+        assert (
+            hashlib.sha256(canonical).hexdigest()
+            == approved_source_snapshot[source]["canonical_lf_sha256"]
+        ), "live source differs from independently approved input"
+        result[source] = canonical
+    return result
+
+
+@pytest.mark.parametrize("source", [
+    "tests/integration/test_tvt_account_rpc.py",
+    "services/api/src/wso_api/main.py",
+])
+@pytest.mark.parametrize("eol", [b"\n", b"\r\n"], ids=["LF", "CRLF"])
+def test_current_approved_source_reaches_guard_without_runtime_start(
+    runtime, current_source_guard, approved_source_snapshot,
+    approved_current_sources, source, eol,
+):
+    raw = approved_current_sources[source].replace(b"\n", eol)
+    approved_source_snapshot[source] = {
+        "canonical_lf_sha256": runtime.canonical_digest(raw)
+    }
+    current_source_guard(approved_source_snapshot)
+
+
+@pytest.mark.parametrize("source,stale", [
+    ("tests/integration/test_tvt_account_rpc.py", "66645e9aec541012b2553a8918b7b3475f51ffb219f8814ae0e1abfc8907d895"),
+    ("services/api/src/wso_api/main.py", "831b6897698be41187888da8c1bbbde6a96865125dd0a4f56b71903520ee3410"),
+])
+def test_source_guard_rejects_historical_identity(
+    current_source_guard, approved_source_snapshot, source, stale,
+):
+    approved_source_snapshot[source] = {"canonical_lf_sha256": stale}
+    with pytest.raises(ValueError, match="accepted runtime source guard mismatch"):
+        current_source_guard(approved_source_snapshot)
+
+
+@pytest.mark.parametrize("source", [
+    "tests/integration/test_tvt_account_rpc.py",
+    "services/api/src/wso_api/main.py",
+])
+@pytest.mark.parametrize("change", ["byte", "newline", "arbitrary"])
+def test_source_guard_rejects_drift_instead_of_accepting_live_computed_hash(
+    runtime, current_source_guard, approved_source_snapshot,
+    approved_current_sources, source, change,
+):
+    canonical = approved_current_sources[source]
+    changed = {
+        "byte": bytes([canonical[0] ^ 1]) + canonical[1:],
+        "newline": canonical + b"\n",
+        "arbitrary": b"arbitrary current source\n",
+    }[change]
+    approved_source_snapshot[source] = {
+        "canonical_lf_sha256": runtime.canonical_digest(changed)
+    }
+    with pytest.raises(ValueError, match="accepted runtime source guard mismatch"):
+        current_source_guard(approved_source_snapshot)
+
+
+@pytest.mark.parametrize("source", [
+    "tests/integration/test_tvt_account_rpc.py",
+    "services/api/src/wso_api/main.py",
+])
+@pytest.mark.parametrize("ending", [b"\r", b"\r\n\r"])
+def test_current_source_rejects_malformed_residual_carriage_return(
+    runtime, approved_current_sources, source, ending,
+):
+    with pytest.raises(ValueError, match="unapproved source line ending"):
+        runtime.canonical_digest(approved_current_sources[source] + ending)
+
+
+@pytest.mark.parametrize("source", [
+    "tests/integration/test_tvt_account_rpc.py",
+    "services/api/src/wso_api/main.py",
+])
+def test_current_source_normalizes_ordinary_mixed_lf_crlf_per_r75(
+    runtime, current_source_guard, approved_source_snapshot,
+    approved_current_sources, source,
+):
+    mixed = approved_current_sources[source].replace(b"\n", b"\r\n", 1)
+    approved_source_snapshot[source] = {
+        "canonical_lf_sha256": runtime.canonical_digest(mixed)
+    }
+    current_source_guard(approved_source_snapshot)
+
+
+@pytest.mark.parametrize("windows", [False, True], ids=["LF-with-CRLF", "CRLF-with-LF"])
+def test_exact_migration_variants_reject_mixed_raw_eol(runtime, windows):
+    canonical = (ROOT / "infra/migrations/versions/0007_tvt_account_sessions.py").read_bytes().replace(b"\r\n", b"\n")
+    mixed = (
+        canonical.replace(b"\n", b"\r\n").replace(b"\r\n", b"\n", 1)
+        if windows else canonical.replace(b"\n", b"\r\n", 1)
+    )
+    with pytest.raises(ValueError, match="unapproved migration source"):
+        runtime.approved_migration_digest(mixed)
