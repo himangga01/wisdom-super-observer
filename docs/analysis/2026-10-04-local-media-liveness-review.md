@@ -343,6 +343,46 @@ Because 0013, the worker and the player changed after the device runs, the next
 device run needs a new source approval; the device evidence in section 6 was
 recorded on the pre-fix revisions.
 
+## 6b. Live wall page (`/monitoring`) review — 2026-10-05
+
+Task D1 implemented the designed "통합 관제" wall: OWNER-only server page
+mirroring the connections page, store-grouped tile grid from saved inventories,
+`object-fill` 16:9 tiles, focus mode with fill/original toggle and filmstrip,
+and a pure capacity-aware scheduler (`LIVE_WALL_CONCURRENCY = 2`, sequential
+starts, 15 s start deadline, promote on stop/fail, focus preemption, one retry
+after 2 s). Task review C0/I1/M5: the Important finding (next tile started
+before the previous stop settled, risking 429) and three minors were fixed in
+one round. Result of the scoped re-review — live wall review: C0/I0 (all
+findings addressed; the reviewer's harness on the real runtime passed 28/28
+and a 102,480-pair order fuzz found no violations). Web suite 409/409 with the
+wall tests. Residual: a start abandoned mid-request leaves its backend session
+to the 30 s TTL. Real-device multi-tile behaviour is verified separately below.
+
+**Live wall on the real recorders (2026-10-05).** Run
+`local-devices-18396d26ff13422898ac2656403d4b55` (approval c4, 99 sources) showed
+the wall rendering all 12 tiles without autoplay, but 전체 재생 started a dead
+channel first (1호점 1번: opens, never sends video); while that session retired
+the native provider answered every new start with HTTP 429, and the scheduler
+burned all queued tiles and retries within ~3 s. A later single retry played
+normally and every lease closed with confirmed cleanup. Ruling R118 (Task D2):
+exponential cool-down after failed starts (3→6→12→15 s, reset on live), 429
+re-queues without consuming the retry, and a read-only `failureStatus` on the
+player. Result of the D2 re-review — live wall backoff review: C0/I0 (all ruling
+items met; scheduler fuzz 0 violations). Web suite 415/415.
+
+**Live wall re-check (2026-10-05).** Run
+`local-devices-7950aac762b1419f9c579b83c46949a6` (approval c5, 99 sources): the
+cascade is gone — tiles fail one at a time with cool-downs while working
+channels go live (1호점 2번 played 1280×1936 with `object-fill`). Two store-1
+channels (1번, 3번) open but never send video; the server answers their start
+after ~13 s with HTTP 429, and the web proxy forwards only the status with a
+generic `LOCAL_DEVICE_UNAVAILABLE` code, so the wall cannot tell "no video"
+from "busy" and spends slot time re-trying them. Every lease closed with
+confirmed cleanup; shutdown clean; sources unchanged. Ruling R119: commit the
+reviewed wall; a distinct "no signal" error code end-to-end (and forwarding the
+upstream code through the proxy) joins the multi-view backend plan together
+with the 2-stream ceiling.
+
 ## 7. Verification limits
 
 No device, browser or network was used for the reviews. Scratch latencies in

@@ -48,3 +48,15 @@ and uses **sub streams in every split** (`cw3.jb`, `cw3.kb` command 1285,
 
 Until Phase 4, the wall plays up to the current backend limit (2 streams) and
 queues the rest with visible "재생 대기" tiles; the focused tile gets priority.
+
+## Added from the real-device wall runs (2026-10-05)
+
+- Store-1 channels 1 and 3 open but never send video. The server answers their
+  start after ~13 s with HTTP 429, and the web proxy forwards only the status
+  with a generic `LOCAL_DEVICE_UNAVAILABLE` code. Phase 1 should introduce a
+  distinct "no signal" outcome end-to-end (native → executor → API → proxy →
+  player) with a short first-frame bound, so the wall can show "영상 신호 없음"
+  without retrying, and the proxy should forward the upstream error code.
+- After a failed start the native provider refuses new live starts for a few
+  seconds while the failed session retires (`ProviderBusy` → 429). Phase 4's
+  queueing should replace that refusal with a bounded wait.

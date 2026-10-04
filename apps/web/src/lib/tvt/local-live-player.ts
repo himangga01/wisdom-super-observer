@@ -6,15 +6,17 @@ export class LocalLivePlayer{
   private abort=new AbortController();private peer:RTCPeerConnection|null=null;private lease:string|null=null;
   private ended=false;private started=false;private heartbeat:ReturnType<typeof setInterval>|null=null;
   private renewing=false;private misses=0;private closing:Promise<void>|null=null;
-  private received=false;private reporting=false;
+  private received=false;private reporting=false;private failure:number|null=null;
   constructor(private binding:LocalLiveBinding,private csrf:string,private events:Events,private factory=()=>new RTCPeerConnection({iceServers:[]})){}
   get closed(){return this.ended;}
   get playbackConfirmed(){return this.received&&!this.ended;}
+  /** HTTP status of the LocalLiveError that failed the start, offer or playing request (429: device busy); null otherwise. */
+  get failureStatus(){return this.failure;}
   async presented(decodedFrames:number){
     if(this.ended||!this.lease||this.received||this.reporting||!Number.isSafeInteger(decodedFrames)||decodedFrames<1)return;
     this.reporting=true;
     try{await reportLocalLivePlaying(this.binding,this.lease,this.csrf,decodedFrames,this.abort.signal);if(!this.ended){this.received=true;this.events.state('playing');}}
-    catch{if(!this.ended)await this.fail();}finally{this.reporting=false;}
+    catch(error){if(!this.ended){if(error instanceof LocalLiveError)this.failure=error.status;await this.fail();}}finally{this.reporting=false;}
   }
   async start(){
     if(this.started||this.ended)return;this.started=true;this.events.state('connecting');
@@ -43,7 +45,7 @@ export class LocalLivePlayer{
       const answer=await offerLocalLive(this.binding,this.lease,this.csrf,description.sdp,this.abort.signal);
       if(this.ended)return;
       await peer.setRemoteDescription(answer);
-    }catch{if(!this.ended)await this.fail();}
+    }catch(error){if(!this.ended){if(error instanceof LocalLiveError)this.failure=error.status;await this.fail();}}
   }
   private async gather(peer:RTCPeerConnection){
     if(peer.iceGatheringState==='complete')return;

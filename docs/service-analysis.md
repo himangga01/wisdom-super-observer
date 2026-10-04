@@ -129,7 +129,18 @@ and `tests/contract`, before the fix wave) had 5,704 passed / 34 skipped /
 account source gates (98 + 16, not repinned) and the failures are environmental
 (PowerShell 7 absent; an unset Android tool path) — none exercise changed
 modules. **Not in this commit:** the `/monitoring` live wall page (in review and
-pending a real-device multi-tile check). The device acceptance runs predate the
+pending a real-device multi-tile check).
+
+**Live wall (`/monitoring`) — 2026-10-05.** Implemented from the Claude Design
+canvas, reviewed (D1 C0/I0 after one fix round; D2 back-off C0/I0) and checked
+on the real recorders: 12 tiles render from saved inventories, no autoplay,
+real video in tiles with `object-fill`, a capacity-aware scheduler (2 streams,
+sequential starts, cool-down after failures, 429 re-queue) and clean lease
+retirement. Limits: at most 2 live tiles today; store-1 channels 1 and 3 send no
+video and the backend reports that as HTTP 429 after ~13 s (masked as
+`LOCAL_DEVICE_UNAVAILABLE` by the proxy), which costs slot time. Committed
+locally as a separate commit; all-cameras-at-once needs the
+[multi-view plan](superpowers/plans/2026-10-04-multiview-live-plan.md). The device acceptance runs predate the
 fix wave; the next device run needs a new source approval.
 `release_ready=false`, `MATCHED=0`.
 

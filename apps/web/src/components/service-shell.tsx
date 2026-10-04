@@ -29,6 +29,15 @@ function Navigation({
       </a>
       {connectionTenant && (
         <a
+          href={`/monitoring?tenant_id=${encodeURIComponent(connectionTenant)}`}
+          className={`wso-nav-item ${active === "monitoring" ? "wso-nav-active" : ""}`}
+          aria-current={active === "monitoring" ? "page" : undefined}
+        >
+          <span aria-hidden="true">⊞</span> 통합 관제
+        </a>
+      )}
+      {connectionTenant && (
+        <a
           href={`/connections?tenant_id=${encodeURIComponent(connectionTenant)}`}
           className={`wso-nav-item ${active === "connections" ? "wso-nav-active" : ""}`}
           aria-current={active === "connections" ? "page" : undefined}
@@ -53,7 +62,7 @@ export function ServiceShell({
 }: {
   children: ReactNode;
   csrf?: string;
-  active?: "connections" | "tvt";
+  active?: "connections" | "tvt" | "monitoring";
   connectionTenant?: string;
   tvtTenant?: string | null;
 }) {
@@ -104,6 +113,8 @@ export function ServiceShell({
                 ? "SuperLivePlus"
                 : active === "connections"
                 ? "계정 및 기기 / 연결 관리"
+                : active === "monitoring"
+                ? "통합 관제"
                 : signedIn
                   ? "매장 관리 / 내 매장"
                   : "서비스 홈"}

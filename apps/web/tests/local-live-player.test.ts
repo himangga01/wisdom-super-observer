@@ -88,3 +88,32 @@ it.each([404,403])('ends playback at once when a heartbeat is refused with HTTP 
   expect(api.heartbeatLocalLive).toHaveBeenCalledTimes(1);expect(updates).toContain('failed');
   expect(peer.close).toHaveBeenCalledTimes(1);expect(api.stopLocalLive).toHaveBeenCalledTimes(1);
 });
+it('exposes the HTTP status of a refused start and no failure status after a successful one',async()=>{
+  vi.mocked(api.startLocalLive).mockRejectedValueOnce(new api.LocalLiveError(429));
+  const peer=new Peer();const updates:string[]=[];
+  const refused=new LocalLivePlayer(binding,'csrf',{state:s=>updates.push(s),stream:vi.fn()},()=>peer as unknown as RTCPeerConnection);
+  expect(refused.failureStatus).toBeNull();
+  await refused.start();
+  expect(refused.failureStatus).toBe(429);
+  expect(updates).toEqual(['connecting','stopped','failed']);
+  expect(api.stopLocalLive).not.toHaveBeenCalled();
+  const {player}=live();
+  await player.start();
+  expect(player.failureStatus).toBeNull();
+  await player.stop();
+  expect(player.failureStatus).toBeNull();
+});
+it('records the HTTP status when the offer or the playing report is refused, and nothing for other errors',async()=>{
+  const offered=live();
+  vi.mocked(api.offerLocalLive).mockRejectedValueOnce(new api.LocalLiveError(503));
+  await offered.player.start();
+  expect(offered.player.failureStatus).toBe(503);expect(offered.updates).toContain('failed');
+  const reported=live();
+  vi.mocked(api.reportLocalLivePlaying).mockRejectedValueOnce(new api.LocalLiveError(409));
+  await reported.player.start();await reported.player.presented(1);
+  expect(reported.player.failureStatus).toBe(409);expect(reported.updates).toContain('failed');
+  const offline=live();
+  vi.mocked(api.startLocalLive).mockRejectedValueOnce(new TypeError('Failed to fetch'));
+  await offline.player.start();
+  expect(offline.player.failureStatus).toBeNull();expect(offline.updates).toContain('failed');
+});
