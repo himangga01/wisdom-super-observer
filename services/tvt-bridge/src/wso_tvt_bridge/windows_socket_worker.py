@@ -136,6 +136,11 @@ SPECS: dict[str, tuple[str, Any, tuple[Any, ...]]] = {
     ),
 }
 RETAINED: list[object] = []
+# Official client fu3.N1 timer -> cw3.v5: outer N9000 length-0 heartbeat (magic
+# 0x31313131 is byte-order symmetric) at a fixed 6000ms delay. serve_live sends
+# it only while its original live task is open, with the open/close Send gating.
+LIVE_KEEPALIVE = b"\x31\x31\x31\x31\x00\x00\x00\x00"
+LIVE_KEEPALIVE_SECONDS = 6.0
 
 
 def validate_layout(*, production: bool = True) -> None:
@@ -422,6 +427,22 @@ class CallbackOwner:
                 return None
             self.used -= len(chunk)
             return chunk
+
+    def take_live_batch(self) -> bytes | None:
+        """Drain the existing bounded FIFO snapshot after one current grant.
+
+        Callback chunks are transport segmentation, not media frames. Preserve
+        every byte/order while avoiding one parent roundtrip per small chunk.
+        The queue's existing256-chunk/byte-cap bounds also bound this snapshot;
+        joins occur outside the callback lock. Source envelopes still receive
+        independent current checks/ACKs in the live parser/parent.
+        """
+        with self.lock:
+            if self.failed or self.closed:
+                return None
+            parts = [self.chunks.get_nowait() for _ in range(self.chunks.qsize())]
+            self.used -= sum(len(part) for part in parts)
+        return b"".join(parts) if parts else None
 
 
 class OrdinaryFrames:
@@ -983,6 +1004,171 @@ def capture_live(
         mux.buffer.clear()
 
 
+def serve_live(
+    native: Surface,
+    handle: int,
+    callback: CallbackOwner,
+    stream: N9000Stream,
+    result: SafeResult,
+    buffers: list[object],
+    initial: bytes,
+    setup: dict[str, Any],
+    authority: Any,
+) -> None:
+    """Credential-free continuation of one first/exclusive original live task."""
+    identity = LiveIdentity(
+        generation=callback.generation,
+        session=bytes.fromhex(setup["session"]),
+        channel=bytes.fromhex(setup["channel"]),
+        task=bytes.fromhex(setup["task"]),
+    )
+    codec: LiveCodec | None = None
+    mux = LiveEnvelopes()
+    authorized = False
+    opened = False
+
+    def allowed(given: LiveIdentity) -> bool:
+        return (
+            authorized
+            and given is identity
+            and not callback.closed
+            and not callback.failed
+            and callback.context.value == identity.generation
+            and time.monotonic() < authority.deadline
+        )
+
+    try:
+        if not callback.claim_first_live():
+            raise LiveDenied()
+        authority.setup(setup)
+        authorized = True
+        codec = LiveCodec(
+            identity=identity,
+            peer_capability=setup["peer_version"],
+            channel_number=setup["raw_index"] & 255,
+            stream=1,
+            exclusive_first_task=True,
+            authorize=allowed,
+            max_packet=1 << 20,
+            max_session_bytes=1 << 40,
+            max_packets=1 << 20,
+            max_fragments=64,
+        )
+        wire = codec.open(
+            request_guid=bytes.fromhex(setup["open_request"]), sequence=6
+        ).private_bytes()
+        first, second = ct.create_string_buffer(wire), ct.create_string_buffer(1)
+        buffers.extend((first, second))
+        authority.require("send")
+        if not allowed(identity):
+            raise LiveDenied()
+        result.live_open_attempts += 1
+        if int(
+            native.call("send", handle, first, len(wire), second, 0, None, 0)
+        ) != len(wire):
+            result.failure = "send"
+            return
+        opened = True
+        next_keepalive = time.monotonic() + LIVE_KEEPALIVE_SECONDS
+        # One retained pair for vendor pointer custody, reused by every keepalive.
+        keepalive_first, keepalive_second = (
+            ct.create_string_buffer(LIVE_KEEPALIVE),
+            ct.create_string_buffer(1),
+        )
+        buffers.extend((keepalive_first, keepalive_second))
+        pending = initial
+        next_idle = time.monotonic()
+        while time.monotonic() < authority.deadline:
+            if callback.failed or callback.closed:
+                raise LiveDenied()
+            if time.monotonic() >= next_idle:
+                authority.require("idle")
+                next_idle = time.monotonic() + 0.1
+            if time.monotonic() >= next_keepalive:
+                # At most one per due time; the next is scheduled from this
+                # actual Send, so a stalled loop never sends a catch-up burst.
+                authority.require("send")
+                if not allowed(identity):
+                    raise LiveDenied()
+                if int(
+                    native.call(
+                        "send",
+                        handle,
+                        keepalive_first,
+                        len(LIVE_KEEPALIVE),
+                        keepalive_second,
+                        0,
+                        None,
+                        0,
+                    )
+                ) != len(LIVE_KEEPALIVE):
+                    result.failure = "send"
+                    return
+                next_keepalive = time.monotonic() + LIVE_KEEPALIVE_SECONDS
+            # External current admission immediately before native queue dequeue.
+            authority.require("frame")
+            chunk = pending or callback.take_live_batch()
+            pending = b""
+            if chunk is None:
+                time.sleep(0.01)
+                continue
+            for raw, fragmented in mux.receive(chunk):
+                command = (
+                    struct.unpack_from("<I", raw, 12)[0]
+                    if len(raw) >= 24 and not fragmented
+                    else None
+                )
+                if command in (2561, 2562, 2563):
+                    notifications = stream.feed(raw)
+                    if len(notifications) != 1:
+                        raise UnsupportedLive()
+                    continue
+                # Both ends independently use the accepted source codec. The
+                # typed frame is reconstructed from the original envelope in
+                # the parent, never fabricated/pickled from frame attributes.
+                items = codec.feed(raw, generation=identity.generation)
+                if not allowed(identity):
+                    raise LiveDenied()
+                for item in items:
+                    if isinstance(item, LiveAcknowledgement):
+                        result.live_open_ack = item.command == 1281
+                    elif (
+                        not isinstance(item, PrivateLiveFrame)
+                        or item.identity is not identity
+                    ):
+                        raise LiveError()
+                authority.envelope(raw)
+    except (AuthorityError, LiveDenied):
+        result.failure = "denied"
+    except (LiveError, CodecError):
+        result.failure = "codec"
+    finally:
+        # If external authority still exists, at most one source close Send is
+        # permitted. Revoke/expiry goes directly to native Stop/Destroy/reap.
+        if opened and codec is not None:
+            try:
+                authority.require("send")
+                close = codec.close_request(
+                    request_guid=uuid.uuid4().bytes_le, sequence=7
+                ).private_bytes()
+                first, second = (
+                    ct.create_string_buffer(close),
+                    ct.create_string_buffer(1),
+                )
+                buffers.extend((first, second))
+                authority.require("send")
+                if not allowed(identity):
+                    raise LiveDenied()
+                result.live_close_attempts += 1
+                native.call("send", handle, first, len(close), second, 0, None, 0)
+            except BaseException:  # noqa: BLE001 -- original owner still performs Stop/Destroy/reap
+                result.quiescence_verified = False
+        authorized = False
+        if codec is not None:
+            codec.close()
+        mux.buffer.clear()
+
+
 def drive(
     native: Surface,
     request: PrivateRequest,
@@ -992,7 +1178,11 @@ def drive(
     *,
     source_provenance: dict[str, Any] | None = None,
     service_authority: RemoteAuthority | None = None,
+    discard_credentials: Callable[[], None] | None = None,
 ) -> SafeResult:
+    from .local_live_ipc import LiveRemoteAuthority
+
+    live_service = isinstance(service_authority, LiveRemoteAuthority)
     result = SafeResult(generation, stage="load", loaded=True)
     handle = 0
     initialized = False
@@ -1007,7 +1197,7 @@ def drive(
     RETAINED.append(buffers)
     try:
         if service_authority is not None:
-            if request.mode != "inventory":
+            if request.mode != ("live" if live_service else "inventory"):
                 raise AuthorityError()
             service_authority.require("connect")
         if request.mode == "load":
@@ -1067,12 +1257,13 @@ def drive(
             capacity=(1 << 20) if request.mode == "live" else 65536,
         )
         owned_generation = callback.generation
+        metadata_opt_in = request.metadata_read_opt_in
 
         def current(given: int) -> bool:
             # Single serialized drive owner. Callback revocation may only close
             # its first-terminal latch; this supplier never calls native code.
             return (
-                request.metadata_read_opt_in is True
+                metadata_opt_in is True
                 and callback is not None
                 and given == owned_generation == callback.generation
                 and callback.context.value == owned_generation
@@ -1287,6 +1478,76 @@ def drive(
                             remaining = bytes(framing.buffer)
                             result.received_bytes -= len(remaining)
                             framing.close()
+                            if live_service:
+                                assert isinstance(
+                                    service_authority, LiveRemoteAuthority
+                                )
+                                channel = next(
+                                    (
+                                        c
+                                        for c in evidence.channels
+                                        if c.position == request.channel_position
+                                    ),
+                                    None,
+                                )
+                                if channel is None:
+                                    raise LiveDenied()
+                                basis = live_basis(
+                                    evidence, request, channel.guid, group_shape
+                                )
+                                setup = {
+                                    "session": retained_login.session_guid.hex(),
+                                    "channel": channel.guid.hex(),
+                                    "task": uuid.uuid4().bytes_le.hex(),
+                                    "open_request": uuid.uuid4().bytes_le.hex(),
+                                    "peer_version": retained_login.peer_version,
+                                    "callback_generation": owned_generation,
+                                    "raw_index": channel.raw_index,
+                                    "window_index": channel.window_index,
+                                    "ordinal": channel.position,
+                                    "live_basis": basis,
+                                    "login_accepted": result.reply_accepted,
+                                    "serial_matched": evidence.serial_matched,
+                                }
+                                # Drop all login/credential objects before the
+                                # setup ACK and first live Send. Retain only the
+                                # immutable wire session identifiers above.
+                                handshake.close()
+                                handshake = None
+                                inventory.close()
+                                inventory = None
+                                retained_login = accepted = None
+                                del evidence
+                                del request
+                                serial_bytes = b""
+                                wire = b""
+                                packets = ()
+                                chunk = raw_frame = b""
+                                # All login/metadata Sends have corresponding
+                                # consumed replies. Keep the original ctypes
+                                # allocations pinned for vendor pointer custody
+                                # but overwrite their now-consumed contents.
+                                for consumed in buffers:
+                                    if isinstance(consumed, ct.Array):
+                                        ct.memset(
+                                            ct.addressof(consumed),
+                                            0,
+                                            ct.sizeof(consumed),
+                                        )
+                                if discard_credentials is not None:
+                                    discard_credentials()
+                                serve_live(
+                                    native,
+                                    handle,
+                                    callback,
+                                    stream,
+                                    result,
+                                    buffers,
+                                    remaining,
+                                    setup,
+                                    service_authority,
+                                )
+                                return result
                             capture_live(
                                 native,
                                 handle,
@@ -1417,6 +1678,7 @@ def main() -> int:
     service: RemoteAuthority | None = None
     try:
         packet = json_object(sys.stdin.buffer.read(CAP + 1))
+        live_packet = "live_selection" in packet
         if set(packet) != {
             "config",
             "request",
@@ -1426,7 +1688,7 @@ def main() -> int:
             "deadline",
             "job_admitted",
             "service_authority_handle",
-        }:
+        } | ({"live_selection"} if live_packet else set()):
             fail()
         # Defense in depth if this private module is invoked without the
         # supervisor bootstrap. No vendor code is loaded before this check.
@@ -1469,15 +1731,21 @@ def main() -> int:
         ):
             fail()
         if packet["service_authority_handle"] is not None:
-            service = RemoteAuthority.from_handle(
+            from .local_live_ipc import LiveRemoteAuthority
+
+            authority_type = LiveRemoteAuthority if live_packet else RemoteAuthority
+            service = authority_type.from_handle(
                 packet["service_authority_handle"], generation, deadline
             )
             service.require("prepare")
         manifest = verify_review(config)
         overrides = runtime_override(config)
         check_private_acl(config.review_receipt)
-        request = PrivateRequest(**packet["request"])
-        if service is not None and request.mode != "inventory":
+        request: PrivateRequest | None = PrivateRequest(**packet["request"])
+        assert request is not None
+        if service is not None and request.mode != (
+            "live" if live_packet else "inventory"
+        ):
             fail()
         check_private_acl(config.staging)
         if (
@@ -1537,6 +1805,13 @@ def main() -> int:
             "receipts": {path: file_hash(ROOT / path) for path in ACCEPTED_HASHES},
             "files": {path: file_hash(ROOT / path) for path in OWNED},
         }
+
+        def discard_credentials() -> None:
+            nonlocal request
+            request = None
+            packet.pop("request", None)
+
+        assert request is not None
         result = drive(
             native,
             request,
@@ -1545,6 +1820,7 @@ def main() -> int:
             capture,
             source_provenance=provenance,
             service_authority=service,
+            discard_credentials=discard_credentials,
         )
         result.runtime_substitutions = native.runtime_substitutions
     except ProviderError:

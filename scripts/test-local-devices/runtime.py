@@ -59,6 +59,72 @@ BORROWED = {
     "tests/contract/test_local_inventory_provider.py",
     "docs/integrations/tvt-windows-socket-provider.md",
 }
+PRIVATE_MEDIA_KEYS = (
+    "WSO_TVT_WINDOWS_LOCAL_INVENTORY_SOURCE_REVIEW",
+    "WSO_TVT_WINDOWS_LOCAL_INVENTORY_RUNTIME_REVIEW",
+    "WSO_TVT_WINDOWS_DECODER_PYTHON",
+)
+MEDIA_SOURCES = {
+    "packages/contracts/src/wso_contracts/tvt/local_device.py",
+    "infra/migrations/versions/0012_tvt_local_devices.py",
+    "packages/core/src/wso_core/tvt/local_admission.py",
+    "packages/core/src/wso_core/tvt/local_service.py",
+    "services/tvt-bridge/src/wso_tvt_bridge/local_rpc.py",
+    "services/api/src/wso_api/tvt/local_devices.py",
+    "services/api/src/wso_api/tvt/local_device_service.py",
+    "apps/web/src/features/connections/connections-view.tsx",
+    "apps/web/src/lib/tvt/local-device-api.ts",
+    "apps/web/src/lib/tvt/local-device-proxy.ts",
+    "apps/web/src/app/api/local-devices/[[...segments]]/route.ts",
+    "infra/migrations/versions/0013_tvt_local_media_leases.py",
+    "packages/contracts/src/wso_contracts/tvt/local_media.py",
+    "packages/contracts/src/wso_contracts/tvt/media.py",
+    "packages/core/src/wso_core/tvt/local_media_admission.py",
+    "packages/core/src/wso_core/tvt/local_media_service.py",
+    "packages/core/src/wso_core/tvt/windows_decode.py",
+    "packages/core/src/wso_core/tvt/windows_decode_worker.py",
+    "services/tvt-bridge/src/wso_tvt_bridge/local_live_provider.py",
+    "services/tvt-bridge/src/wso_tvt_bridge/local_live_ipc.py",
+    "services/tvt-bridge/src/wso_tvt_bridge/local_media_rpc.py",
+    "services/tvt-bridge/src/wso_tvt_bridge/server.py",
+    "services/tvt-bridge/src/wso_tvt_bridge/client.py",
+    "services/api/src/wso_api/main.py",
+    "services/api/src/wso_api/tvt/local_media.py",
+    "packages/contracts/proto/tvt_bridge.proto",
+    "services/tvt-bridge/src/wso_tvt_bridge/generated/tvt_bridge_pb2.py",
+    "services/tvt-bridge/src/wso_tvt_bridge/generated/tvt_bridge_pb2_grpc.py",
+    "services/tvt-media/pyproject.toml",
+    "services/tvt-media/src/wso_tvt_media/__init__.py",
+    "services/tvt-media/src/wso_tvt_media/codec.py",
+    "services/tvt-media/src/wso_tvt_media/live.py",
+    "services/tvt-media/src/wso_tvt_media/signaling.py",
+    "services/tvt-media/src/wso_tvt_media/native_source.py",
+    "services/tvt-media/src/wso_tvt_media/worker.py",
+    "apps/web/src/features/connections/local-live-panel.tsx",
+    "apps/web/src/features/connections/local-device-inventory.tsx",
+    "apps/web/src/lib/tvt/local-live-api.ts",
+    "apps/web/src/lib/tvt/local-live-proxy.ts",
+    "apps/web/src/lib/tvt/local-live-player.ts",
+    "apps/web/src/app/api/live-sessions/[[...segments]]/route.ts",
+    "tests/tvt_parity/test_windows_decode.py",
+    "tests/contract/test_local_live_provider.py",
+    "tests/tvt_parity/test_local_media_rpc_api.py",
+    "tests/tvt_parity/test_local_media_worker.py",
+    "tests/tvt_parity/test_local_media_source.py",
+    "tests/tvt_parity/test_local_webrtc.py",
+    "docs/integrations/tvt-local-media-service.md",
+    "docs/integrations/tvt-local-webrtc.md",
+    "docs/integrations/tvt-windows-decode.md",
+    "uv.lock",
+    "pyproject.toml",
+}
+
+
+def media_enabled():
+    value = os.environ.get("WSO_TEST_LOCAL_MEDIA_BROWSER")
+    if value not in (None, "1"):
+        raise ValueError("invalid explicit media mode")
+    return value == "1"
 
 
 def unique_object(pairs):
@@ -112,18 +178,48 @@ def verify_source_approval(path, expected_digest, *, required_paths=None, root=R
         if hashlib.sha256(raw).hexdigest() != expected_digest:
             raise ValueError()
         receipt = json.loads(raw, object_pairs_hook=unique_object)
+        media = media_enabled()
+        expected_keys = {
+            "schema_version",
+            "root_explicitly_accepted",
+            "scope",
+            "sources",
+        }
+        if media:
+            expected_keys.add("private_sources")
         if (
-            set(receipt)
-            != {"schema_version", "root_explicitly_accepted", "scope", "sources"}
+            set(receipt) != expected_keys
             or type(receipt["schema_version"]) is not int
-            or receipt["schema_version"] != 1
+            or receipt["schema_version"] != (2 if media else 1)
             or receipt["root_explicitly_accepted"] is not True
-            or receipt["scope"] != "owned-local-device-browser-only"
+            or receipt["scope"]
+            != (
+                "owned-local-device-media-browser-only"
+                if media
+                else "owned-local-device-browser-only"
+            )
         ):
             raise ValueError()
         required = set(required_paths) if required_paths is not None else OWN | BORROWED
         trusted = {}
-        if required_paths is None:
+        if media:
+            private = receipt["private_sources"]
+            if type(private) is not dict or set(private) != set(PRIVATE_MEDIA_KEYS):
+                raise ValueError()
+            for key, value in private.items():
+                if (
+                    type(value) is not dict
+                    or set(value) != {"path", "sha256"}
+                    or value["path"] != os.environ.get(key)
+                    or not re.fullmatch(r"[0-9a-f]{64}", value["sha256"])
+                ):
+                    raise ValueError()
+                payload = bounded_file(Path(value["path"]), 16 * 1024 * 1024)
+                if hashlib.sha256(payload).hexdigest() != value["sha256"]:
+                    raise ValueError()
+            if required_paths is None:
+                required |= MEDIA_SOURCES
+        elif required_paths is None:
             trusted = anchored_sources(root)
             native_raw = bounded_file(root / NATIVE_SOURCE_ANCHOR)
             if hashlib.sha256(native_raw).hexdigest() != NATIVE_SOURCE_SHA:
@@ -254,7 +350,7 @@ def borrowed_helpers():
     return module
 
 
-def api_environment(roles, auth, bridge, key, ca):
+def api_environment(roles, auth, bridge, key, ca, *, media=False):
     env = (
         borrowed_helpers().child_environment()
         | {
@@ -276,17 +372,19 @@ def api_environment(roles, auth, bridge, key, ca):
             for name in ("ENDPOINT", "CA_FILE", "CLIENT_CERT_FILE", "CLIENT_KEY_FILE")
         }
     )
+    if media:
+        env["WSO_TEST_LOCAL_MEDIA_BROWSER"] = "1"
     return env
 
 
-def worker_environment(roles, native, key):
+def worker_environment(roles, native, key, *, media=False, decoder=None):
     if (
         set(native) != set(NATIVE_KEYS)
         or native[NATIVE_KEYS[0]] != "1"
         or not all(native.values())
     ):
         raise ValueError("explicit reviewed native configuration required")
-    return (
+    env = (
         borrowed_helpers().child_environment()
         | native
         | {
@@ -296,6 +394,22 @@ def worker_environment(roles, native, key):
             "WSO_CONNECTION_KEY_FILE": str(key),
         }
     )
+    if media:
+        if (
+            type(decoder) is not type(Path())
+            or not decoder.is_absolute()
+            or not decoder.is_file()
+            or decoder.is_symlink()
+            or decoder.is_junction()
+        ):
+            raise ValueError("explicit owned decoder executable required")
+        env.update(
+            WSO_TEST_LOCAL_MEDIA_BROWSER="1",
+            WSO_TVT_WINDOWS_DECODER_PYTHON=str(decoder),
+        )
+        if os.environ.get("WSO_TEST_LOCAL_MEDIA_TRACE") == "1":
+            env["WSO_TEST_LOCAL_MEDIA_TRACE"] = "1"
+    return env
 
 
 def required_provider(loader):
@@ -349,7 +463,7 @@ def spawn_python(arguments, env):
 
 
 @contextmanager
-def owned_database(evidence):
+def owned_database(evidence, *, media=False):
     import pytest
     from alembic import command
     from alembic.config import Config
@@ -380,7 +494,13 @@ def owned_database(evidence):
             )
             command.upgrade(cfg, "0012_tvt_local_devices")
             try:
-                yield engines
+                if media:
+                    command.upgrade(cfg, "0013_tvt_local_media_leases")
+                try:
+                    yield engines
+                finally:
+                    if media:
+                        command.downgrade(cfg, "0012_tvt_local_devices")
             finally:
                 command.downgrade(cfg, "0011_tvt_directory_read_tickets")
 
@@ -451,6 +571,147 @@ def seed_owner(engines, issuer, owner, key, inputs):
     return tenant, links
 
 
+def settle_media(worker, admission, *, pause=time.sleep):
+    while worker.shutdown() is not True:
+        pause(0.1)
+    while admission.shutdown() is not True:
+        pause(0.1)
+
+
+def install_media_observer(folder):
+    """Root-only bounded structural observations; no payloads or exception text."""
+    if os.environ.get("WSO_TEST_LOCAL_MEDIA_TRACE") != "1":
+        return
+    from wso_core.tvt.local_service import LOCAL_DEVICE_FAILURES
+    from wso_tvt_bridge.local_live_ipc import LiveParentAuthority
+    from wso_tvt_bridge.windows_socket import WindowsSocketProvider
+    from wso_tvt_bridge import windows_socket as native_module
+
+    child_observer = '''
+import json as _trace_json, time as _trace_time
+from pathlib import Path as _TracePath
+from wso_tvt_bridge.windows_socket import protect_created_acl as _trace_acl
+_trace_rows = []
+def _child_trace(frame, event, arg):
+    name = frame.f_code.co_name
+    filename = frame.f_code.co_filename
+    if not ((name == 'serve_live' and filename.endswith('windows_socket_worker.py')) or (name == 'exchange' and filename.endswith('local_live_ipc.py'))):
+        return None
+    if event == 'exception' and len(_trace_rows) < 6:
+        try:
+            kind = type(arg[1]).__name__
+            row = {'function': name, 'line': frame.f_lineno, 'kind': kind if kind in ('AuthorityError','LiveDenied','BrokenPipeError','EOFError','OSError','ValueError') else 'other'}
+            if name == 'serve_live':
+                callback = frame.f_locals.get('callback')
+                row.update(callback_failed=callback.failed, callback_closed=callback.closed, callback_bytes=callback.used, callback_chunks=callback.chunks.qsize(), context_matches=callback.context.value==callback.generation, authorized=frame.f_locals.get('authorized') is True)
+                authority = frame.f_locals.get('authority')
+            else:
+                authority = frame.f_locals.get('self')
+            if authority is not None:
+                row.update(remote_closed=authority.closed, remote_sequence=authority.sequence, remote_expired=_trace_time.monotonic()>=authority.deadline)
+            _trace_rows.append(row)
+            output = _TracePath('native-boundary.json')
+            output.write_text(_trace_json.dumps(_trace_rows, indent=2), encoding='utf-8')
+            _trace_acl(output)
+        except Exception:
+            pass
+    return _child_trace
+sys.settrace(_child_trace)
+'''
+    marker = "from wso_tvt_bridge.windows_socket_worker import main"
+    if native_module.BOOTSTRAP.count(marker) != 1:
+        raise ValueError("owned diagnostic bootstrap refused")
+    native_module.BOOTSTRAP = native_module.BOOTSTRAP.replace(marker, child_observer + "\n" + marker)
+
+    records = []
+    lock = threading.Lock()
+    path = EVIDENCE_ROOT / folder.parent.name / "media-boundary.json"
+
+    def record(value):
+        with lock:
+            if len(records) >= 64:
+                return
+            records.append(value)
+            try:
+                path.write_text(json.dumps(records, indent=2), encoding="utf-8")
+            except OSError:
+                pass
+
+    original_run, original_deny = WindowsSocketProvider.run, LiveParentAuthority.deny
+
+    def deny(self, reason):
+        if not self.failure:
+            record({"event": "first-denial", "reason": reason if reason in {"denied", "protocol", "deadline", "cancelled", "closed", "overflow"} else "other", "ready": self.ready, "handoff": self.handed_off, "setup": self.setup_data is not None, "open_ack": self.open_ack, "frames": len(self.frames), "cancel": self.cancel.is_set(), "expired": time.monotonic() >= self.deadline})
+        return original_deny(self, reason)
+
+    def run(self, config, request, **kwargs):
+        authority = kwargs.get("service")
+        if type(authority) is not LiveParentAuthority:
+            return original_run(self, config, request, **kwargs)
+        started = time.monotonic()
+        current = kwargs["current"]
+        counts = [0]
+
+        def checked():
+            counts[0] += 1
+            try:
+                result = current()
+                if result is not True:
+                    record({"event": "current-false", "checks": counts[0]})
+                return result
+            except Exception as error:
+                code = getattr(error, "code", None)
+                record({"event": "current-error", "code": code if code in LOCAL_DEVICE_FAILURES else "other"})
+                raise
+
+        kwargs["current"] = checked
+        try:
+            return original_run(self, config, request, **kwargs)
+        finally:
+            record({"event": "native-return", "elapsed_ms": round((time.monotonic()-started)*1000), "checks": counts[0], "ready": authority.ready, "handoff": authority.handed_off, "failure": authority.failure if authority.failure in {"denied", "protocol", "deadline", "cancelled", "closed", "overflow", ""} else "other"})
+
+    def trace(frame, event, arg):
+        filename = frame.f_code.co_filename.replace("\\", "/")
+        name = frame.f_code.co_name
+        allowed = (name == "pump" and filename.endswith("/local_live_ipc.py")) or (
+            any(filename.endswith(suffix) for suffix in (
+                "/wso_tvt_media/worker.py", "/wso_tvt_media/native_source.py",
+                "/wso_core/tvt/windows_decode.py", "/wso_tvt_media/live.py",
+                "/wso_tvt_media/signaling.py",
+            )) and name in {"start", "_prepare", "packet", "_run", "decode", "_admit", "answer", "offer", "recv", "binding", "validate_offer"}
+        )
+        if not allowed:
+            return None
+        if event == "exception":
+            kind = type(arg[1]).__name__
+            if kind in {"StopIteration", "GeneratorExit"}:
+                return trace
+            row = {"event": "media-exception", "module": filename.rsplit("/", 1)[-1], "function": name, "line": frame.f_lineno, "kind": kind if kind in {"AuthorityError", "LiveError", "LiveDenied", "UnsupportedLive", "BrokenPipeError", "EOFError", "ValueError", "UnboundLocalError", "MediaDenied", "DecodeError", "DecodeDenied", "LocalDeviceFailure", "TypeError", "AttributeError", "RuntimeError", "TimeoutError", "CancelledError"} else "other"}
+            if name == "validate_offer":
+                lines = frame.f_locals.get("lines", [])
+                row.update(lines=len(lines), max_line=max((len(line) for line in lines), default=0), candidates=sum(line.startswith("a=candidate:") for line in lines))
+                parsed = frame.f_locals.get("parsed")
+                if parsed is not None:
+                    row["media_count"] = len(parsed.media)
+                    if parsed.media:
+                        m = parsed.media[0]
+                        row.update(video=m.kind=="video", receive_only=m.direction=="recvonly", rtcp_mux=m.rtcp_mux, active_port=m.port!=0, codecs=len(m.rtp.codecs), vp8=any(c.mimeType.lower()=="video/vp8" for c in m.rtp.codecs))
+            if name == "packet":
+                value = frame.f_locals.get("frame")
+                if type(value).__name__ == "PrivateLiveFrame":
+                    summary = value.summary()
+                    row.update(width=summary.width, height=summary.height, codec=summary.codec if summary.codec in {"h264", "h265"} else "other", payload_bytes=len(value.private_bytes()), key=value.key_frame, timestamp_present=type(value.device_timestamp.unix_microseconds) is int, frame_type=value.source_context[3])
+                    kinds = frame.f_locals.get("kinds")
+                    if type(kinds) is list:
+                        row["nal_types"] = [n for n in kinds[:16] if type(n) is int and 0 <= n <= 63]
+            record(row)
+        return trace
+
+    WindowsSocketProvider.run = run
+    LiveParentAuthority.deny = deny
+    threading.settrace(trace)
+
+
 def worker_process(folder):
     if os.environ.get("WSO_TEST_LOCAL_DEVICE_NATIVE") != "real":
         raise ValueError("explicit real native worker mode required")
@@ -467,8 +728,36 @@ def worker_process(folder):
         os.environ["WSO_WORKER_DATABASE_URL"],
         FileKeyProvider(Path(os.environ["WSO_CONNECTION_KEY_FILE"])),
     )
+    media_worker = media_admission = None
+    if media_enabled():
+        install_media_observer(folder)
+        from wso_core.tvt.local_media_admission import LocalMediaAdmission
+        from wso_core.tvt.local_media_service import LocalMediaExecutor
+        from wso_tvt_bridge.local_live_provider import NativeLocalLiveProvider
+
+        sys.path.insert(0, str(ROOT / "services/tvt-media/src"))
+        from wso_tvt_media.worker import LocalMediaWorker
+
+        media_admission = LocalMediaAdmission(
+            os.environ["WSO_WORKER_DATABASE_URL"],
+            FileKeyProvider(Path(os.environ["WSO_CONNECTION_KEY_FILE"])),
+        )
+        media_executor = LocalMediaExecutor(
+            media_admission, NativeLocalLiveProvider(provider._config)
+        )
+        try:
+            media_worker = LocalMediaWorker(
+                media_executor,
+                decoder_executable=Path(os.environ["WSO_TVT_WINDOWS_DECODER_PYTHON"]),
+            )
+        except BaseException:
+            settle_media(media_executor, media_admission)
+            admission.shutdown()
+            raise
 
     def dispose():
+        if media_worker is not None:
+            settle_media(media_worker, media_admission)
         for owner in list(PENDING_OWNERS):
             owner.passive_wait()
         if any(not owner.confirmed for owner in PENDING_OWNERS):
@@ -495,6 +784,7 @@ def worker_process(folder):
         ),
         NoCloudWorker(),
         local_device_worker=LocalVerificationExecutor(admission, provider),
+        **({"local_media_worker": media_worker} if media_worker is not None else {}),
         dispose=dispose,
     )
     try:
@@ -543,14 +833,25 @@ def api_process(folder):
     def forbidden(*args, **kwargs):
         raise RuntimeError("API local worker capability forbidden")
 
-    if any(key in os.environ for key in NATIVE_KEYS) or os.environ.get(
-        "WSO_WORKER_DATABASE_URL"
+    if (
+        any(key in os.environ for key in NATIVE_KEYS)
+        or os.environ.get("WSO_WORKER_DATABASE_URL")
+        or os.environ.get("WSO_TVT_WINDOWS_DECODER_PYTHON")
     ):
         raise ValueError("API worker environment refused")
     SecretCipher.open = forbidden
     LocalDeviceAdmission.__init__ = forbidden
     LocalVerificationExecutor.__init__ = forbidden
     TokenVault.__init__ = forbidden
+    if media_enabled():
+        from wso_core.tvt.local_media_admission import LocalMediaAdmission
+        from wso_core.tvt.local_media_service import LocalMediaExecutor
+
+        LocalMediaAdmission.__init__ = forbidden
+        LocalMediaExecutor.__init__ = forbidden
+        from wso_tvt_bridge.local_live_provider import NativeLocalLiveProvider
+
+        NativeLocalLiveProvider.__init__ = forbidden
     from wso_api.main import create_app
 
     helper = borrowed_helpers()
@@ -620,6 +921,7 @@ def owner_page_text(value):
 
 
 def coordinate():
+    media = media_enabled()
     if os.environ.get("WSO_TEST_LOCAL_DEVICE_NATIVE") != "real" or not os.environ.get(
         "WSO_TEST_BROWSER_TLS_DIR"
     ):
@@ -668,7 +970,7 @@ def coordinate():
         gate = helper.AdmissionGate(folder / "admission.sqlite", create=True)
         fixed_owner = uuid4()
         with ExitStack() as stack:
-            engines = stack.enter_context(owned_database(evidence))
+            engines = stack.enter_context(owned_database(evidence, media=media))
             issuer_secret = secrets.token_urlsafe(48)
             issuer = helper.DirectoryIssuer(
                 folder, str(fixed_owner), issuer_secret, gate
@@ -693,7 +995,16 @@ def coordinate():
             }
             native = {key: os.environ.get(key, "") for key in NATIVE_KEYS}
             worker = spawn_python(
-                ["--worker", str(bridge_folder)], worker_environment(roles, native, key)
+                ["--worker", str(bridge_folder)],
+                worker_environment(
+                    roles,
+                    native,
+                    key,
+                    media=media,
+                    decoder=Path(os.environ["WSO_TVT_WINDOWS_DECODER_PYTHON"])
+                    if media
+                    else None,
+                ),
             )
 
             def close_worker():
@@ -722,7 +1033,9 @@ def coordinate():
             }
             api = spawn_python(
                 ["--api", str(folder)],
-                api_environment(roles, auth, bridge, key, folder / "ca.pem"),
+                api_environment(
+                    roles, auth, bridge, key, folder / "ca.pem", media=media
+                ),
             )
 
             def close_api():

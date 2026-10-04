@@ -3,6 +3,7 @@ import {useEffect,useId,useRef,useState} from 'react';
 import type {ConnectionView} from '../../lib/connections';
 import type {Store} from '../../lib/session';
 import {LocalDeviceError,localDeviceMessage,readLocalDevice,verifyLocalDevice,type LocalDeviceView} from '../../lib/tvt/local-device-api';
+import {LocalLivePanel} from './local-live-panel';
 type Props={tenantId:string;connection:ConnectionView;stores:Store[];csrf:string;disabled:boolean};
 export function LocalDeviceInventory(props:Props){
   const stores=props.stores.filter(s=>s.active&&s.tenant_id===props.tenantId&&props.connection.store_ids.includes(s.id));
@@ -48,6 +49,7 @@ function Inventory({tenantId,connection,stores,csrf,disabled}:Props){
     {view&&<div className="mt-3 space-y-2 text-sm">
       <p role="status">{view.inventory_state==='AVAILABLE'?`장치 정보 확인됨 · ${view.channels.length}개 채널`:view.inventory_state==='STALE'?'연결 정보가 변경되었습니다. 기기를 다시 확인하세요.':'아직 확인된 장치 정보가 없습니다.'}</p>
       {view.inventory_state==='AVAILABLE'&&<><p className="text-[var(--wso-muted)]">채널 정보 확인 결과입니다. 영상 재생 상태는 별도로 확인됩니다.</p><ul className="grid gap-2 sm:grid-cols-2">{view.channels.map(c=><li key={c.id} className="rounded-lg border border-[var(--wso-border)] px-3 py-2">{c.ordinal}번 채널</li>)}</ul></>}
+      {view.inventory_state==='AVAILABLE'&&view.channels.length>0&&<LocalLivePanel tenantId={tenantId} inventory={view} csrf={csrf} disabled={disabled}/>}
     </div>}
   </section>;
 }

@@ -21,6 +21,7 @@ async function body(response:Response,max:number,signal:AbortSignal):Promise<unk
   finally{signal.removeEventListener('abort',abort);void reader.cancel().catch(()=>undefined);}
   return JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(Buffer.concat(chunks)));
 }
+export {body as boundedPrivateJson,within as withinAbort};
 export async function proxyLocalDevice(request:NextRequest,segments:string[],backendFetch:typeof fetch=fetch){
   let id=randomUUID() as string;const timeout=new AbortController();const signal=AbortSignal.any([request.signal,timeout.signal]);const timer=setTimeout(()=>timeout.abort(),25000);
   try{

@@ -6,6 +6,8 @@ Analysis date: **2026-10-04, Asia/Seoul** (Fix1; original acceptance 2026-10-03)
 This guide records an isolated implementation and **synthetic Windows decoder
 acceptance**. **MATCHED=0; release_ready=false.** Actual current CCTV framing,
 permissions, packets, provider integration and device decoding remain Root work.
+The dated continuous-mode section below adds explicitly selected WDC2 behavior;
+the WDC1 diagnostic defaults and historical acceptance remain preserved.
 
 For later reviews, read this guide and [the local live codec guide](tvt-local-live-codec.md)
 first, verify current source/dependency hashes and refresh changed evidence. Root
@@ -255,3 +257,162 @@ PyAV dependency acquisition and four-picture H264/HEVC synthetic acceptance.
 2026-10-04 — Fix1 establishes active retirement before fallible Job/reaper
 release, adds synchronous fallback and newly created Job custody, and separates
 portable contracts from explicitly selected real Windows native acceptance.
+
+## Explicit continuous mode — 2026-10-04
+
+Current source baseline: `211d1484aa16eb30f5d362758f149f98dec9dfdf`, branch
+`codex/superlive-web-service`, plus this uncommitted slice and concurrent disjoint
+core/native/API/media work. Scope: the two decoder modules, their existing test
+file and this guide. Read the canonical [service analysis](../service-analysis.md),
+[Phase 2 integration](tvt-local-service-integration.md) and
+[WebRTC guide](tvt-local-webrtc.md) before reuse; verify source and refresh the
+affected evidence afterward. This section records synthetic execution, not
+actual CCTV or browser acceptance.
+
+The diagnostic lifetime quotas can stop persistent video while authority is
+still current. The new mode explicitly preserves one original codec and worker:
+
+```python
+limits = DecodeLimits(continuous=True, inactivity_seconds=5.0)
+decoder = WindowsDecoder(binding=binding, authorize=fresh_exact_authority,
+                         executable=isolated_pyav19_python, limits=limits)
+try:
+    frames = decoder.decode(proved_elementary_packet)
+finally:
+    decoder.close()
+    settled = decoder.wait_closed(timeout=3.0)
+```
+
+`continuous=False` remains the default, with identical **WDC1** configuration
+bytes and lifetime bounds. Continuous configuration explicitly uses **WDC2**,
+the same 48-byte `!4s9Id` layout with the final double interpreted as inactivity
+seconds, constrained to **0.05 through 5 seconds**. Unknown versions, ambiguous
+non-boolean mode values and non-finite deadlines fail before native work.
+Existing WDQ1/WDR1 request/response binding, sequence and frame schemas remain.
+
+Only fresh literal-True exact authority at an unexpired parent admission renews
+the deadline. The worker independently rejects late requests and renews only
+after receiving a complete bounded Annex B packet. The original codec, process,
+Job, generation, owner, channel and task remain unchanged. A renewal event and
+deadline lock update the original watchdog; expiry fences under that lock so
+late renewal cannot revive it. Revocation, scope substitution and close remain
+permanent fences. Authority is still rechecked before frame publication.
+
+There is no fixed 60-second continuous lifetime ceiling. Each operation and idle
+interval remain bounded by admitted inactivity; startup is included. The
+original one-process, memory, pixel and kill-on-close Job bounds remain. Root's
+initial live composition uses the five-second policy; narrow timeouts require
+actual Windows startup/load measurement. Aggregate sessions and queues remain
+the service owner's responsibility.
+
+| Limit | WDC1 diagnostic | WDC2 continuous |
+| --- | --- | --- |
+| Packet/RGB/dimensions | Per packet/picture | Same |
+| `max_packets` | Lifetime packets | Maximum unresolved PTS mappings |
+| `max_input_bytes` | Lifetime input | Per admitted packet |
+| `max_frames` | Lifetime pictures | Pictures per response |
+| `max_output_bytes` | Lifetime RGB | RGB per response |
+| `max_response_frames` | Pictures per response | Same |
+| `deadline_seconds` | Entire task, maximum 60s | Does not define lifetime |
+| `inactivity_seconds` | Unused by wire/lifetime | Renewed inactivity, maximum 5s |
+| Process/Job memory | Original owner memory | Same |
+
+The stricter applicable per-packet/per-response cap wins. Both processes bound
+pending mappings by `max_packets` and pop them as exact frames resolve.
+Continuous mode does not accumulate lifetime input/frame/output counters or
+append to the historical timestamp set. Each response retains only bounded
+temporary counters, bytes and frame lists. Native picture/reference state
+remains constrained by pixel and Job memory bounds. The existing 64-bit request
+sequence and 32-bit source ordinal bounds are checked; neither counter resets
+or grows beyond its wire range. Reaching a bound closes the task.
+
+Initial WDC2 input requires **strictly increasing original microsecond PTS and
+packet ordinals**. Repeated/decreasing PTS rejects and reaps the original owner;
+retired PTS cannot be reused without an unbounded historical set. Encoded-order
+non-monotonic PTS, including the earlier B-frame fixture, is deliberately
+unsupported in this initial live mode. WDC1 preserves that fixture's existing
+reordering/opaque/flush behavior. No PTS is synthesized to fit the restriction.
+
+### Original disposal confirmation
+
+`close` still establishes retirement and has a bounded join; its return alone
+does not prove that interrupted Job release completed. New public
+`wait_closed(timeout: float | None = None) -> bool` requires initiated close
+and observes the original retirement event. `True` establishes original reap,
+started IO completion/join, pipe closure and Job release. Timeout returns
+`False` while the retained owner keeps retrying. Invalid timeout or waiting
+before close raises the fixed decoder error; `None` waits for settlement in
+the trusted ownership context. Request cancellation must not discard the source's
+original decoder, handles or retirement owner; Root's source composition retains
+them independently until confirmation.
+
+### Verification and actual limits
+
+Missing mode/settlement APIs failed before implementation. New cases cover
+configuration bounds, pending-map saturation, stale generation, monotonic PTS,
+revocation, idle expiry, original-process reuse and unreleased Job custody that
+makes `wait_closed` remain false until release and complete retirement.
+
+Actual isolated PyAV **19.0.1** Windows execution encoded and decoded **260
+640-by-544 frames per codec**, both H264 and HEVC. Each used one original decoder,
+retained exact source PTS/ordinal mapping and returned **271,564,800 RGB bytes**
+before successful flush/reap. Batches were discarded promptly, without retaining
+all images or writing a large RGB artifact. Per response was bounded to one
+frame / 1,044,480 RGB bytes; pending mappings to four; input to the largest
+individual encoded packet. This exceeded 256 packets/frames, 256 MiB cumulative
+RGB and the configured 0.2-second diagnostic deadline without restarting.
+`wait_closed(0)` additionally confirmed actual original resource settlement.
+
+```powershell
+$env:WSO_WINDOWS_DECODE_NATIVE='1'
+.venv/Scripts/python.exe -m pytest -q --confcutdir=tests/tvt_parity tests/tvt_parity/test_windows_decode.py --tb=short
+.venv/Scripts/python.exe -m ruff check packages/core/src/wso_core/tvt/windows_decode.py packages/core/src/wso_core/tvt/windows_decode_worker.py tests/tvt_parity/test_windows_decode.py
+.venv/Scripts/python.exe -m mypy --follow-imports=silent packages/core/src/wso_core/tvt/windows_decode.py packages/core/src/wso_core/tvt/windows_decode_worker.py
+```
+
+Fresh selected decoder suite: **71 passed, zero skipped, 22.42 seconds**;
+scoped Ruff and strict mypy passed. After adding the public settlement assertion,
+both continuous codec proofs were rerun: **2 passed, 69 deselected, 3.16 seconds**.
+Default portable selection passed **44 cases / 27 explicitly unselected native
+skips, 3.74 seconds**; those skips are not native acceptance.
+
+Earlier outcomes remain recorded: H264 first-packet startup with a one-second
+inactivity budget failed at ordinal zero after 1.016 seconds; an independently
+owned trace of the same inert packet completed in 0.282 seconds. Admitted
+five-second continuous proofs subsequently passed. The first full native run
+was **68 passed / 1 failed**: the unchanged HEVC diagnostic idle case did not
+finish its first packet within 0.6 seconds. That unchanged case then passed
+separately, followed by the full 71-case success. Startup is load-sensitive;
+no diagnostic deadline was widened or reset to suppress these outcomes.
+
+The continuous proof lasted seconds, not an actual 60-plus-second soak. It
+establishes removal of cumulative diagnostic quotas and renewal beyond its short
+configured diagnostic deadline, not long-duration leak/performance acceptance.
+No CCTV, private credentials, SQL migration, TVT DLL, browser, whole-project
+suite or Git publication was used. Root must independently review WDC2 and prove
+actual identity, continuous native/decoder/browser delivery, permission changes,
+orphan cleanup and capacity. Original PyAV packaging and WDC1 bounds remain;
+production readiness is unestablished.
+
+Update log: 2026-10-04 — explicit WDC2 renewal, bounded bookkeeping and monotonic
+source PTS; honest original settlement API; actual two-codec 260-frame proof,
+preserved failed runs/reruns and fresh 71-case selected acceptance.
+
+### Minor timeout review correction — 2026-10-04
+
+The [independent continuous-decoder review](../analysis/2026-10-04-continuous-decoder-review.md)
+reported C0/I0/M1 and independently executed **71 passed / zero skipped** actual
+inert native cases before this correction. Its bounded reproduction found raw
+`OverflowError` from `math.isfinite(10**400)` outside `wait_closed`'s fixed error
+boundary. The added regression first failed with that exact exception. Numeric
+validation now runs inside the existing normalization boundary, returning fixed
+`DecodeError` for this invalid timeout. Completed original settlement remains
+observable with finite and `None` waits afterward; retirement ownership is
+unchanged.
+
+Scoped correction verification: `pytest ... -k wait_closed --tb=short` completed
+**3 passed / 69 deselected, 3.10 seconds**. Ruff and strict mypy passed. No broad
+native replay, device or browser call was made for this minor change. The
+existing native original-resource proofs and their execution limits remain as
+dated evidence; Root owns approval and actual CCTV execution of the corrected
+source.

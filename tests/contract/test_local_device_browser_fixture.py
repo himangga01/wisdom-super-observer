@@ -266,8 +266,9 @@ def test_resource_owner_outlives_reporting_deadline_without_termination(runtime)
     assert receipts[-1]["exit"] == 0
 
 
+@pytest.mark.parametrize("media", [False, True])
 def test_owned_migration_unwinds_before_original_database_owner(
-    runtime, monkeypatch, tmp_path
+    runtime, monkeypatch, tmp_path, media
 ):
     from types import SimpleNamespace
 
@@ -321,12 +322,16 @@ def test_owned_migration_unwinds_before_original_database_owner(
     )
     with (
         pytest.raises(ValueError, match="body failed"),
-        runtime.owned_database(tmp_path),
+        runtime.owned_database(tmp_path, media=media),
     ):
         raise ValueError("body failed")
-    assert events == [
-        "original-owner-enter",
-        ("upgrade", "0012_tvt_local_devices"),
+    expected = ["original-owner-enter", ("upgrade", "0012_tvt_local_devices")]
+    if media:
+        expected += [
+            ("upgrade", "0013_tvt_local_media_leases"),
+            ("downgrade", "0012_tvt_local_devices"),
+        ]
+    assert events == expected + [
         ("downgrade", "0011_tvt_directory_read_tickets"),
         "original-owner-exit",
     ]
@@ -468,3 +473,122 @@ def test_owner_banner_distinguishes_synthetic_owner_from_real_devices(runtime):
     assert "real registered devices" in text
     assert "read-only verification" in text
     assert "No vendor connection" not in text
+
+
+def test_media_mode_requires_exact_opt_in(runtime, monkeypatch):
+    monkeypatch.delenv("WSO_TEST_LOCAL_MEDIA_BROWSER", raising=False)
+    assert runtime.media_enabled() is False
+    monkeypatch.setenv("WSO_TEST_LOCAL_MEDIA_BROWSER", "1")
+    assert runtime.media_enabled() is True
+    monkeypatch.setenv("WSO_TEST_LOCAL_MEDIA_BROWSER", "true")
+    with pytest.raises(ValueError, match="media mode"):
+        runtime.media_enabled()
+
+
+def test_media_decoder_configuration_remains_worker_only(runtime, tmp_path):
+    decoder = tmp_path / "python.exe"
+    decoder.write_bytes(b"inert executable marker")
+    roles = {key: "private-" + key for key in ["APP", "IDENTITY", "SESSION", "WORKER"]}
+    native = {key: "reviewed" for key in runtime.NATIVE_KEYS}
+    native[runtime.NATIVE_KEYS[0]] = "1"
+    worker = runtime.worker_environment(
+        roles, native, tmp_path / "key", media=True, decoder=decoder
+    )
+    assert worker["WSO_TEST_LOCAL_MEDIA_BROWSER"] == "1"
+    assert worker["WSO_TVT_WINDOWS_DECODER_PYTHON"] == str(decoder)
+    api = runtime.api_environment(
+        roles,
+        {},
+        {
+            key: "owned"
+            for key in ["ENDPOINT", "CA_FILE", "CLIENT_CERT_FILE", "CLIENT_KEY_FILE"]
+        },
+        tmp_path / "key",
+        tmp_path / "ca",
+        media=True,
+    )
+    assert api["WSO_TEST_LOCAL_MEDIA_BROWSER"] == "1"
+    assert "WSO_TVT_WINDOWS_DECODER_PYTHON" not in api
+    assert "WSO_WORKER_DATABASE_URL" not in api
+
+
+def test_media_shutdown_retains_original_until_both_owners_confirm(runtime):
+    events = []
+
+    class Worker:
+        def __init__(self):
+            self.calls = 0
+
+        def shutdown(self):
+            self.calls += 1
+            events.append("worker")
+            return self.calls >= 3
+
+    class Admission:
+        def __init__(self):
+            self.calls = 0
+
+        def shutdown(self):
+            self.calls += 1
+            events.append("admission")
+            return self.calls >= 2
+
+    runtime.settle_media(
+        Worker(), Admission(), pause=lambda _: events.append("retained")
+    )
+    assert events == [
+        "worker",
+        "retained",
+        "worker",
+        "retained",
+        "worker",
+        "admission",
+        "retained",
+        "admission",
+    ]
+
+
+def test_v2_media_approval_binds_private_paths_and_requires_opt_in(
+    runtime, monkeypatch, tmp_path
+):
+    import hashlib
+
+    root = tmp_path / "root"
+    root.mkdir()
+    (root / "file.py").write_bytes(b"approved\n")
+    private = {}
+    for key in [
+        "WSO_TVT_WINDOWS_LOCAL_INVENTORY_SOURCE_REVIEW",
+        "WSO_TVT_WINDOWS_LOCAL_INVENTORY_RUNTIME_REVIEW",
+        "WSO_TVT_WINDOWS_DECODER_PYTHON",
+    ]:
+        path = tmp_path / key
+        path.write_bytes(b"inert approved private input")
+        monkeypatch.setenv(key, str(path))
+        private[key] = {
+            "path": str(path),
+            "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+        }
+    body = {
+        "schema_version": 2,
+        "root_explicitly_accepted": True,
+        "scope": "owned-local-device-media-browser-only",
+        "sources": {"file.py": hashlib.sha256(b"approved\n").hexdigest()},
+        "private_sources": private,
+    }
+    raw = json.dumps(body).encode()
+    path = tmp_path / "approval.json"
+    path.write_bytes(raw)
+    digest = hashlib.sha256(raw).hexdigest()
+    monkeypatch.setenv("WSO_TEST_LOCAL_MEDIA_BROWSER", "1")
+    runtime.verify_source_approval(path, digest, required_paths={"file.py"}, root=root)
+    Path(private["WSO_TVT_WINDOWS_DECODER_PYTHON"]["path"]).write_bytes(b"drift")
+    with pytest.raises(ValueError, match="source approval"):
+        runtime.verify_source_approval(
+            path, digest, required_paths={"file.py"}, root=root
+        )
+    monkeypatch.delenv("WSO_TEST_LOCAL_MEDIA_BROWSER")
+    with pytest.raises(ValueError, match="source approval"):
+        runtime.verify_source_approval(
+            path, digest, required_paths={"file.py"}, root=root
+        )

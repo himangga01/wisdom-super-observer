@@ -33,6 +33,10 @@ OWNED = (
     "services/tvt-bridge/src/wso_tvt_bridge/local_inventory_config.py",
     "services/tvt-bridge/src/wso_tvt_bridge/local_inventory_ipc.py",
     "tests/contract/test_local_inventory_provider.py",
+    "services/tvt-bridge/src/wso_tvt_bridge/local_live_provider.py",
+    "services/tvt-bridge/src/wso_tvt_bridge/local_live_ipc.py",
+    "tests/contract/test_local_live_provider.py",
+    "docs/integrations/tvt-windows-live-session.md",
 )
 ABI_RECEIPT = SDD + "W04-windows-socket-abi-reviewed-root-receipt.json"
 CODEC_RECEIPT = SDD + "W04-local-n9000-login-field-reviewed-root-receipt.json"
@@ -668,6 +672,9 @@ def verify_review(config: ProviderConfig) -> list[dict[str, Any]]:
         "packages/core/src/wso_core/tvt/local_credentials.py",
         "packages/core/src/wso_core/tvt/local_service.py",
         "packages/contracts/src/wso_contracts/tvt/local_device.py",
+        "packages/core/src/wso_core/tvt/local_media_service.py",
+        "packages/contracts/src/wso_contracts/tvt/local_media.py",
+        "packages/contracts/src/wso_contracts/tvt/media.py",
     ):
         dependencies[path] = file_hash(ROOT / path)
     dependencies[RUNTIME_RECEIPT] = file_hash(ROOT / RUNTIME_RECEIPT)
@@ -907,6 +914,7 @@ class ChildOwner:
     job: OwnedJob | None = None
     service: ParentAuthority | None = None
     _kill_claim: dict[str, object] = field(default_factory=dict)
+    _finish_lock: Any = field(default_factory=threading.RLock, repr=False)
 
     def request_stop(self) -> None:
         child = self.child
@@ -921,6 +929,10 @@ class ChildOwner:
                 self.confirmed = False
 
     def finish(self, timeout: float = 1) -> bool:
+        with self._finish_lock:
+            return self._finish(timeout)
+
+    def _finish(self, timeout: float) -> bool:
         try:
             child, writer = self.child, self.writer
             if child is not None:
@@ -962,6 +974,7 @@ class ChildOwner:
 
 PENDING_OWNERS: list[ChildOwner] = []
 ATTEMPT_LOCK = threading.Lock()
+MAX_SERVICE_LIVE_SESSIONS = 2
 
 
 @contextmanager
@@ -986,12 +999,37 @@ class WindowsSocketProvider:
         service: ParentAuthority | None = None,
         current: Callable[[], bool] | None = None,
     ) -> SafeResult:
-        if service is not None and (request.mode != "inventory" or current is None):
+        from .local_live_ipc import LiveParentAuthority
+
+        live_authority = service if isinstance(service, LiveParentAuthority) else None
+        live_service = live_authority is not None
+        if service is not None and (
+            request.mode != ("live" if live_service else "inventory") or current is None
+        ):
             fail()
         with attempt_scope(blocking=service is None):
-            if (self.owner is not None and not self.owner.confirmed) or any(
-                not owner.confirmed for owner in PENDING_OWNERS
-            ):
+            if self.owner is not None and not self.owner.confirmed:
+                fail()
+            pending = [owner for owner in PENDING_OWNERS if not owner.confirmed]
+            if live_service:
+                # Only explicitly handed-off healthy local-live originals may
+                # coexist. Unknown/uncertain or diagnostic custody still fences
+                # every new attempt; no socket/process/task is ever shared.
+                if any(
+                    not (
+                        isinstance(owner.service, LiveParentAuthority)
+                        and owner.service.handed_off
+                        and owner.service.ready
+                        and not owner.service.failure
+                        and owner.child is not None
+                        and owner.child.poll() is None
+                    )
+                    for owner in pending
+                ):
+                    fail()
+                if len(pending) >= MAX_SERVICE_LIVE_SESSIONS:
+                    raise ProviderBusy()
+            elif pending:
                 fail()
             result = SafeResult(uuid.uuid4().hex)
             outputs: tuple[BinaryIO, BinaryIO] | None = None
@@ -1059,6 +1097,15 @@ class WindowsSocketProvider:
                     "service_authority_handle": None,
                 }
                 deadline = float(packet_data["deadline"])
+                if live_service:
+                    assert live_authority is not None
+                    selection = live_authority.selection
+                    packet_data["live_selection"] = {
+                        "channel_guid": selection.channel_guid.hex(),
+                        "raw_index": selection.raw_index,
+                        "window_index": selection.window_index,
+                        "ordinal": selection.ordinal,
+                    }
                 # Publish an owner BEFORE acquiring a child or constructing its
                 # writer. Every subsequent failure reaches this original owner.
                 self.owner = ChildOwner(None, None, outputs)
@@ -1128,6 +1175,15 @@ class WindowsSocketProvider:
                                 else "denied"
                             )
                             break
+                        if live_authority is not None and live_authority.ready:
+                            if child.poll() is not None or not service.check(current):
+                                fail()
+                            # Handoff preserves the exact original child, Job,
+                            # writer and IPC owner. No login request survives.
+                            packet_data["request"] = {}
+                            packet = b""
+                            live_authority.handed_off = True
+                            return result
                     if (
                         identity(generation, directory=True) != generation_id
                         or identity(receipt) != receipt_id
@@ -1163,7 +1219,9 @@ class WindowsSocketProvider:
             except BaseException:  # noqa: BLE001 -- retain child on interruptions
                 result.failure = "custody"
             finally:
-                if self.owner is not None:
+                if self.owner is not None and not (
+                    live_authority is not None and live_authority.handed_off
+                ):
                     result.reaped = self.owner.finish()
                 if outputs is not None and (
                     self.owner is None or self.owner.outputs is not outputs

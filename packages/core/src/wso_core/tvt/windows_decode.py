@@ -7,6 +7,7 @@ work runs only in the originally owned worker, never a TVT callback process.
 from __future__ import annotations
 
 import ctypes
+import math
 import os
 import struct
 import subprocess
@@ -176,6 +177,8 @@ class DecodeLimits:
     max_response_frames: int = 16
     deadline_seconds: float = 30.0
     process_memory_bytes: int = 512 * 1024 * 1024
+    continuous: bool = False
+    inactivity_seconds: float = 5.0
 
     def validate(self) -> None:
         for value, high in (
@@ -196,10 +199,16 @@ class DecodeLimits:
             or not 0.05 <= self.deadline_seconds <= 60
         ):
             raise DecodeError()
+        if (
+            type(self.continuous) is not bool
+            or type(self.inactivity_seconds) not in (int, float)
+            or not 0.05 <= self.inactivity_seconds <= 5
+        ):
+            raise DecodeError()
 
     def _wire(self) -> bytes:
         return _CONFIG.pack(
-            b"WDC1",
+            b"WDC2" if self.continuous else b"WDC1",
             self.max_width,
             self.max_height,
             self.max_packet_bytes,
@@ -209,7 +218,7 @@ class DecodeLimits:
             self.max_input_bytes,
             self.max_output_bytes,
             self.max_response_frames,
-            self.deadline_seconds,
+            self.inactivity_seconds if self.continuous else self.deadline_seconds,
         )
 
 
@@ -292,7 +301,7 @@ def _job(process: subprocess.Popen[bytes], memory: int, custody: WindowsDecoder)
 
 
 class WindowsDecoder(_Private):
-    """One bounded continuous codec task. Errors permanently fence it.
+    """One bounded codec task. Explicit WDC2 supports renewed continuous input.
 
     Call from one thread, serialized with read/live authority changes. The
     authorize callback must check BOTH rights for this exact binding and return
@@ -359,8 +368,14 @@ class WindowsDecoder(_Private):
         self._dimensions: tuple[int, int] | None = None
         self._pending: dict[int, int] = {}
         self._last_ordinal = -1
+        self._last_timestamp: int | None = None
         self._packets = self._input = self._frames = self._output = 0
-        self._deadline = time.monotonic() + limits.deadline_seconds
+        self._deadline_lock = threading.Lock()
+        self._deadline_changed = threading.Event()
+        seconds = (
+            limits.inactivity_seconds if limits.continuous else limits.deadline_seconds
+        )
+        self._deadline = time.monotonic() + seconds
 
     @property
     def process(self) -> subprocess.Popen[bytes] | None:
@@ -382,17 +397,22 @@ class WindowsDecoder(_Private):
         ):
             raise DecodeError()
         self._busy = True
-        self._authority()
+        self._authority(renew=self._limits.continuous)
 
-    def _authority(self) -> None:
+    def _authority(self, *, renew: bool = False) -> None:
         try:
             allowed = self._authorize(self._binding) is True
         except BaseException:  # noqa: BLE001 - fixed denial; no private exception logs
             allowed = False
         if not allowed or self._closed:
             raise DecodeDenied()
-        if time.monotonic() >= self._deadline:
-            raise DecodeError()
+        with self._deadline_lock:
+            now = time.monotonic()
+            if self._closed or now >= self._deadline:
+                raise DecodeError()
+            if renew:
+                self._deadline = now + self._limits.inactivity_seconds
+                self._deadline_changed.set()
 
     def _spawn(self) -> None:
         if self._process is not None:
@@ -415,8 +435,17 @@ class WindowsDecoder(_Private):
         _job(self._process, self._limits.process_memory_bytes, self)
 
         def expire() -> None:
-            if not self._stop_watchdog.wait(max(0, self._deadline - time.monotonic())):
-                self.close()
+            while not self._stop_watchdog.is_set():
+                with self._deadline_lock:
+                    self._deadline_changed.clear()
+                    remaining = self._deadline - time.monotonic()
+                    if remaining <= 0:
+                        # Fence under the renewal lock: a late admission cannot revive.
+                        self._closed = True
+                if remaining <= 0:
+                    self.close()
+                    return
+                self._deadline_changed.wait(remaining)
 
         self._watchdog = threading.Thread(target=expire, daemon=True)
         self._watchdog.start()
@@ -433,11 +462,13 @@ class WindowsDecoder(_Private):
             or sequence != self._sequence
             or binding != self._binding._wire()
             or count > self._limits.max_response_frames
-            or self._frames + count > self._limits.max_frames
+            or (count if self._limits.continuous else self._frames + count)
+            > self._limits.max_frames
         ):
             raise DecodeError()
         frames = []
         seen = set()
+        response_output = 0
         for _ in range(count):
             width, height, ts, ordinal, length = _FRAME.unpack(
                 _read(stream, _FRAME.size)
@@ -446,20 +477,25 @@ class WindowsDecoder(_Private):
                 self._dimensions != (width, height)
                 or length != width * height * 3
                 or length > self._limits.max_frame_bytes
-                or self._output + length > self._limits.max_output_bytes
+                or (response_output if self._limits.continuous else self._output)
+                + length
+                > self._limits.max_output_bytes
                 or ts in seen
                 or self._pending.get(ts) != ordinal
             ):
                 raise DecodeError()
             seen.add(ts)
             rgb = _read(stream, length)
-            self._output += length
+            response_output += length
+            if not self._limits.continuous:
+                self._output += length
             frames.append(
                 PrivateRGBFrame(self._binding, width, height, ts, ordinal, rgb)
             )
         for ts in seen:
             del self._pending[ts]
-        self._frames += count
+        if not self._limits.continuous:
+            self._frames += count
         return tuple(frames)
 
     def _exchange(self, request: bytes, payload: bytes) -> tuple[PrivateRGBFrame, ...]:
@@ -552,16 +588,26 @@ class WindowsDecoder(_Private):
                 )
                 or packet.ordinal <= self._last_ordinal
                 or packet.timestamp_us in self._pending
-                or self._packets >= self._limits.max_packets
-                or self._input + len(packet._data) > self._limits.max_input_bytes
+                or (
+                    self._limits.continuous
+                    and self._last_timestamp is not None
+                    and packet.timestamp_us <= self._last_timestamp
+                )
+                or (len(self._pending) if self._limits.continuous else self._packets)
+                >= self._limits.max_packets
+                or (0 if self._limits.continuous else self._input) + len(packet._data)
+                > self._limits.max_input_bytes
+                or self._sequence >= 2**64 - 1
             ):
                 raise DecodeError()
             self._codec = packet.codec
             self._dimensions = (packet.width, packet.height)
             self._pending[packet.timestamp_us] = packet.ordinal
             self._last_ordinal = packet.ordinal
-            self._packets += 1
-            self._input += len(packet._data)
+            self._last_timestamp = packet.timestamp_us
+            if not self._limits.continuous:
+                self._packets += 1
+                self._input += len(packet._data)
             self._sequence += 1
             request = _REQUEST.pack(
                 b"WDQ1",
@@ -594,6 +640,8 @@ class WindowsDecoder(_Private):
             self._admit()
             self._busy = True
             if self._codec is None or self._dimensions is None:
+                raise DecodeError()
+            if self._sequence >= 2**64 - 1:
                 raise DecodeError()
             self._sequence += 1
             width, height = self._dimensions
@@ -648,6 +696,7 @@ class WindowsDecoder(_Private):
                 self._retirement_events = self._thread_done
             # A running retirement owner now exists before the watchdog is stopped.
             self._stop_watchdog.set()
+            self._deadline_changed.set()
             process = self._process
             assert process is not None
             reaped = False
@@ -711,6 +760,7 @@ class WindowsDecoder(_Private):
         process = self._process
         if process is None:
             self._stop_watchdog.set()
+            self._deadline_changed.set()
             self._retire_done.set()
             return
         reaper = None
@@ -743,3 +793,23 @@ class WindowsDecoder(_Private):
             reaper.join(timeout=3)
         except BaseException:  # noqa: BLE001 - interrupted join retains caller custody
             self._retire_original()
+
+    def wait_closed(self, timeout: float | None = None) -> bool:
+        """Confirm original Job/process/IO settlement after close was initiated.
+
+        A timeout returns False; custody remains with the retained retirement
+        owner. Caller cancellation must not drop that original owner or handles.
+        """
+        try:
+            if not self._closed or (
+                timeout is not None
+                and (
+                    type(timeout) not in (int, float)
+                    or not math.isfinite(timeout)
+                    or timeout < 0
+                )
+            ):
+                raise DecodeError()
+            return self._retire_done.wait(timeout)
+        except (OverflowError, ValueError):
+            raise DecodeError() from None

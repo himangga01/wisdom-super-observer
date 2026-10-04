@@ -5,6 +5,252 @@ below is dated2026-10-03 unless a later update is explicitly identified.
 
 ## Continuation update — 2026-10-04
 
+### Post-reboot continuation — 2026-10-04 (Claude Code controller)
+
+Resumed per the [reboot handoff](analysis/2026-10-04-reboot-handoff.md) in the
+`codex/superlive-web-service` worktree (HEAD `211d1484…`, media work still
+uncommitted). The Superpowers plugin (6.4.1, `claude-plugins-official`) was
+installed at the user's request; this session followed its subagent-driven
+development and review process from the plugin's skill files. The author-frozen
+hashes of `native_source.py` and `live.py` matched, and Root reran the focused
+media selection: 42 passed, 0 skipped.
+
+Findings and fixes are recorded in the
+[liveness review](analysis/2026-10-04-local-media-liveness-review.md):
+
+- Worker wiring from handoff section 3 was implemented and reviewed (fast
+  permit, off-loop SQL with identity re-checks).
+- Two independent reviews found that the 200 ms emission permit made playback
+  liveness depend on decoded-frame cadence: one ~220 ms gap, a ≤5 fps channel,
+  or ~20 ms SQL latency permanently closed the peer in inert reproductions.
+- Root measured the media admission's `NullPool` SQL path on this machine at
+  p50 25 ms / p95 ~125 ms / max 182 ms per transaction (pooled: 0.4–2.3 ms).
+  This is consistent with, but does not prove the cause of, the earlier failed
+  runs' native queue saturation.
+- Corrections (rulings R106–R110): bounded pooled media admission engine; a
+  third owned authority-heartbeat thread renewing the permit every 50 ms from
+  fresh SQL; non-terminal staleness in the WebRTC transport (drop while stale,
+  fence after 2 s, revocation/stop/expiry still terminal); fewer serialized SQL
+  checks; proof/retirement SQL off the event loop; honest quarantine when an
+  aiortc original close raises.
+- Executed in this session: owned real-SQL admission suite with pooling
+  15 passed / 0 skipped with owned-database cleanup and source preservation;
+  Root's final combined unit run 111 passed with Ruff, Ruff format and strict
+  mypy clean. Re-reviews addressed all 17 original findings and the follow-up
+  round (2000 ms read deadline restored, quarantine semantics, `max()`
+  permit); final verdict for that delta: open blocking findings C0/I0.
+
+The owned PostgreSQL 17 cluster was started with its existing
+`runtime.py start` (exit 0, data and credentials unchanged). A new immutable
+source approval (`root-source-approval-c1.json`, 91 sources) was created and the
+original coordinator was launched as run
+`local-devices-30b1015b9f664d85908abc5400de9f2e`. Per the user's instruction the
+controller launched Chrome itself (dedicated profile, DevTools protocol on
+localhost, ordinary trusted HTTPS, no certificate bypass).
+
+**Actual acceptance results (real recorders, real Chrome):**
+
+- Accepted: trusted HTTPS; OWNER login; device checks 8 and 4 channels; real
+  1280×1936 video at ~10 fps in Chrome for store 1 channel 2 and store 2
+  channel 1 with server-confirmed PLAYING; both stores playing at the same time;
+  user stop → `CLOSED` with confirmed cleanup; reopen after stop; all six leases
+  `CLOSED` with confirmed cleanup; clean runtime shutdown (all exits 0, state
+  removed, no retained custody, 0 known private values).
+- **Not accepted: continuous playback.** Every session stopped delivering
+  video 29–30 s after the native session opened. Diagnosis ruled out SQL
+  authority, ICE consent, network loss and CPU starvation. The decompiled
+  official client sends an 8-byte N9000 heartbeat every 6 s (`fu3.N1` →
+  `cw3.v5()`), while our native live loop never sends one, so the recorder ends
+  the stream ~30 s after open. Ruling R111 adds the keepalive in
+  `windows_socket_worker.serve_live`; it requires an independent native review
+  and a new native receipt before the next device run.
+
+**Keepalive fix and continuous acceptance (executed).** The native keepalive
+(K1) was implemented, passed an independent native review with C0/I0/M0 and
+received a new immutable native receipt; approval c2 then ran as
+`local-devices-06c7327498f845e787824d8dd019f081`. Results on the real
+recorders in Chrome: store 1 played continuously for about five minutes and
+store 2 for 81.7 s at the same time (~10 fps, server-confirmed PLAYING, frames
+presented on screen with distinct real images); heartbeats and SQL TTL renewal
+held throughout; stop/reopen worked while the other store kept playing; all
+leases closed with confirmed cleanup; the runtime shut down cleanly and all 91
+approved sources were unchanged afterwards. **Continuous two-store Chrome
+playback is now accepted for these two channels.**
+
+Open items from this run: (1) two starts within the same few seconds return
+429 for the second (no client retry); (2) resolved — the user observed wrong
+picture proportions; the streams are 1280×1936 half-width encodes without
+aspect information and the official app stretches to fill by default (its
+"original scale" switch is off by default), so the web player now fills its
+16:9 box (R112, reviewed C0/I0); in run
+`local-devices-6bfe84c4179f468c8335280eef4b69ce` (approval c3, 92 sources) the
+user visually confirmed the proportions and chose to keep 16:9 — an "original
+scale" toggle remains an APK-parity follow-up; (3) a quarantined
+lease would hold SQL capacity past restart (recovery path needed for production
+bootstrap). `release_ready=false` and `MATCHED=0` are unchanged: production
+media bootstrap wiring and the remaining APK features are still outstanding.
+
+**APK feature parity review (2026-10-04, read-only, independent).** The
+[parity review](analysis/2026-10-04-apk-feature-parity-review.md) inventories
+141 APK features (137 applicable): **2 accepted against the real recorders in
+Chrome** (device verification/inventory; single-channel continuous live video),
+12 implemented but unaccepted (synthetic/fixture evidence only), 12 partial,
+**111 missing** and 4 not applicable. Absent areas include recorded playback and
+export, multi-split live view, audio/two-way talk, PTZ and camera actuators,
+snapshot/recording/album, alarms and push, device configuration, sharing writes,
+AI search, cloud/VAS, doorbell and Tyco. Verdict: the service is a guarded
+vertical slice, not yet an APK replacement.
+
+For the user-requested all-stores/all-cameras dashboard the review documents
+the APK model (one long-lived connection per recorder carrying many channel
+tasks, sub streams in every split, up to 16 tiles) against our limits (2 native
+live owners, 2 media sources, 4 leases per user and one lease per channel,
+main stream only, one device login per tile, no TURN, media not wired in the
+production bridge). The dashboard page (`/monitoring`, designed on a Claude
+Design canvas) is being implemented with a scheduler bound to today's limit;
+true all-at-once viewing follows the review's section 5.4 roadmap (per-device
+multiplexer, sub streams, upstream/viewer fan-out, measured caps, viewer role,
+production wiring and TURN).
+
+**Publication — 2026-10-05 (user-approved).** After an independent final
+whole-branch review (C0/I3/M9), one fix wave (I1/I2 in unpublished migration
+0013, the R116 revival race, M1/M2/M6/M7 and R117) and a clean scoped re-review,
+the continuous-media feature, its fixes, tests and reports were committed to
+`codex/superlive-web-service` and fast-forwarded to `main` in the commit that
+contains this entry. Pre-publication evidence on the committed set: owned SQL
+suite 29 passed / 0 skipped with the migration hash pinned (run `288e51e5…`);
+Python media selection 116 passed; web 20 files / 373 tests passed with
+typecheck and lint clean; secret scan of every committed file found no database
+or device secrets, keys or tokens. The broader Python run (`tests/tvt_parity`
+and `tests/contract`, before the fix wave) had 5,704 passed / 34 skipped /
+15 failed / 114 errors: the errors are the recorded historical directory and
+account source gates (98 + 16, not repinned) and the failures are environmental
+(PowerShell 7 absent; an unset Android tool path) — none exercise changed
+modules. **Not in this commit:** the `/monitoring` live wall page (in review and
+pending a real-device multi-tile check). The device acceptance runs predate the
+fix wave; the next device run needs a new source approval.
+`release_ready=false`, `MATCHED=0`.
+
+### Reboot checkpoint — 2026-10-04, approximately 19:47 KST
+
+The user requested work cleanup and durable records before reboot. Read the
+[reboot handoff](analysis/2026-10-04-reboot-handoff.md) before restarting work.
+The baseline remains `211d1484aa16eb30f5d362758f149f98dec9dfdf`; latest media
+changes are saved but uncommitted in the `codex/superlive-web-service` worktree.
+Primary `main` does not contain these implementation changes.
+
+The media author has now finished the ingress, shielded-close and 200 ms permit
+corrections and reports 38 focused tests passing plus Ruff/mypy. These are
+author-reported results; Root has not independently verified the latest delta.
+Source inspection confirms `worker.py` still passes `source.current`, so worker
+wiring, independent review and actual Chrome acceptance remain pending.
+
+No application listener was found on 3543 and no active media Python worker was
+found. All listed subagents are completed. Root gracefully stopped the owned
+PostgreSQL runtime using its verified stop routine: exit 0, data preserved.
+No new tests, device calls, commit, push or OS reboot occurred for this request.
+Full parity and release readiness remain unaccepted. The handoff records exact
+resume order, existing runtime paths and the required new source-review gate.
+
+### User-requested status checkpoint — 2026-10-04
+
+The current source baseline remains `211d1484aa16eb30f5d362758f149f98dec9dfdf`
+on `codex/superlive-web-service`. The continuous-media implementation and its
+reports are modified/untracked working-tree changes, not a new published commit.
+This checkpoint inspected `git status --short --branch`, `git log -1`, the media
+source boundaries and local TCP listeners; it did not rerun earlier acceptance.
+
+Previously executed evidence establishes trusted local HTTPS, actual Chrome
+inventory/readback for the two authorized recorders (8 and 4 channels), and
+bounded Windows-native capture/decoding. It does **not** establish continuous
+Chrome playback or full APK parity. The current test server is stopped: no
+listener was found on port3543 at this checkpoint.
+
+The active media implementer is correcting receive starvation and incomplete
+peer shutdown. Source inspection now shows separate ingress/decoder owners and
+retained shielded close tasks. A bounded200ms transport permit is also present
+to remove synchronous SQL from packet callbacks. Integration is incomplete:
+`worker.py` still passes `current=source.current`; wiring, independent review
+and an actual-device/browser rerun remain required. The implementer's reported
+focused tests are progress evidence only; Root has not independently verified
+this latest source window.
+
+Next acceptance priorities are the corrected composition, normal runtime startup,
+actual CCTV video in Chrome for more than60 seconds, both-store operation,
+stop/reopen and original-resource retirement. Production bootstrap media wiring
+and remaining APK feature acceptance are still outstanding. Existing full-suite
+failures below remain unresolved; `release_ready=false` and `MATCHED=0` remain.
+No new product decision or phone connection is required for the current fixes.
+
+### Continuous media implementation in progress after Git cleanup
+
+Follow-up observations after FIFO coalescing: normal run `8a1bbbcc6e6244cb8795a4ae0b1eed6a`
+and diagnostic `927159220bcc450ba1af64ec13376866` progressed beyond native handoff.
+The signaling diagnostic `ba9d960d96a84e1fab2c8ac5e21e3c7d` found Chrome's42 codec
+entries exceeded the transport's32-entry bound; all other recorded offer shape
+checks passed. The client now explicitly offers the supported VP8 codec, with a
+failing-then-passing preference regression and10 focused frontend tests/type/lint
+passing. Server bounds were not raised.
+
+The subsequent VP8 attempts `c7fad019cfe4438cb6222986d125f7ca` and
+`fccdeb002f61446698b81f696f82f1f1` exposed sustained receive starvation after
+handoff: the native queue again filled256 chunks/299812 bytes while the same
+consumer waited for decoder work. A separate bounded ingress stage is being
+implemented. They also exposed a real shutdown defect: a three-second timeout
+cancelled aiortc's original `close()` coroutine after its internal closed future
+was installed, so later closes waited indefinitely. The source/peer close tasks
+must remain owned and shielded when a reporting deadline expires.
+
+These two runs did **not** shut down normally. Read-only py-spy stack inspection
+(without locals) showed the media loop idle and the original main worker waiting
+in media settlement; there were no surviving Python native/decoder children.
+After checking each exact worker's parent PID, unique run command, creation time
+and pinned process handle, Root terminally retired those two broken test workers.
+Their original runtime/coordinator custodians then completed with failure exit1,
+removed private state and the owned databases, and preserved the source database.
+This operational recovery is not graceful-cleanup acceptance. Every other listed
+actual run was normally retired. No live video success is claimed from these runs.
+
+Actual composite attempts: `local-devices-2097208293564729805d4506a0fcd9b9`
+verified both8/4 rosters through normal Chrome login, but store1 channel2 live
+failed after native login/metadata/open ACK. Parent-only diagnostic run
+`local-devices-061e7103937847b38616a02a57f8d79a` isolated a child pipe closure
+after5.234 seconds with440 current checks, no denied current callback, no expiry
+and no cancellation. A separately approved Job-admitted child observation in
+`local-devices-8719e9f6ffad426ba6c1e81fe551fec2` then recorded an actual callback
+queue failure:255 queued chunks /287643 bytes, valid context, active authority,
+unexpired remote and no prior remote close. The first frame had reached parent
+handoff before this later closure. The small-chunk queue saturated well below
+its byte cap because the service drained one chunk per authority roundtrip.
+An independent inert small-chunk producer reproduced that boundary without SDK
+calls. Bounded FIFO dequeue coalescing is now being corrected; quotas and bytes
+must remain intact. These failed attempts are not continuous browser acceptance.
+All three original coordinators exited0; private state and owned databases were
+retired with source stability/preservation and no known-private Root output hits.
+
+Baseline `211d1484aa16eb30f5d362758f149f98dec9dfdf` was clean before this continuation.
+Chrome was opened with the GPT browser-control tool. New local media contracts,
+0013 authority/leases, continuous Windows sessions, continuous isolated decoder,
+VP8 WebRTC and React/API/RPC composition are being implemented in the existing
+worktree. [The web integration guide](integrations/tvt-local-media-web.md) records
+the exact interfaces and playback/retirement conditions.
+
+Executed scoped evidence so far: owned media SQL13/13 passed in run
+`a1056ae425954233abb0160c235afb5c`, with source database preservation and owned
+cleanup; native transport344 tests passed; WebRTC23 inert cases passed; continuous
+decoder71 selected native cases passed, including260 frames and more than256MiB
+RGB per codec in one original process. These numbers cover their stated earlier
+source points, not automatic acceptance of every subsequent integration change.
+
+Reviews identified and corrected expiry renewal, uncertain/concurrent retirement,
+and fixed-error boundaries. The composite review additionally required browser
+frame acknowledgement before PLAYING and decoder/peer retirement before SQL
+CLOSED; those corrections add a playing-purpose ticket and a private retirement
+barrier, with fresh SQL/composite review still underway. The controller's NAL
+marker scan now stops at129 matches before allocation can exceed its128-unit cap.
+No actual continuous CCTV-to-Chrome acceptance is claimed yet. User credentials
+remain private; no phone or Android runtime is required for this Windows path.
+
 ### Git hygiene and checkout synchronization
 
 At the user's follow-up cleanup request, remote `main` was at `bd70738` while

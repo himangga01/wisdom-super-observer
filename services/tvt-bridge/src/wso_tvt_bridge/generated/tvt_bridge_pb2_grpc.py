@@ -1042,3 +1042,204 @@ class LocalDeviceBridgeV1:
             timeout,
             metadata,
             _registered_method=True)
+
+
+class LocalMediaBridgeV1Stub:
+    """Missing associated documentation comment in .proto file."""
+
+    def __init__(self, channel):
+        """Constructor.
+
+        Args:
+            channel: A grpc.Channel.
+        """
+        self.Start = channel.unary_unary(
+                '/wso.tvt.account.v1.LocalMediaBridgeV1/Start',
+                request_serializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.LocalMediaStartRequest.SerializeToString,
+                response_deserializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.LocalMediaReply.FromString,
+                _registered_method=True)
+        self.Offer = channel.unary_unary(
+                '/wso.tvt.account.v1.LocalMediaBridgeV1/Offer',
+                request_serializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.LocalMediaOfferRequest.SerializeToString,
+                response_deserializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.LocalMediaReply.FromString,
+                _registered_method=True)
+        self.Stop = channel.unary_unary(
+                '/wso.tvt.account.v1.LocalMediaBridgeV1/Stop',
+                request_serializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.LocalMediaStopRequest.SerializeToString,
+                response_deserializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.LocalMediaReply.FromString,
+                _registered_method=True)
+        self.Playing = channel.unary_unary(
+                '/wso.tvt.account.v1.LocalMediaBridgeV1/Playing',
+                request_serializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.LocalMediaPlayingRequest.SerializeToString,
+                response_deserializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.LocalMediaReply.FromString,
+                _registered_method=True)
+
+
+class LocalMediaBridgeV1Servicer:
+    """Missing associated documentation comment in .proto file."""
+
+    def Start(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def Offer(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def Stop(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def Playing(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+
+def add_LocalMediaBridgeV1Servicer_to_server(servicer, server):
+    rpc_method_handlers = {
+            'Start': grpc.unary_unary_rpc_method_handler(
+                    servicer.Start,
+                    request_deserializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.LocalMediaStartRequest.FromString,
+                    response_serializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.LocalMediaReply.SerializeToString,
+            ),
+            'Offer': grpc.unary_unary_rpc_method_handler(
+                    servicer.Offer,
+                    request_deserializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.LocalMediaOfferRequest.FromString,
+                    response_serializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.LocalMediaReply.SerializeToString,
+            ),
+            'Stop': grpc.unary_unary_rpc_method_handler(
+                    servicer.Stop,
+                    request_deserializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.LocalMediaStopRequest.FromString,
+                    response_serializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.LocalMediaReply.SerializeToString,
+            ),
+            'Playing': grpc.unary_unary_rpc_method_handler(
+                    servicer.Playing,
+                    request_deserializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.LocalMediaPlayingRequest.FromString,
+                    response_serializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.LocalMediaReply.SerializeToString,
+            ),
+    }
+    generic_handler = grpc.method_handlers_generic_handler(
+            'wso.tvt.account.v1.LocalMediaBridgeV1', rpc_method_handlers)
+    server.add_generic_rpc_handlers((generic_handler,))
+    server.add_registered_method_handlers('wso.tvt.account.v1.LocalMediaBridgeV1', rpc_method_handlers)
+
+
+ # This class is part of an EXPERIMENTAL API.
+class LocalMediaBridgeV1:
+    """Missing associated documentation comment in .proto file."""
+
+    @staticmethod
+    def Start(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/wso.tvt.account.v1.LocalMediaBridgeV1/Start',
+            wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.LocalMediaStartRequest.SerializeToString,
+            wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.LocalMediaReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def Offer(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/wso.tvt.account.v1.LocalMediaBridgeV1/Offer',
+            wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.LocalMediaOfferRequest.SerializeToString,
+            wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.LocalMediaReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def Stop(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/wso.tvt.account.v1.LocalMediaBridgeV1/Stop',
+            wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.LocalMediaStopRequest.SerializeToString,
+            wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.LocalMediaReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def Playing(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/wso.tvt.account.v1.LocalMediaBridgeV1/Playing',
+            wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.LocalMediaPlayingRequest.SerializeToString,
+            wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.LocalMediaReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)

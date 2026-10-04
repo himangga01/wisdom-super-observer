@@ -260,3 +260,67 @@ with scoped static checks passing. Root independently repeated the focused suite
 The author performed no SDK, protected database, listening server or Chrome run.
 Root's actual retry must prove both 8/4-channel views, saved-channel readback after
 reload and normal original-process shutdown. `MATCHED=0`; `release_ready=false`.
+
+## Opt-in local media composition — 2026-10-04
+
+Coordinator baseline for this extension is `211d1484aa16eb30f5d362758f149f98dec9dfdf`.
+Read [media authority](tvt-local-media-service.md), [WebRTC transport](tvt-local-webrtc.md)
+and [Windows decode](tvt-windows-decode.md) with the canonical report. Historical
+OWNER inventory8/4 and saved readback remain separate from continuous playback.
+
+`WSO_TEST_LOCAL_MEDIA_BROWSER=1` explicitly selects the media composition; absence
+keeps the previous inventory mode and v1 source gate. Other values reject. Only
+the fresh uniquely owned database is additionally upgraded from0012 to0013 and
+downgraded to0012 before its unchanged0012→0011/original-owner cleanup. No existing
+database migration or SQL authority/TTL change is performed by this fixture.
+
+Worker-only composition is `LocalMediaAdmission(workerURL,key)` plus
+`LocalMediaExecutor(admission,NativeLocalLiveProvider(reviewed_config))`, wrapped
+by `wso_tvt_media.worker.LocalMediaWorker(executor,decoder_executable=Path(...))`
+on the existing shared mTLS server's `local_media_worker` slot. The inventory
+provider and route remain present. The decoder setting is explicit:
+`WSO_TVT_WINDOWS_DECODER_PYTHON` points to the admitted private PyAV19 interpreter
+under `.superpowers/runtime/windows-media-decode/venv/Scripts/python.exe`.
+Its existing decoder constructor checks the infrastructure venv/base/site;
+the fixture does not install packages or invoke it during author tests.
+
+The API receives the opt-in marker but no decoder/native setting or WORKER URL.
+Media admission/executor/native constructors are guarded there alongside the
+existing decrypt guard. Next receives ordinary auth/HTTPS/API-origin settings
+only. Source readiness and a loaded media facade do not establish video delivery
+or PLAYING. Root must prove actual offer/heartbeat/frame delivery/stop and cleanup.
+
+Extended core/API/native/frontend sources deliberately invalidate historical
+inventory approvals. Media mode requires a **new closed v2 Root approval**, fixed
+by the existing explicit FILE+SHA256 launch settings. Its schema is:
+
+```json
+{"schema_version":2,"root_explicitly_accepted":true,"scope":"owned-local-device-media-browser-only","sources":{"repository/relative/path":"ROOT_APPROVED_RAW_SHA256"},"private_sources":{"WSO_TVT_WINDOWS_LOCAL_INVENTORY_SOURCE_REVIEW":{"path":"EXACT_LAUNCH_PATH","sha256":"ROOT_APPROVED_RAW_SHA256"},"WSO_TVT_WINDOWS_LOCAL_INVENTORY_RUNTIME_REVIEW":{"path":"EXACT_LAUNCH_PATH","sha256":"ROOT_APPROVED_RAW_SHA256"},"WSO_TVT_WINDOWS_DECODER_PYTHON":{"path":"EXACT_LAUNCH_PATH","sha256":"ROOT_APPROVED_RAW_SHA256"}}}
+```
+
+Those strings are documentation placeholders, not candidate acceptance pins.
+Root closes all current source reviews and constructs the exact composite map,
+including inventory/media/core/native/decoder/WebRTC/API/frontend dependencies,
+before real launch. Each protected path must equal its launch environment value
+and match its approved bytes before helper/DB execution. Source drift, wrong
+version/scope, missing roster and changed private inputs fail closed. The old
+v1 anchors still reject drift; the new authority is the separately Root-approved
+v2 receipt/hash, never a hash computed live to approve arbitrary changes. The
+unchanged borrowed helper pins remain mandatory in both modes.
+
+Media shutdown retries the same original `LocalMediaWorker.shutdown()` while it
+returns False, retaining its sources/event loop/thread/native/decoder owners.
+Only after True may media admission shutdown complete; only then does ordinary
+inventory/native/worker/database/key cleanup proceed. Reporting deadlines retain
+the original worker/custodian. No unconfirmed media owner is converted into CLOSED
+or resource absence. This fixture changes no player, API/core/native protocol or
+decoder semantics.
+
+Causal offline RED covered opt-in, worker-only decoder handoff, retained media
+shutdown and v2 protected-source authority. Focused inventory/media host contracts
+and static checks are reported in the minimal media packet. Migration/retirement
+tests use controlled inert owners, not PostgreSQL or cameras. The author opened
+no browser/listener/database, invoked no SDK/decoder/certificate changes, read no
+real CCTV input and made no Git action. Root owns actual playback and canonical
+execution reporting. Final v2 approval is **pending Root**, not supplied by this
+guide. `MATCHED=0`; `release_ready=false`.

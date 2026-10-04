@@ -431,6 +431,7 @@ class AccountRpcServer:
         flow_worker: AccountFlowWorker | None = None,
         directory_worker: DirectoryWorker | None = None,
         local_device_worker: LocalDeviceWorker | None = None,
+        local_media_worker: Any = None,
     ) -> None:
         target = endpoint(config.bind, bind=True)
         if (
@@ -489,6 +490,12 @@ class AccountRpcServer:
 
             rpc.add_LocalDeviceBridgeV1Servicer_to_server(
                 LocalDeviceRpcService(local_device_worker, config, self.pool),
+                self._server,
+            )
+            from .local_media_rpc import LocalMediaRpcService
+
+            rpc.add_LocalMediaBridgeV1Servicer_to_server(
+                LocalMediaRpcService(local_media_worker, config, self.pool),
                 self._server,
             )
             credentials = grpc.ssl_server_credentials(

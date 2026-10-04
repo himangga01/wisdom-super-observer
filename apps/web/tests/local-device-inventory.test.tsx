@@ -30,13 +30,14 @@ it('sends only scoped selectors once and checks response correlation',async()=>{
   await expect(verifyLocalDevice(tenant,connection,store,'csrf',new AbortController().signal)).rejects.toThrow();
   expect(send).toHaveBeenCalledTimes(2);
 });
-it('shows verified inventory without claiming live video or changing connection state',async()=>{
+it('shows verified inventory and an explicit live action without automatically playing',async()=>{
   vi.stubGlobal('fetch',vi.fn(async()=>reply()));
   render(<LocalDeviceInventory tenantId={tenant} connection={connection} stores={stores} csrf="csrf" disabled={false}/>);
   fireEvent.click(screen.getByRole('button',{name:'기기 확인'}));
-  expect(await screen.findByText('7번 채널')).toBeVisible();
+  expect(await screen.findByText('7번 채널',{selector:'li'})).toBeVisible();
   expect(screen.getByText('장치 정보 확인됨 · 1개 채널')).toBeVisible();
-  expect(screen.queryByRole('button',{name:/재생|라이브/})).toBeNull();
+  expect(screen.getByRole('button',{name:'실시간 재생'})).toBeEnabled();
+  expect(screen.queryByText('실시간 영상 재생 중')).toBeNull();
   expect(connection.status).toBe('NOT_VERIFIED');
 });
 it('requires an active linked store and never calls the device without one',()=>{

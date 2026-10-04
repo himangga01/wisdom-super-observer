@@ -1200,6 +1200,9 @@ def inert_provider_root(
         "packages/core/src/wso_core/tvt/local_credentials.py",
         "packages/core/src/wso_core/tvt/local_service.py",
         "packages/contracts/src/wso_contracts/tvt/local_device.py",
+        "packages/core/src/wso_core/tvt/local_media_service.py",
+        "packages/contracts/src/wso_contracts/tvt/local_media.py",
+        "packages/contracts/src/wso_contracts/tvt/media.py",
     ):
         write(relative, b"INERT DEPENDENCY")
 
@@ -1228,6 +1231,9 @@ def inert_provider_root(
             "packages/core/src/wso_core/tvt/local_credentials.py",
             "packages/core/src/wso_core/tvt/local_service.py",
             "packages/contracts/src/wso_contracts/tvt/local_device.py",
+            "packages/core/src/wso_core/tvt/local_media_service.py",
+            "packages/contracts/src/wso_contracts/tvt/local_media.py",
+            "packages/contracts/src/wso_contracts/tvt/media.py",
         )
     }
     dependencies.update(
@@ -3421,3 +3427,254 @@ def test_live_taskless_rebind_callback_first_claim_cannot_be_replaced() -> None:
     closed = w.CallbackOwner(8, 2)
     closed.closed = True
     assert not closed.claim_first_live()
+
+
+# Task K1 (Ruling R111): the official client's outer N9000 heartbeat while the
+# original live task is open. Inert serve_live doubles only: invented clock,
+# Send-only surface and current-authority fake; no SDK, device or IPC.
+HEARTBEAT = b"\x31\x31\x31\x31\x00\x00\x00\x00"
+KEEPALIVE_HANDLE = 7
+
+
+class KeepaliveCallback(w.CallbackOwner):
+    """Real callback owner; each empty live dequeue advances the invented clock."""
+
+    def __init__(self, clock: list[float], stall: float | None) -> None:
+        super().__init__(KEEPALIVE_HANDLE, 1)
+        self.clock, self.stall = clock, stall
+
+    def take_live_batch(self) -> bytes | None:
+        self.clock[0] += 1.0
+        if self.clock[0] == self.stall:
+            self.clock[0] += 30.0
+        return super().take_live_batch()
+
+
+class KeepaliveAuthority:
+    """Inert current authority; may revoke inside the first keepalive's grant."""
+
+    def __init__(
+        self,
+        clock: list[float],
+        events: list[tuple[str, str]],
+        callback: w.CallbackOwner,
+        deadline: float,
+        revoke: str,
+    ) -> None:
+        self.clock, self.events, self.callback = clock, events, callback
+        self.deadline, self.revoke = deadline, revoke
+        self.send_grants = 0
+        self.denied = False
+        self.revoked_at: float | None = None
+
+    def setup(self, data: dict[str, Any]) -> None:
+        self.events.append(("setup", ""))
+
+    def require(self, purpose: str) -> None:
+        if self.denied:
+            raise w.AuthorityError()
+        self.events.append(("require", purpose))
+        if purpose == "send":
+            self.send_grants += 1
+        # Send grant 1 precedes the open request; grant 2 the first keepalive.
+        if purpose != "send" or self.send_grants != 2 or not self.revoke:
+            return
+        self.revoked_at = self.clock[0]
+        if self.revoke == "denied":
+            self.denied = True
+            raise w.AuthorityError()
+        if self.revoke == "deadline":
+            self.deadline = self.clock[0]
+        elif self.revoke == "failed":
+            self.callback.mark_failed()
+        elif self.revoke == "closed":
+            self.callback.closed = True
+        else:
+            self.callback.context.value += 1
+
+    def envelope(self, raw: bytes) -> None:
+        raise AssertionError("inert keepalive runs carry no live envelopes")
+
+
+class KeepaliveNative:
+    """Send-only inert surface recording invented time and retained buffer count."""
+
+    def __init__(
+        self,
+        clock: list[float],
+        events: list[tuple[str, str]],
+        buffers: list[object],
+        short: int | None,
+    ) -> None:
+        self.clock, self.events = clock, events
+        self.buffers, self.short = buffers, short
+        self.sends: list[dict[str, Any]] = []
+
+    def call(self, name: str, *args: Any) -> Any:
+        assert name == "send" and len(args) == 7 and args[0] == KEEPALIVE_HANDLE
+        assert ct.sizeof(args[3]) == 1 and args[4:] == (0, None, 0)
+        wire = ct.string_at(args[1], args[2])
+        command = None if wire == HEARTBEAT else struct.unpack_from("<I", wire, 12)[0]
+        kind = {None: "keepalive", 1281: "open", 1282: "close"}[command]
+        self.events.append(("native", kind))
+        self.sends.append(
+            {
+                "kind": kind,
+                "at": self.clock[0] - 1000.0,
+                "wire": wire,
+                "size": args[2],
+                "first": args[1],
+                "second": args[3],
+                "retained": len(self.buffers),
+            }
+        )
+        if kind == "keepalive" and self.short is not None:
+            return self.short
+        return len(wire)
+
+
+def serve_keepalive(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    seconds: float,
+    short: int | None = None,
+    stall: float | None = None,
+    revoke: str = "",
+) -> tuple[p.SafeResult, KeepaliveNative, KeepaliveAuthority, list[object]]:
+    clock = [1000.0]
+    monkeypatch.setattr(time, "monotonic", lambda: clock[0])
+    events: list[tuple[str, str]] = []
+    buffers: list[object] = []
+    callback = KeepaliveCallback(clock, None if stall is None else 1000.0 + stall)
+    authority = KeepaliveAuthority(clock, events, callback, 1000.0 + seconds, revoke)
+    native = KeepaliveNative(clock, events, buffers, short)
+    result = p.SafeResult(GEN, stage="live", loaded=True)
+    setup = {
+        "session": (b"S" * 16).hex(),
+        "channel": (b"C" * 16).hex(),
+        "task": (b"T" * 16).hex(),
+        "open_request": (b"O" * 16).hex(),
+        "peer_version": 6,
+        "raw_index": 3,
+    }
+    w.serve_live(
+        native,
+        KEEPALIVE_HANDLE,
+        callback,
+        N9000Stream(),
+        result,
+        buffers,
+        b"",
+        setup,
+        authority,
+    )
+    return result, native, authority, buffers
+
+
+def test_live_keepalive_sends_exact_heartbeat_every_six_seconds_after_open(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Official client: fu3.N1 schedules cw3.v5's length-0 gg0 at 6000 ms delay.
+    result, native, _, _ = serve_keepalive(monkeypatch, seconds=24.0)
+    assert [(send["kind"], send["at"]) for send in native.sends] == [
+        ("open", 0.0),
+        ("keepalive", 6.0),
+        ("keepalive", 12.0),
+        ("keepalive", 18.0),
+    ]
+    beats = [send for send in native.sends if send["kind"] == "keepalive"]
+    assert all(send["wire"] == HEARTBEAT and send["size"] == 8 for send in beats)
+    # The +24 s heartbeat falls due at loop exit (deadline) and is never sent.
+    assert result.failure == "none" and result.live_open_attempts == 1
+    assert w.LIVE_KEEPALIVE == HEARTBEAT and w.LIVE_KEEPALIVE_SECONDS == 6.0
+
+
+def test_live_keepalive_each_heartbeat_follows_its_own_current_send_grant(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, _, authority, _ = serve_keepalive(monkeypatch, seconds=24.0)
+    events = authority.events
+    beats = [i for i, event in enumerate(events) if event == ("native", "keepalive")]
+    assert len(beats) == 3
+    assert all(events[i - 1] == ("require", "send") for i in beats)
+
+
+@pytest.mark.parametrize(
+    "revoke", ["denied", "deadline", "failed", "closed", "context"]
+)
+def test_live_keepalive_revoked_send_grant_withholds_heartbeat_and_ends_loop(
+    monkeypatch: pytest.MonkeyPatch,
+    revoke: str,
+) -> None:
+    result, native, authority, _ = serve_keepalive(
+        monkeypatch, seconds=24.0, revoke=revoke
+    )
+    # Revocation lands inside the first keepalive's own Send grant, at +6 s;
+    # the allowed(identity) recheck after that grant withholds the heartbeat.
+    assert authority.revoked_at == 1006.0
+    assert [send["kind"] for send in native.sends] == ["open"]
+    assert result.failure == "denied" and result.live_open_attempts == 1
+    assert result.live_close_attempts == 0
+    grants = [i for i, e in enumerate(authority.events) if e == ("require", "send")]
+    # Only the unchanged finally close grant may follow: no idle/frame grant.
+    assert set(authority.events[grants[1] :]) == {("require", "send")}
+
+
+@pytest.mark.parametrize("written", [-1, 0, 7, 9])
+def test_live_keepalive_short_write_fails_send_and_stops_heartbeats(
+    monkeypatch: pytest.MonkeyPatch,
+    written: int,
+) -> None:
+    result, native, authority, _ = serve_keepalive(
+        monkeypatch, seconds=24.0, short=written
+    )
+    assert [(send["kind"], send["at"]) for send in native.sends] == [
+        ("open", 0.0),
+        ("keepalive", 6.0),
+        ("close", 6.0),
+    ]
+    assert result.failure == "send"
+    assert result.live_open_attempts == result.live_close_attempts == 1
+    # The loop stops at once; only the unchanged finally close logic follows.
+    beat = authority.events.index(("native", "keepalive"))
+    assert authority.events[beat:] == [
+        ("native", "keepalive"),
+        ("require", "send"),
+        ("require", "send"),
+        ("native", "close"),
+    ]
+
+
+def test_live_keepalive_after_stall_sends_once_then_reschedules_from_send(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The invented clock jumps from +8 s to +38 s inside one native dequeue.
+    _, native, _, _ = serve_keepalive(monkeypatch, seconds=47.0, stall=8.0)
+    assert [(send["kind"], send["at"]) for send in native.sends] == [
+        ("open", 0.0),
+        ("keepalive", 6.0),
+        ("keepalive", 38.0),
+        ("keepalive", 44.0),
+    ]
+
+
+def test_live_keepalive_buffers_are_allocated_and_retained_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    allocate = ct.create_string_buffer
+    allocations: list[int | bytes] = []
+
+    def counted(value: int | bytes, size: int | None = None) -> Any:
+        allocations.append(value)
+        return allocate(value) if size is None else allocate(value, size)
+
+    monkeypatch.setattr(ct, "create_string_buffer", counted)
+    _, native, _, buffers = serve_keepalive(monkeypatch, seconds=24.0)
+    beats = [send for send in native.sends if send["kind"] == "keepalive"]
+    assert len(beats) == 3 and allocations.count(HEARTBEAT) == 1
+    assert all(send["first"] is beats[0]["first"] for send in beats)
+    assert all(send["second"] is beats[0]["second"] for send in beats)
+    # Open pair plus one keepalive pair; the retained list never grows per beat.
+    assert [send["retained"] for send in beats] == [4, 4, 4]
+    assert sum(value is beats[0]["first"] for value in buffers) == 1
+    assert sum(value is beats[0]["second"] for value in buffers) == 1
