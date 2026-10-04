@@ -268,7 +268,8 @@ measurements and rulings R104–R112 are in the
   "original scale" option, etc.). `release_ready=false`, `MATCHED=0`.
 
 **Publication update — 2026-10-05.** The work listed in section 8, plus the
-final-review fix wave, was committed to `codex/superlive-web-service` and
-fast-forwarded to `main` with user approval (see the service report's
-"Publication — 2026-10-05" entry). It is no longer uncommitted. Excluded from
+final-review fix wave, was committed locally to `codex/superlive-web-service`
+(commit `0834efb`, see the service report's "Publication — 2026-10-05" entry).
+The agent's push to origin was blocked by the permission system; the user must
+push the branch and fast-forward `main`. Excluded from
 that commit: the `/monitoring` live wall page, still in review.

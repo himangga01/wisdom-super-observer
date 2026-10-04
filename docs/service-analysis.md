@@ -115,9 +115,11 @@ production wiring and TURN).
 **Publication — 2026-10-05 (user-approved).** After an independent final
 whole-branch review (C0/I3/M9), one fix wave (I1/I2 in unpublished migration
 0013, the R116 revival race, M1/M2/M6/M7 and R117) and a clean scoped re-review,
-the continuous-media feature, its fixes, tests and reports were committed to
-`codex/superlive-web-service` and fast-forwarded to `main` in the commit that
-contains this entry. Pre-publication evidence on the committed set: owned SQL
+the continuous-media feature, its fixes, tests and reports were committed
+locally to `codex/superlive-web-service` (commit `0834efb`). The agent's push
+(branch and `main` fast-forward) was blocked by the Claude Code permission
+system, so **publishing to origin requires the user's own push**; until then
+`origin/main` remains at `211d148`. Pre-publication evidence on the committed set: owned SQL
 suite 29 passed / 0 skipped with the migration hash pinned (run `288e51e5…`);
 Python media selection 116 passed; web 20 files / 373 tests passed with
 typecheck and lint clean; secret scan of every committed file found no database

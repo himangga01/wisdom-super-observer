@@ -9,7 +9,7 @@
 ## Analysis reports and cross-agent handoff
 
 - Canonical service-analysis report: `docs/service-analysis.md`.
-- Reboot continuation checkpoint (2026-10-04): `docs/analysis/2026-10-04-reboot-handoff.md`. Read it and the canonical report before resuming; the continuous-media work it describes was published to `main` on 2026-10-05 (handoff section 8 and the service report's publication entry).
+- Reboot continuation checkpoint (2026-10-04): `docs/analysis/2026-10-04-reboot-handoff.md`. Read it and the canonical report before resuming; the continuous-media work it describes was committed locally on 2026-10-05 as `0834efb` (push to origin and `main` fast-forward pending the user's own push; handoff section 8 and the service report's publication entry).
 - First continuous Windows live failure diagnosis: `docs/analysis/2026-10-04-windows-live-first-attempt-diagnosis.md`; reuse its bounded callback/IPC observations and update it after the correction, without exposing private media or credentials.
 - Local continuous media references: `docs/integrations/tvt-local-media-service.md`, `tvt-windows-live-session.md`, `tvt-local-webrtc.md`, and `tvt-local-media-web.md` in the same integration directory. Read before changes and update source versus actual-device/browser evidence afterward in the canonical service report.
 - Scoped media reviews are under `docs/analysis/2026-10-04-local-media-core-review.md`, `2026-10-04-windows-live-session-review.md`, `2026-10-04-local-webrtc-review.md`, `2026-10-04-continuous-decoder-review.md`, and `2026-10-04-local-media-worker-review.md`. Reuse and refresh affected findings after fixes; retain prior review evidence.
