@@ -103,7 +103,7 @@ def _optional_text(data: dict[str, JsonValue], key: str) -> str | None:
 
 def _login(response: AccountResponse) -> AccountTokens:
     parsed = parse_login(response)
-    return AccountTokens(parsed.token, parsed.p2p_token)
+    return AccountTokens(parsed.token, parsed.p2p_token, response.private_body)
 
 
 def _challenge(response: AccountResponse) -> AccountChallenge:

@@ -970,3 +970,75 @@ class DirectoryBridgeV1:
             timeout,
             metadata,
             _registered_method=True)
+
+
+class LocalDeviceBridgeV1Stub:
+    """Missing associated documentation comment in .proto file."""
+
+    def __init__(self, channel):
+        """Constructor.
+
+        Args:
+            channel: A grpc.Channel.
+        """
+        self.Verify = channel.unary_unary(
+                '/wso.tvt.account.v1.LocalDeviceBridgeV1/Verify',
+                request_serializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.LocalDeviceVerifyRequest.SerializeToString,
+                response_deserializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.LocalDeviceReply.FromString,
+                _registered_method=True)
+
+
+class LocalDeviceBridgeV1Servicer:
+    """Missing associated documentation comment in .proto file."""
+
+    def Verify(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+
+def add_LocalDeviceBridgeV1Servicer_to_server(servicer, server):
+    rpc_method_handlers = {
+            'Verify': grpc.unary_unary_rpc_method_handler(
+                    servicer.Verify,
+                    request_deserializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.LocalDeviceVerifyRequest.FromString,
+                    response_serializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.LocalDeviceReply.SerializeToString,
+            ),
+    }
+    generic_handler = grpc.method_handlers_generic_handler(
+            'wso.tvt.account.v1.LocalDeviceBridgeV1', rpc_method_handlers)
+    server.add_generic_rpc_handlers((generic_handler,))
+    server.add_registered_method_handlers('wso.tvt.account.v1.LocalDeviceBridgeV1', rpc_method_handlers)
+
+
+ # This class is part of an EXPERIMENTAL API.
+class LocalDeviceBridgeV1:
+    """Missing associated documentation comment in .proto file."""
+
+    @staticmethod
+    def Verify(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/wso.tvt.account.v1.LocalDeviceBridgeV1/Verify',
+            wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.LocalDeviceVerifyRequest.SerializeToString,
+            wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.LocalDeviceReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)

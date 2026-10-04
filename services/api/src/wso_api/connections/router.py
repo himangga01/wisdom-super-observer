@@ -12,9 +12,19 @@ from fastapi import APIRouter, FastAPI, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
 from wso_core.connections import ConnectionFailure, ConnectionService, ConnectionView
 from wso_core.secrets import FileKeyProvider, KeyProvider, SecretRejected
+from wso_core.tvt.local_credentials import LocalCredentialError, LocalDeviceCredentials
 
 from wso_api.auth import Service, require_csrf
 from wso_api.stores.router import require_tenant
+
+
+class DeviceSelector(BaseModel):
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+    serial: SecretStr = Field(min_length=1, max_length=63, strict=True, repr=False)
+    country: str = Field(default="KR", min_length=2, max_length=2, strict=True)
+    qr_payload: SecretStr | None = Field(
+        default=None, max_length=4096, strict=True, repr=False
+    )
 
 
 class ConnectionCreate(BaseModel):
@@ -25,6 +35,20 @@ class ConnectionCreate(BaseModel):
     username: SecretStr = Field(min_length=1, max_length=512, repr=False)
     password: SecretStr = Field(min_length=1, max_length=4096, repr=False)
     store_ids: list[UUID] = Field(default_factory=list, max_length=100)
+    device: DeviceSelector | None = Field(default=None, repr=False)
+
+    @model_validator(mode="after")
+    def local_device_contract(self) -> ConnectionCreate:
+        if (self.kind == "TVT_DEVICE") != (self.device is not None):
+            raise ValueError("valid device selector required for device connection")
+        if self.kind != "TVT_DEVICE" and "device" in self.model_fields_set:
+            raise ValueError("device selector unsupported for account connection")
+        if self.kind == "TVT_DEVICE":
+            try:
+                _local_credentials(self)
+            except LocalCredentialError:
+                raise ValueError("valid device credentials required") from None
+        return self
 
 
 class GenerationRequest(BaseModel):
@@ -42,6 +66,7 @@ class ConnectionPatch(GenerationRequest):
         default=None, min_length=1, max_length=4096, repr=False
     )
     store_ids: list[UUID] | None = Field(default=None, max_length=100)
+    device: DeviceSelector | None = Field(default=None, repr=False)
 
     @model_validator(mode="after")
     def complete_replacement(self) -> ConnectionPatch:
@@ -66,9 +91,35 @@ def configure_connections(app: FastAPI, provider: KeyProvider | None = None) -> 
 router = APIRouter(prefix="/api/v1/connections", tags=["connections"])
 
 
-def credential_bytes(body: ConnectionCreate | ConnectionPatch) -> bytes | None:
+def _local_credentials(
+    body: ConnectionCreate | ConnectionPatch,
+) -> LocalDeviceCredentials:
+    if body.device is None or body.username is None or body.password is None:
+        raise LocalCredentialError("Local device credentials require valid input.")
+    return LocalDeviceCredentials(
+        serial=body.device.serial.get_secret_value(),
+        country=body.device.country,
+        username=body.username.get_secret_value(),
+        password=body.password.get_secret_value(),
+        qr_payload=body.device.qr_payload.get_secret_value()
+        if body.device.qr_payload is not None
+        else None,
+    )
+
+
+def credential_bytes(
+    body: ConnectionCreate | ConnectionPatch, *, kind: str | None = None
+) -> bytes | None:
+    kind = body.kind if isinstance(body, ConnectionCreate) else kind
+    if body.device is not None and (kind != "TVT_DEVICE" or body.username is None):
+        raise ConnectionFailure(422)
     if body.username is None or body.password is None:
         return None
+    if kind == "TVT_DEVICE":
+        try:
+            return _local_credentials(body).to_encrypt_bytes()
+        except LocalCredentialError:
+            raise ConnectionFailure(422) from None
     return json.dumps(
         {
             "username": body.username.get_secret_value(),
@@ -94,20 +145,28 @@ def mutate(
         ) as scope:
             data = body.model_dump(
                 mode="json",
-                exclude={"username", "password", "expected_generation"},
+                exclude={"username", "password", "device", "expected_generation"},
                 exclude_unset=True,
             )
-            return ConnectionService(
+            connections = ConnectionService(
                 scope.session,
                 getattr(request.app.state, "connection_key_provider", None),
-            ).mutate(
+            )
+            # The protected existing row determines replacement semantics; no
+            # secret read or caller-provided kind is used for updates.
+            kind = (
+                connections.get(connection_id).kind
+                if isinstance(body, ConnectionPatch) and connection_id is not None
+                else None
+            )
+            return connections.mutate(
                 action,
                 data,
                 connection_id=connection_id,
                 expected_generation=body.expected_generation
                 if isinstance(body, GenerationRequest)
                 else 0,
-                credentials=credential_bytes(body)
+                credentials=credential_bytes(body, kind=kind)
                 if isinstance(body, (ConnectionCreate, ConnectionPatch))
                 else None,
                 correlation_id=getattr(request.state, "request_id", None),

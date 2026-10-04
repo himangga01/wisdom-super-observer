@@ -4,10 +4,12 @@ function Navigation({
   signedIn,
   active,
   connectionTenant,
+  tvtTenant,
 }: {
   signedIn: boolean;
   active?: string;
   connectionTenant?: string;
+  tvtTenant?: string | null;
 }) {
   return (
     <nav aria-label="주 메뉴" className="space-y-1">
@@ -34,8 +36,8 @@ function Navigation({
           <span aria-hidden="true">⇄</span> 연결 관리
         </a>
       )}
-      {signedIn && connectionTenant && (
-        <a href={`/tvt?tenant_id=${encodeURIComponent(connectionTenant)}`} className={`wso-nav-item ${active === "tvt" ? "wso-nav-active" : ""}`} aria-current={active === "tvt" ? "page" : undefined}>
+      {signedIn && tvtTenant && (
+        <a href={`/tvt?tenant_id=${encodeURIComponent(tvtTenant)}`} className={`wso-nav-item ${active === "tvt" ? "wso-nav-active" : ""}`} aria-current={active === "tvt" ? "page" : undefined}>
           <span aria-hidden="true">◉</span> SuperLivePlus
         </a>
       )}
@@ -47,11 +49,13 @@ export function ServiceShell({
   csrf,
   active,
   connectionTenant,
+  tvtTenant = connectionTenant,
 }: {
   children: ReactNode;
   csrf?: string;
   active?: "connections" | "tvt";
   connectionTenant?: string;
+  tvtTenant?: string | null;
 }) {
   const signedIn = csrf !== undefined;
   return (
@@ -76,6 +80,7 @@ export function ServiceShell({
             signedIn={signedIn}
             active={active}
             connectionTenant={connectionTenant}
+            tvtTenant={tvtTenant}
           />
         </div>
         <div className="mt-auto border-t border-[var(--wso-border)] p-6">
@@ -124,6 +129,7 @@ export function ServiceShell({
               signedIn={signedIn}
               active={active}
               connectionTenant={connectionTenant}
+              tvtTenant={tvtTenant}
             />
           </div>
         </details>

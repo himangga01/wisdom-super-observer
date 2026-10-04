@@ -77,6 +77,8 @@ type ChallengeInput = ImageChallenge | ImageCheck | SmsChallengeInput
 class AccountTokens:
     account_token: str = field(repr=False)
     p2p_token: str = field(repr=False)
+    # Original bounded successful reply for private, unbound SID capture only.
+    private_body: bytes = field(default=b"", repr=False)
 
 
 @dataclass(frozen=True, slots=True)

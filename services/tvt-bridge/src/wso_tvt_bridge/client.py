@@ -6,7 +6,7 @@ import os
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
-from threading import Lock
+from threading import Event, Lock
 from typing import Any, Self, TypeVar, cast
 
 import grpc
@@ -43,6 +43,7 @@ from wso_contracts.tvt.directory import (
     ReceivedSharesRequest,
     SentSharesRequest,
 )
+from wso_contracts.tvt.local_device import LocalDeviceView
 from wso_core.tvt.account_projection import AccountFailure
 
 from .callback_registry import CallbackRegistry
@@ -136,6 +137,7 @@ class AccountRpcClient:
         self._stub = rpc.AccountBridgeV1Stub(self._channel)
         self._flow_stub = rpc.FlowBridgeV1Stub(self._channel)
         self._directory_stub = rpc.DirectoryBridgeV1Stub(self._channel)
+        self._local_stub = rpc.LocalDeviceBridgeV1Stub(self._channel)
         self._close_lock = Lock()
         self._closed = False
 
@@ -244,6 +246,25 @@ class AccountRpcClient:
         if answer is None:
             raise safe_failure(code) from None
         return answer
+
+    def verify(
+        self,
+        ticket: str,
+        *,
+        deadline_ms: int,
+        correlation_id: str,
+        cancel: Event | None = None,
+    ) -> LocalDeviceView:
+        from .local_rpc import call_local
+
+        return call_local(
+            self._local_stub,
+            self._registry,
+            ticket,
+            deadline_ms=deadline_ms,
+            correlation_id=correlation_id,
+            cancel=cancel,
+        )
 
     def login(
         self, ticket: str, body: AccountLogin, *, deadline_ms: int, correlation_id: str

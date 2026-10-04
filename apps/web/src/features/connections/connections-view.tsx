@@ -9,6 +9,7 @@ import {
   type ConnectionView,
 } from "../../lib/connections";
 import { ConnectionForm } from "./connection-form";
+import { LocalDeviceInventory } from "./local-device-inventory";
 export function ConnectionsView({
   tenantId,
   initial,
@@ -282,6 +283,7 @@ export function ConnectionsView({
                   </dd>
                 </div>
               </dl>
+              {item.kind === "TVT_DEVICE" && <LocalDeviceInventory tenantId={tenantId} connection={item} stores={stores} csrf={csrf} disabled={busy} />}
               <div className="mt-5 flex flex-wrap gap-2 border-t border-[var(--wso-border)] pt-4">
                 <button
                   disabled={busy}

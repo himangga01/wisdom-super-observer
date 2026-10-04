@@ -159,6 +159,7 @@ describe("connection safety boundary", () => {
         site: "s",
         username: "u",
         password: "p",
+        device: { serial: "INERT123", country: "KR" },
       }),
       [],
     );

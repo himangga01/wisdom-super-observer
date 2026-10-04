@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.wso.tvt.localprobe" android:versionCode="1" android:versionName="local-nat-probe-1">
+    <uses-sdk android:minSdkVersion="23" android:targetSdkVersion="36" />
+    <application android:debuggable="true" android:allowBackup="false" android:label="WSO Local NAT Development Probe" android:extractNativeLibs="true">
+        <activity android:name="com.wso.tvt.probe.LocalLoadProbeActivity" android:exported="true" />
+    </application>
+</manifest>

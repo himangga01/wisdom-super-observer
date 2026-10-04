@@ -562,3 +562,31 @@ def test_exact_migration_variants_reject_mixed_raw_eol(runtime, windows):
     )
     with pytest.raises(ValueError, match="unapproved migration source"):
         runtime.approved_migration_digest(mixed)
+
+
+def test_directory_child_configuration_never_leaks_into_clean_api_environment(runtime, monkeypatch):
+    monkeypatch.setenv("WSO_TEST_DIRECTORY_BROWSER", "1")
+    monkeypatch.setenv("WSO_TVT_DIRECTORY_PROFILE_FILE", "private-directory-profile")
+    monkeypatch.setenv("WSO_WORKER_DATABASE_URL", "private-worker")
+    monkeypatch.setenv("SSL_CERT_FILE", "private-issuer-ca")
+    clean = runtime.child_environment()
+    assert not any(key.startswith("WSO_") for key in clean)
+    assert "SSL_CERT_FILE" not in clean
+
+
+def test_shared_directory_dispatch_uses_existing_worker_admission_fence(runtime, tmp_path):
+    from wso_tvt_bridge.server import _DirectoryService, _Service
+    assert _DirectoryService._execute is _Service._execute
+    gate = runtime.AdmissionGate(tmp_path / "directory-gate.sqlite", create=True)
+    calls = []
+    execute = runtime.guard_worker_execute(lambda *args, **kwargs: calls.append("executed"), gate)
+    execute(None, None, None)
+    assert calls == ["executed"]
+    with gate.frozen() as activity:
+        assert activity == (0, 0)
+        class Context:
+            def abort(self, code, message):
+                raise ValueError("admission refused")
+        with pytest.raises(ValueError, match="admission refused"):
+            execute(None, None, Context())
+    assert calls == ["executed"]

@@ -22,6 +22,7 @@ export function StoresView({
   return (
     <ServiceShell
       csrf={csrf}
+      tvtTenant={memberships.find((membership) => membership.tenant_id === tenantId)?.tenant_id ?? null}
       connectionTenant={
         memberships.find(
           (membership) =>

@@ -21,6 +21,25 @@ function cleanEnvironment() {
   return Object.fromEntries(Object.entries(process.env).filter(([key]) =>
     !/^(WSO_|PG|DATABASE|NODE_)/.test(key) && !["SSL_CERT_FILE", "SSL_CERT_DIR"].includes(key)));
 }
+export function directoryAuthEnvironment(context, env = process.env) {
+  const mode = env.WSO_TEST_DIRECTORY_BROWSER;
+  if (mode === undefined && context.directoryMode === undefined) return {};
+  if (mode !== "1" || context.directoryMode !== true) throw new Error("Explicit directory mode mismatch");
+  const auth = context.nextAuth;
+  const keys = ["WSO_OIDC_ISSUER", "WSO_OIDC_CLIENT_ID", "WSO_OIDC_CLIENT_SECRET", "WSO_AUTH_EXCHANGE_KEY", "WSO_FLOW_ENCRYPTION_KEY"];
+  if (!auth || typeof auth !== "object" || Object.keys(auth).sort().join() !== keys.sort().join()) throw new Error("Private directory auth rejected");
+  const issuer = new URL(auth.WSO_OIDC_ISSUER);
+  if (issuer.protocol !== "https:" || issuer.hostname !== "localhost" || !issuer.port || issuer.username || issuer.password || issuer.pathname !== "/" || issuer.search || issuer.hash || issuer.origin !== auth.WSO_OIDC_ISSUER || auth.WSO_OIDC_CLIENT_ID !== "fixture-web") throw new Error("Private directory issuer rejected");
+  for (const key of keys.slice().filter(key => !["WSO_OIDC_ISSUER", "WSO_OIDC_CLIENT_ID"].includes(key))) {
+    if (typeof auth[key] !== "string" || !/^[A-Za-z0-9_-]{43,128}$/.test(auth[key])) throw new Error("Private directory credential rejected");
+  }
+  const flow = Buffer.from(auth.WSO_FLOW_ENCRYPTION_KEY, "base64url");
+  if (flow.length !== 32 || flow.toString("base64url") !== auth.WSO_FLOW_ENCRYPTION_KEY || new Set(keys.filter(key => key.endsWith("KEY") || key.endsWith("SECRET")).map(key => auth[key])).size !== 3) throw new Error("Private directory credential rejected");
+  return { ...auth };
+}
+function evidenceDirectory() {
+  return resolve(root, ".superpowers/sdd/2026-09-27-superlive-plus-web-parity-implementation-plan", process.env.WSO_TEST_DIRECTORY_BROWSER === "1" ? "W07-directory-browser-runtime-evidence" : "W05-account-browser-fixture-fix1-evidence");
+}
 async function health(url, ca) {
   return new Promise((done) => {
     const call = request(url, { ca, timeout: 1000, rejectUnauthorized: true }, (response) => {
@@ -96,7 +115,7 @@ async function coordinator() {
   const shutdown = () => stopping ??= (async () => {
     const started = performance.now();
     const deadline = started + CLEANUP.coordinatorMs;
-    const evidence = resolve(root, ".superpowers/sdd/2026-09-27-superlive-plus-web-parity-implementation-plan/W05-account-browser-fixture-fix1-evidence");
+    const evidence = evidenceDirectory();
     mkdirSync(evidence, { recursive: true });
     const events = [];
     const receipt = (failureReported) => {
@@ -128,7 +147,7 @@ async function coordinator() {
     runtime = spawn(base, ["-c", launch], { cwd: root, env: process.env, windowsHide: true, stdio: ["pipe", "ignore", "pipe"] });
     runtime.stderr.on("data", bytes => {
       const safe = bytes.toString("utf8").split(/\r?\n/).filter(line => /^Account browser fixture failed \([A-Za-z]+; [A-Za-z0-9_.,:\-<> ]+\)\.$/.test(line));
-      if (safe.length) writeFileSync(resolve(root, ".superpowers/sdd/2026-09-27-superlive-plus-web-parity-implementation-plan/W05-account-browser-fixture-fix1-evidence/runtime-failure.txt"), safe.join("\n"));
+      if (safe.length) writeFileSync(resolve(evidenceDirectory(), "runtime-failure.txt"), safe.join("\n"));
     });
     while (!existsSync(stateFile)) {
       if (stopping) { await stopping; return; }
@@ -138,6 +157,7 @@ async function coordinator() {
     }
     const context = state();
     const env = { ...cleanEnvironment(), NODE_EXTRA_CA_CERTS: context.caFile, NEXT_TELEMETRY_DISABLED: "1", WSO_TVT_ACCOUNT_BROWSER_STATE_FILE: stateFile, WSO_PUBLIC_ORIGIN: context.baseURL, API_INTERNAL_ORIGIN: context.apiOrigin, WSO_OIDC_ISSUER: "https://w02.test", WSO_OIDC_CLIENT_ID: "fixture-web", WSO_OIDC_CLIENT_SECRET: randomBytes(32).toString("base64url"), WSO_AUTH_EXCHANGE_KEY: randomBytes(48).toString("base64url"), WSO_FLOW_ENCRYPTION_KEY: randomBytes(32).toString("base64url") };
+    Object.assign(env, directoryAuthEnvironment(context));
     web = spawn(process.execPath, [fileURLToPath(import.meta.url), "--next"], { cwd: root, env, windowsHide: true, stdio: ["pipe", "ignore", "ignore"] });
     const ca = readFileSync(context.caFile);
     while (!(await health(context.baseURL + "/", ca))) {

@@ -34,6 +34,8 @@ from wso_api.tvt.account_flows import configure_account_flows
 from wso_api.tvt.account_flows import router as account_flows_router
 from wso_api.tvt.devices import configure_directory
 from wso_api.tvt.devices import router as directory_router
+from wso_api.tvt.local_devices import configure_local_devices
+from wso_api.tvt.local_devices import router as local_devices_router
 from wso_api.tvt.startup import configure_startup
 from wso_api.tvt.startup import router as startup_router
 
@@ -87,6 +89,7 @@ def create_app(
             app.state.tvt_account_worker = account_client
             app.state.tvt_account_flow_worker = account_client
             app.state.tvt_directory_worker = account_client
+            app.state.tvt_local_device_worker = account_client
             if asset_runtime is None:
                 try:
                     owned = start_asset_runtime(
@@ -100,6 +103,7 @@ def create_app(
             app.state.tvt_account_worker = None
             app.state.tvt_account_flow_worker = None
             app.state.tvt_directory_worker = None
+            app.state.tvt_local_device_worker = None
             try:
                 if account_client is not None:
                     await _close_account_client(account_client)
@@ -122,6 +126,7 @@ def create_app(
     configure_account(app)
     configure_account_flows(app)
     configure_directory(app)
+    configure_local_devices(app)
     configure_connections(app)
     configure_assets(app, runtime=asset_runtime)
     app.include_router(auth_router)
@@ -133,6 +138,7 @@ def create_app(
     app.include_router(account_router)
     app.include_router(account_flows_router)
     app.include_router(directory_router)
+    app.include_router(local_devices_router)
 
     @app.middleware("http")
     async def request_context(

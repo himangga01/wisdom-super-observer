@@ -16,6 +16,7 @@ import grpc
 from pydantic import BaseModel
 from wso_api.tvt.device_service import DirectoryWorker
 from wso_api.tvt.flow_service import AccountFlowWorker
+from wso_api.tvt.local_device_service import LocalDeviceWorker
 from wso_api.tvt.session_service import AccountWorker
 from wso_contracts.tvt.account import (
     AccountIdentity,
@@ -429,6 +430,7 @@ class AccountRpcServer:
         dispose: Callable[[], object] = lambda: None,
         flow_worker: AccountFlowWorker | None = None,
         directory_worker: DirectoryWorker | None = None,
+        local_device_worker: LocalDeviceWorker | None = None,
     ) -> None:
         target = endpoint(config.bind, bind=True)
         if (
@@ -482,6 +484,12 @@ class AccountRpcServer:
             )
             rpc.add_DirectoryBridgeV1Servicer_to_server(
                 _DirectoryService(directory_worker, config, self.pool), self._server
+            )
+            from .local_rpc import LocalDeviceRpcService
+
+            rpc.add_LocalDeviceBridgeV1Servicer_to_server(
+                LocalDeviceRpcService(local_device_worker, config, self.pool),
+                self._server,
             )
             credentials = grpc.ssl_server_credentials(
                 [(config.key, config.certificate)],
@@ -603,11 +611,32 @@ def create_server_from_environment() -> AccountRpcServer:
             resources.append(directory_admission.close)
             directory_worker = DirectoryWorkerExecutor(directory_admission, endpoints)
             resources.append(lambda: directory_worker.close(deadline_ms=1000))
+        local_worker = None
+        if env.get("WSO_TVT_WINDOWS_LOCAL_INVENTORY_ENABLED"):
+            from wso_core.tvt.local_admission import LocalDeviceAdmission
+            from wso_core.tvt.local_service import LocalVerificationExecutor
+
+            from .local_inventory_config import load_local_inventory_provider
+
+            local_provider = load_local_inventory_provider()
+            if local_provider is not None:
+                local_admission = LocalDeviceAdmission(
+                    required(env, "WSO_WORKER_DATABASE_URL"), provider
+                )
+                resources.append(local_admission.shutdown)
+                local_worker = LocalVerificationExecutor(
+                    local_admission, local_provider
+                )
         return AccountRpcServer(
             config,
             cast(AccountWorker, AccountWorkerExecutor(vault, endpoints)),
             dispose=dispose,
             flow_worker=flow_worker,
+            **(
+                {"local_device_worker": local_worker}
+                if local_worker is not None
+                else {}
+            ),
             **(
                 {"directory_worker": directory_worker}
                 if directory_worker is not None

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { parseDeviceQr } from "./tvt/device-qr-image";
 export const uuid = z.uuid();
 export const connectionKinds = [
   "TVT_ACCOUNT",
@@ -22,6 +23,22 @@ const stores = z
   .refine((ids) => new Set(ids).size === ids.length);
 const metadata = { alias: bounded(200), site: bounded(500), store_ids: stores };
 const generation = { expected_generation: z.number().int().positive() };
+const device = z.object({
+  serial: z.string().regex(/^[A-Za-z0-9]{1,63}$/).transform(value => value.toUpperCase()),
+  country: z.string().regex(/^[A-Z]{2}$/).default("KR"),
+  qr_payload: z.string().max(4096).optional(),
+}).strict();
+const localField = (value: string) => !value.includes("\0") && !/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u.test(value) && new TextEncoder().encode(value).length <= 63;
+function validLocal(body: { device?: z.infer<typeof device>; username?: string; password?: string }) {
+  if (!body.device || !body.username || !body.password || !localField(body.username) || !localField(body.password)) return false;
+  if (body.device.qr_payload !== undefined) {
+    try {
+      const qr = parseDeviceQr(body.device.qr_payload);
+      if (qr.serial !== body.device.serial || qr.username !== body.username) return false;
+    } catch { return false; }
+  }
+  return true;
+}
 const create = z
   .object({
     ...metadata,
@@ -29,8 +46,10 @@ const create = z
     kind: z.enum(connectionKinds),
     username: bounded(512),
     password: bounded(4096),
+    device: device.optional(),
   })
-  .strict();
+  .strict()
+  .refine(body => body.kind === "TVT_DEVICE" ? validLocal(body) : body.device === undefined);
 const patch = z
   .object({
     ...generation,
@@ -39,11 +58,13 @@ const patch = z
     store_ids: stores.optional(),
     username: bounded(512).optional(),
     password: bounded(4096).optional(),
+    device: device.optional(),
   })
   .strict()
   .refine(
     (body) => (body.username === undefined) === (body.password === undefined),
-  );
+  )
+  .refine(body => body.device === undefined || validLocal(body));
 const revoke = z.object(generation).strict();
 const publicSchema = z.object({
   id: uuid,

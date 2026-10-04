@@ -1,5 +1,6 @@
 "use client";
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent, type ChangeEvent } from "react";
+import { decodeDeviceQrImage } from "../../lib/tvt/device-qr-image";
 import type { Store } from "../../lib/session";
 import {
   connectionKinds,
@@ -24,8 +25,55 @@ export function ConnectionForm({
 }) {
   const [replacement, setReplacement] = useState(false);
   const [validation, setValidation] = useState("");
+  const [kind, setKind] = useState(connection?.kind ?? "TVT_ACCOUNT");
+  const [reading, setReading] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
+  const decodeGeneration = useRef(0);
+  const qrPayload = useRef<string | undefined>(undefined);
+  const scopeKey = stores.map(store => `${store.tenant_id}/${store.id}`).join(",");
+  function clearPrivate() {
+    decodeGeneration.current += 1;
+    qrPayload.current = undefined;
+    setReading(false);
+    for (const name of ["username", "password", "device_serial", "device_qr_image"]) {
+      const input = formRef.current?.elements.namedItem(name) as HTMLInputElement | null;
+      if (input) input.value = "";
+    }
+    const country = formRef.current?.elements.namedItem("device_country") as HTMLInputElement | null;
+    if (country) country.value = "KR";
+  }
+  useEffect(() => {
+    const form = formRef.current;
+    return () => {
+      decodeGeneration.current += 1; qrPayload.current = undefined;
+      setReading(false);
+      form?.querySelectorAll<HTMLInputElement>('[name="username"], [name="password"], [name="device_serial"], [name="device_qr_image"]').forEach(input => { input.value = ""; });
+      const country = form?.elements.namedItem("device_country") as HTMLInputElement | null;
+      if (country) country.value = "KR";
+    };
+  }, [connection?.id, connection?.tenant_id, connection?.generation, scopeKey]);
+  async function readQr(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.currentTarget.files?.[0];
+    clearPrivate();
+    if (!file) return;
+    const generation = decodeGeneration.current;
+    setReading(true); setValidation("");
+    try {
+      const result = await decodeDeviceQrImage(file);
+      if (generation !== decodeGeneration.current || !formRef.current) return;
+      const form = formRef.current;
+      (form.elements.namedItem("device_serial") as HTMLInputElement).value = result.serial;
+      (form.elements.namedItem("username") as HTMLInputElement).value = result.username;
+      qrPayload.current = result.qr_payload;
+    } catch {
+      if (generation === decodeGeneration.current) setValidation("QR 이미지를 읽을 수 없습니다. 장치번호와 아이디를 직접 입력하세요.");
+    } finally {
+      if (generation === decodeGeneration.current) setReading(false);
+    }
+  }
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (busy || reading) return;
     const form = event.currentTarget;
     const values = new FormData(form);
     const body = {
@@ -37,6 +85,9 @@ export function ConnectionForm({
         : { kind: values.get("kind") }),
       ...(!connection || replacement
         ? { username: values.get("username"), password: values.get("password") }
+        : {}),
+      ...(kind === "TVT_DEVICE" && (!connection || replacement)
+        ? { device: { serial: values.get("device_serial"), country: values.get("device_country"), ...(qrPayload.current === undefined ? {} : { qr_payload: qrPayload.current }) } }
         : {}),
     };
     let parsed: unknown;
@@ -50,18 +101,12 @@ export function ConnectionForm({
     }
     setValidation("");
     // Credentials exist only for this one submission, never in browser storage.
-    const password = form.elements.namedItem(
-      "password",
-    ) as HTMLInputElement | null;
-    const username = form.elements.namedItem(
-      "username",
-    ) as HTMLInputElement | null;
-    if (password) password.value = "";
-    if (username) username.value = "";
+    clearPrivate();
     await onSubmit(parsed);
   }
   return (
     <form
+      ref={formRef}
       onSubmit={submit}
       className="wso-card mt-6 p-5 sm:p-6"
       autoComplete="off"
@@ -85,7 +130,7 @@ export function ConnectionForm({
         {!connection && (
           <label className="block font-medium">
             연결 유형
-            <select name="kind" className={inputClass}>
+            <select name="kind" className={inputClass} value={kind} onChange={event => { clearPrivate(); setValidation(""); setKind(event.target.value as typeof kind); }}>
               {connectionKinds.map((kind) => (
                 <option key={kind} value={kind}>
                   {kindLabel[kind]}
@@ -142,6 +187,7 @@ export function ConnectionForm({
                     name="store_ids"
                     value={store.id}
                     defaultChecked={connection?.store_ids.includes(store.id)}
+                    onChange={clearPrivate}
                     className="h-4 w-4 shrink-0 accent-[#226594]"
                   />
                   <span className="break-words">{store.name}</span>
@@ -159,11 +205,27 @@ export function ConnectionForm({
             <input
               type="checkbox"
               checked={replacement}
-              onChange={(event) => setReplacement(event.target.checked)}
+              onChange={(event) => { clearPrivate(); setReplacement(event.target.checked); }}
               className="h-4 w-4 accent-[#226594]"
             />
             계정 정보 교체
           </label>
+        )}
+        {kind === "TVT_DEVICE" && (!connection || replacement) && (
+          <div className="grid min-w-0 gap-5 md:grid-cols-2">
+            <label className="block min-w-0 font-medium">장치번호
+              <input name="device_serial" className={inputClass} required maxLength={63} autoComplete="off" spellCheck={false} />
+            </label>
+            <label className="block min-w-0 font-medium">국가
+              <input name="device_country" aria-label="국가" className={inputClass} required minLength={2} maxLength={2} defaultValue="KR" autoComplete="off" spellCheck={false} aria-describedby="connection-country-help" />
+              <span id="connection-country-help" className="mt-2 block text-xs font-normal text-[var(--wso-muted)]">국가 코드 두 글자를 입력하세요. 한국은 KR입니다.</span>
+            </label>
+            <label className="block min-w-0 font-medium md:col-span-2">QR 이미지 선택
+              <input name="device_qr_image" aria-label="QR 이미지 선택" type="file" accept="image/png,image/jpeg,image/webp" className={inputClass} onChange={readQr} />
+              <span className="mt-2 block text-xs font-normal text-[var(--wso-muted)]">이미지는 이 브라우저에서 읽습니다. 비밀번호는 직접 입력하세요.</span>
+            </label>
+            {reading && <p role="status" className="text-sm text-[var(--wso-muted)]">QR 이미지를 읽는 중…</p>}
+          </div>
         )}
         {(!connection || replacement) && (
           <div className="grid min-w-0 gap-5 md:grid-cols-2">
@@ -173,7 +235,7 @@ export function ConnectionForm({
                 name="username"
                 className={inputClass}
                 required
-                maxLength={512}
+                maxLength={kind === "TVT_DEVICE" ? 63 : 512}
                 autoComplete="off"
               />
             </label>
@@ -186,7 +248,7 @@ export function ConnectionForm({
                 type="password"
                 className={inputClass}
                 required
-                maxLength={4096}
+                maxLength={kind === "TVT_DEVICE" ? 63 : 4096}
                 autoComplete="new-password"
               />
               <span
@@ -199,12 +261,12 @@ export function ConnectionForm({
           </div>
         )}
         <div className="flex flex-wrap gap-3 border-t border-[var(--wso-border)] pt-5">
-          <button type="submit" className="wso-button-primary">
+          <button type="submit" className="wso-button-primary" disabled={reading}>
             {busy ? "저장 중…" : connection ? "변경 저장" : "연결 저장"}
           </button>
           <button
             type="button"
-            onClick={onCancel}
+            onClick={() => { clearPrivate(); onCancel(); }}
             className="wso-button-secondary"
           >
             취소

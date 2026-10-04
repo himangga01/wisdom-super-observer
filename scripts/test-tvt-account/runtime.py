@@ -28,6 +28,635 @@ EVIDENCE = (
 )
 
 
+def directory_enabled():
+    value = os.environ.get("WSO_TEST_DIRECTORY_BROWSER")
+    if value not in (None, "1"):
+        raise ValueError("invalid explicit directory mode")
+    return value == "1"
+
+
+DIRECTORY_POLICY = {
+    "region": "test",
+    "brand": "SuperLivePlus",
+    "profile_id": "browser-fixture",
+    "consent_version": "fixture-v1",
+}
+DIRECTORY_SN = "synthetic:opaque:SN-7"
+
+
+def directory_payload(path, *, chl_index=7):
+    """Synthetic decoded upstream envelopes, never public DirectoryView objects."""
+    if type(chl_index) is not int or chl_index not in (7, 42):
+        raise ValueError("unrecognized synthetic channel")
+    channel = {
+        "sn": DIRECTORY_SN,
+        "chlIndex": chl_index,
+        "chlName": "Synthetic loading bay" if chl_index == 7 else None,
+        "status": 1,
+        "model": None,
+        "password": "DIRECTORY-SENSITIVE-MARKER",
+    }
+    device = {
+        "sn": DIRECTORY_SN,
+        "name": "Synthetic directory recorder",
+        "maxShareNum": None,
+        "type": 1,
+        "password": "DIRECTORY-SENSITIVE-MARKER",
+    }
+    payloads = {
+        "/resource/device/list": {"total": "1", "records": [device]},
+        "/resource/channel/list": [
+            {
+                "sn": DIRECTORY_SN,
+                "chls": [
+                    {"chlIndex": 7, "chlName": "Synthetic loading bay"},
+                    {"chlIndex": 42, "chlName": None},
+                ],
+            }
+        ],
+        "/resource/device/detail": {
+            "devInfo": {
+                "sn": DIRECTORY_SN,
+                "name": device["name"],
+                "model": None,
+                "onlineStatus": 1,
+                "userId": {"secret": "DIRECTORY-SENSITIVE-MARKER"},
+            },
+            "chlInfos": [channel],
+        },
+        "/resource/channel/detail": channel,
+        "/resource/channel/share/to-other/list": {
+            "total": 1,
+            "records": [
+                {
+                    "id": "synthetic-sent",
+                    "sn": DIRECTORY_SN,
+                    "chlIndex": 7,
+                    "recipientId": "synthetic-recipient",
+                    "validData": 0,
+                    "auth": ["preview"],
+                    "password": "DIRECTORY-SENSITIVE-MARKER",
+                }
+            ],
+        },
+        "/resource/channel/share/from-other/list": {
+            "total": 1,
+            "records": [
+                {
+                    "id": "synthetic-received",
+                    "sn": DIRECTORY_SN,
+                    "chlIndex": 42,
+                    "ownerId": "synthetic-owner",
+                    "devRemark": None,
+                    "auth": ["preview"],
+                    "password": "DIRECTORY-SENSITIVE-MARKER",
+                }
+            ],
+        },
+    }
+    if path not in payloads:
+        raise ValueError("unrecognized readonly directory path")
+    return {"basic": {"msgcode": 200}, "data": payloads[path]}
+
+
+def directory_worker_environment(folder, incoming, *, enabled):
+    if not enabled:
+        return incoming
+    path = folder / "directory-profile.json"
+    write_private(path, [DIRECTORY_POLICY])
+    return incoming | {
+        "WSO_TEST_DIRECTORY_BROWSER": "1",
+        "WSO_TVT_DIRECTORY_PROFILE_FILE": str(path),
+    }
+
+
+def seed_directory(database):
+    from sqlalchemy import text
+
+    engines, ids = database
+    with engines["ADMIN"].begin() as db:
+        db.execute(
+            text(
+                "INSERT INTO wso_private.tvt_flow_policies(region,brand,profile_id,consent_version,key_commitment,enabled) VALUES(:region,:brand,:profile_id,:consent_version,decode(:key,'hex'),true)"
+            ),
+            DIRECTORY_POLICY | {"key": "0" * 64},
+        )
+        db.execute(
+            text(
+                "INSERT INTO wso_private.tvt_user_consents(tenant_id,user_id,profile_id,version,status) VALUES(:tenant,:actor,:profile_id,:consent_version,'accepted')"
+            ),
+            DIRECTORY_POLICY | {"tenant": ids["tenant"], "actor": ids["staff"]},
+        )
+        db.execute(
+            text("UPDATE public.tenants SET name=:name WHERE id=:id"),
+            {"name": "Synthetic Directory Demo", "id": ids["tenant"]},
+        )
+        db.execute(
+            text("UPDATE public.tenants SET name=:name WHERE id=:id"),
+            {"name": "Synthetic Other Tenant", "id": ids["other_tenant"]},
+        )
+
+
+def publish_directory_identity(database, key_path, issuer):
+    from sqlalchemy.orm import sessionmaker
+    from wso_api.tvt.identity_service import IdentityService
+    from wso_contracts.tvt.account import AccountSelection
+    from wso_core.db import tenant_session
+    from wso_core.secrets import FileKeyProvider
+    from wso_core.tenancy import identity_session
+    from wso_core.tvt.token_vault import TokenVault
+
+    engines, ids = database
+    # The fixed actor's provisioned issuer has changed to the signed local issuer.
+    # Commit its actual protected ticket before using the unchanged worker vault.
+    with identity_session(
+        issuer,
+        str(ids["staff"]),
+        session_factory=sessionmaker(engines["IDENTITY"]),
+    ) as lookup:
+        choice = lookup.authorize_tenant(ids["tenant"])
+    with tenant_session(
+        ids["tenant"],
+        authorization=choice,
+        session_factory=sessionmaker(engines["APP"]),
+    ) as db:
+        ticket = IdentityService(db).issue(
+            "login", AccountSelection(region="test", brand="SuperLivePlus")
+        )
+    vault = TokenVault(
+        engines["WORKER"].url.render_as_string(hide_password=False),
+        FileKeyProvider(key_path),
+    )
+    try:
+        lease = vault.redeem(ticket, "login")
+        return vault.publish(lease, "synthetic-user-token", "synthetic-p2p-token")
+    finally:
+        vault.close()
+
+
+def bind_directory_login(issuer, database, key_path, gate, path, state):
+    _, ids = database
+    if (
+        issuer.state.subject != str(ids["staff"])
+        or state["userId"] != str(ids["staff"])
+        or state["tenantId"] != str(ids["tenant"])
+        or issuer.state.origin != issuer.origin
+    ):
+        raise ValueError("fixed directory login scope required")
+
+    def publish():
+        # This issuer request is the sole counted API entry. Fence any concurrent
+        # API/worker entry; retain the existing admission and settlement contract.
+        with gate.frozen() as (api, worker):
+            if api != 1 or worker:
+                raise ValueError("directory publication requires settled calls")
+            identity = publish_directory_identity(database, key_path, issuer.origin)
+            ids["identity"] = identity
+            state["identityId"] = str(identity)
+            write_private(path, state)
+
+    issuer.state.on_authenticated = publish
+
+
+def browser_certificates(folder, default):
+    source = os.environ.get("WSO_TEST_BROWSER_TLS_DIR")
+    if source is None:
+        return default(folder)
+    from ipaddress import ip_address
+
+    from cryptography import x509
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.x509.oid import ExtendedKeyUsageOID
+
+    try:
+        source = Path(source)
+        if (
+            os.environ.get("WSO_TEST_ACCOUNT_BROWSER") != "1"
+            or not source.is_absolute()
+            or not source.is_dir()
+            or source.is_symlink()
+            or source.is_junction()
+            or not folder.is_dir()
+            or folder.is_symlink()
+            or folder.is_junction()
+        ):
+            raise ValueError()
+        raw = {}
+        for name in ("ca.pem", "server.pem", "server.key"):
+            path = source / name
+            if not path.is_file() or path.is_symlink() or path.is_junction():
+                raise ValueError()
+            with path.open("rb") as stream:
+                raw[name] = stream.read(65537)
+            if not 0 < len(raw[name]) <= 65536:
+                raise ValueError()
+        ca = x509.load_pem_x509_certificate(raw["ca.pem"])
+        leaf = x509.load_pem_x509_certificate(raw["server.pem"])
+        key = serialization.load_pem_private_key(raw["server.key"], password=None)
+        now = datetime.now(UTC)
+        for cert in (ca, leaf):
+            if not cert.not_valid_before_utc <= now < cert.not_valid_after_utc:
+                raise ValueError()
+        if not ca.extensions.get_extension_for_class(x509.BasicConstraints).value.ca:
+            raise ValueError()
+        try:
+            leaf_is_ca = leaf.extensions.get_extension_for_class(
+                x509.BasicConstraints
+            ).value.ca
+        except x509.ExtensionNotFound:
+            leaf_is_ca = False
+        if leaf_is_ca:
+            raise ValueError()
+        ca.verify_directly_issued_by(ca)
+        leaf.verify_directly_issued_by(ca)
+        spki = (
+            serialization.Encoding.DER,
+            serialization.PublicFormat.SubjectPublicKeyInfo,
+        )
+        if leaf.public_key().public_bytes(*spki) != key.public_key().public_bytes(
+            *spki
+        ):
+            raise ValueError()
+        san = leaf.extensions.get_extension_for_class(x509.SubjectAlternativeName).value
+        if "localhost" not in san.get_values_for_type(x509.DNSName) or not {
+            ip_address("127.0.0.1"),
+            ip_address("::1"),
+        }.issubset(san.get_values_for_type(x509.IPAddress)):
+            raise ValueError()
+        if (
+            ExtendedKeyUsageOID.SERVER_AUTH
+            not in leaf.extensions.get_extension_for_class(x509.ExtendedKeyUsage).value
+        ):
+            raise ValueError()
+    except Exception:  # noqa: BLE001 - no certificate/key values disclosed
+        raise ValueError("invalid explicit development TLS") from None
+    # All input validation finishes before copying anything into owned custody.
+    for name, value in raw.items():
+        target = folder / name
+        target.write_bytes(value)
+        target.chmod(0o600)
+
+
+@contextmanager
+def directory_database(patch):
+    from tests.support.directory_source_gate import verify_directory_source_gate
+
+    verify_directory_source_gate()
+    from tests.integration import test_tvt_directory_admission as accepted_directory
+    from tests.integration.test_tvt_domain_scope import seed_foundation
+
+    patch.setattr(accepted_directory, "EVIDENCE", EVIDENCE)
+    with contextmanager(accepted_directory.directory_database.__wrapped__)() as engines:
+        yield engines, seed_foundation(engines["ADMIN"])
+
+
+def parse_directory_control(raw):
+    if len(raw) > 256:
+        raise ValueError("invalid upstream control")
+    value = json.loads(raw)
+    if (
+        type(value) is not dict
+        or set(value) != {"op", "deny"}
+        or value["op"] != "upstream"
+        or type(value["deny"]) is not bool
+    ):
+        raise ValueError("invalid upstream control")
+    return value["deny"]
+
+
+class OwnedHttps:
+    """Loopback HTTPS source, with no request logging and joined ownership."""
+
+    def __init__(self, folder, handler):
+        from http.server import ThreadingHTTPServer
+
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.load_cert_chain(folder / "server.pem", folder / "server.key")
+
+        class Server(ThreadingHTTPServer):
+            daemon_threads = False
+
+            def get_request(self):
+                connection, address = super().get_request()
+                wrapped = None
+                try:
+                    connection.settimeout(5)
+                    wrapped = context.wrap_socket(
+                        connection, server_side=True, do_handshake_on_connect=False
+                    )
+                    wrapped.do_handshake()
+                    return wrapped, address
+                except BaseException:
+                    (wrapped or connection).close()
+                    raise
+
+        self.server = Server(("127.0.0.1", 0), handler)
+        self.origin = f"https://localhost:{self.server.server_port}"
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+
+    def close(self):
+        self.server.shutdown()
+        self.server.server_close()
+        self.thread.join(5)
+        assert not self.thread.is_alive()
+
+
+class DirectoryUpstream(OwnedHttps):
+    def __init__(self, folder):
+        from http.server import BaseHTTPRequestHandler
+
+        self.paths, self.errors, self.deny = [], [], False
+        self.release = threading.Event()
+        outer = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, *args):
+                pass
+
+            def do_POST(self):
+                self.connection.settimeout(5)
+                try:
+                    length = int(self.headers.get("Content-Length", "0"))
+                    assert 0 < length <= 65536
+                    value = json.loads(self.rfile.read(length))
+                    basic, data = value["basic"], value["data"]
+                    assert set(value) == {"basic", "data"}
+                    assert set(basic) == {"ver", "id", "time", "nonce", "token"}
+                    assert (
+                        basic["token"] == "synthetic-user-token"
+                        and basic["ver"] == "1.0"
+                    )
+                    assert basic["id"].isdigit() and int(basic["id"]) >= 1
+                    assert 100_000_000 <= basic["nonce"] <= 999_999_999
+                    assert abs(time.time() - basic["time"]) < 30
+                    assert self.path.startswith("/mobile_v1.0/resource/")
+                    path = self.path.removeprefix("/mobile_v1.0")
+                    payload = directory_payload(path, chl_index=data.get("chlIndex", 7))
+                    if path == "/resource/channel/list":
+                        assert data == {"snList": [DIRECTORY_SN]}
+                    elif path == "/resource/channel/detail":
+                        assert data in (
+                            {"sn": DIRECTORY_SN, "chlIndex": 7},
+                            {"sn": DIRECTORY_SN, "chlIndex": 42},
+                        )
+                    elif path == "/resource/device/detail":
+                        assert data in (
+                            {"sn": DIRECTORY_SN, "returnChl": False},
+                            {"sn": DIRECTORY_SN, "returnChl": True},
+                        )
+                    else:
+                        assert set(data) <= {"pageNum", "pageSize", "resourceTypes"}
+                        assert type(data["pageNum"]) is int and data["pageNum"] >= 0
+                        assert (
+                            type(data["pageSize"]) is int
+                            and 0 <= data["pageSize"] <= 1000
+                        )
+                    outer.paths.append(path)
+                    raw = json.dumps(payload).encode()
+                    self.send_response(503 if outer.deny else 200)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Content-Length", str(len(raw)))
+                    self.end_headers()
+                    self.wfile.write(raw)
+                except (BrokenPipeError, ConnectionResetError, ssl.SSLError):
+                    pass
+                except Exception:  # noqa: BLE001 - never retain credentials
+                    outer.errors.append("decoded directory request rejected")
+                    self.send_error(400)
+
+        super().__init__(folder, Handler)
+        self.origin += "/mobile_v1.0"
+
+    def close(self):
+        super().close()
+        assert not self.errors
+
+
+class DirectoryIssuerState:
+    """Synthetic signed issuer: one actor, one-use PKCE codes, bounded lifetime."""
+
+    def __init__(self, origin, subject, secret):
+        from cryptography.hazmat.primitives.asymmetric import rsa
+
+        self.origin, self.subject, self.secret = origin, subject, secret
+        self.key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        self.codes, self.lock = {}, threading.Lock()
+        self.on_authenticated = None
+
+    def validate_authorization(self, query):
+        import re
+
+        expected = {
+            "client_id": "fixture-web",
+            "redirect_uri": "https://localhost:3543/api/auth/callback",
+            "response_type": "code",
+            "scope": "openid",
+            "code_challenge_method": "S256",
+        }
+        if (
+            any(query.get(k) != v for k, v in expected.items())
+            or not re.fullmatch(r"[A-Za-z0-9_-]{43}", query.get("code_challenge", ""))
+            or any(not 1 <= len(query.get(k, "")) <= 256 for k in ("nonce", "state"))
+            or set(query)
+            - (set(expected) | {"code_challenge", "nonce", "state", "profile"})
+        ):
+            raise ValueError("invalid issuer authorization")
+
+    def authorize(self, query):
+        self.validate_authorization(query)
+        with self.lock:
+            now = time.monotonic()
+            self.codes = {k: v for k, v in self.codes.items() if v[0] > now}
+            if len(self.codes) >= 16:
+                raise ValueError("issuer capacity")
+            code = secrets.token_urlsafe(32)
+            self.codes[code] = (now + 60, dict(query))
+            return code
+
+    def exchange(self, body):
+        import hmac
+
+        import jwt
+
+        with self.lock:
+            entry = self.codes.pop(body.get("code", ""), None)
+        challenge = (
+            base64.urlsafe_b64encode(
+                hashlib.sha256(body.get("code_verifier", "").encode()).digest()
+            )
+            .rstrip(b"=")
+            .decode()
+        )
+        if (
+            entry is None
+            or entry[0] <= time.monotonic()
+            or body.get("client_id") != "fixture-web"
+            or not hmac.compare_digest(body.get("client_secret", ""), self.secret)
+            or body.get("grant_type") != "authorization_code"
+            or body.get("redirect_uri") != entry[1]["redirect_uri"]
+            or not hmac.compare_digest(challenge, entry[1]["code_challenge"])
+        ):
+            raise ValueError("invalid issuer grant")
+        if self.on_authenticated is not None:
+            self.on_authenticated()
+        now = int(time.time())
+        token = jwt.encode(
+            {
+                "iss": self.origin,
+                "aud": "fixture-web",
+                "sub": self.subject,
+                "nonce": entry[1]["nonce"],
+                "iat": now,
+                "exp": now + 1800,
+            },
+            self.key,
+            algorithm="RS256",
+            headers={"kid": "synthetic-directory"},
+        )
+        return {
+            "access_token": secrets.token_urlsafe(32),
+            "token_type": "Bearer",
+            "expires_in": 1800,
+            "id_token": token,
+        }
+
+
+class DirectoryIssuer(OwnedHttps):
+    def __init__(self, folder, subject, secret, gate):
+        from html import escape
+        from http.server import BaseHTTPRequestHandler
+        from urllib.parse import parse_qs, urlencode, urlsplit
+
+        import jwt
+
+        outer = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, *args):
+                pass
+
+            def respond(
+                self, status, value, content_type="application/json", **headers
+            ):
+                raw = (
+                    value.encode() if type(value) is str else json.dumps(value).encode()
+                )
+                self.send_response(status)
+                self.send_header("Content-Type", content_type)
+                self.send_header("Content-Length", str(len(raw)))
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("Referrer-Policy", "no-referrer")
+                for name, header_value in headers.items():
+                    self.send_header(name, header_value)
+                self.end_headers()
+                self.wfile.write(raw)
+
+            def dispatch(self):
+                self.connection.settimeout(5)
+                url = urlsplit(self.path)
+                state = outer.state
+                if (
+                    self.command == "GET"
+                    and url.path == "/.well-known/openid-configuration"
+                ):
+                    return self.respond(
+                        200,
+                        {
+                            "issuer": state.origin,
+                            "authorization_endpoint": state.origin + "/authorize",
+                            "token_endpoint": state.origin + "/token",
+                            "jwks_uri": state.origin + "/jwks",
+                            "response_types_supported": ["code"],
+                            "subject_types_supported": ["public"],
+                            "id_token_signing_alg_values_supported": ["RS256"],
+                            "token_endpoint_auth_methods_supported": [
+                                "client_secret_post"
+                            ],
+                            "code_challenge_methods_supported": ["S256"],
+                        },
+                    )
+                if self.command == "GET" and url.path == "/jwks":
+                    key = json.loads(
+                        jwt.algorithms.RSAAlgorithm.to_jwk(state.key.public_key())
+                    )
+                    return self.respond(
+                        200,
+                        {
+                            "keys": [
+                                key
+                                | {
+                                    "kid": "synthetic-directory",
+                                    "use": "sig",
+                                    "alg": "RS256",
+                                }
+                            ]
+                        },
+                    )
+                if self.command == "GET" and url.path == "/authorize":
+                    query = self.parameters(url.query)
+                    state.validate_authorization(query)
+                    if query.get("profile") != "synthetic-staff":
+                        inputs = "".join(
+                            f'<input type="hidden" name="{escape(k, quote=True)}" value="{escape(v, quote=True)}">'
+                            for k, v in query.items()
+                            if k != "profile"
+                        )
+                        return self.respond(
+                            200,
+                            '<!doctype html><html lang="en"><meta name="viewport" content="width=device-width"><title>Synthetic directory sign in</title><body><h1>Synthetic directory fixture</h1><p>Invented account and devices. No vendor connection.</p><form method="get">'
+                            + inputs
+                            + '<button name="profile" value="synthetic-staff">Sign in as synthetic directory staff</button></form></body></html>',
+                            "text/html; charset=utf-8",
+                        )
+                    code = state.authorize(query)
+                    return self.respond(
+                        302,
+                        {},
+                        Location=query["redirect_uri"]
+                        + "?"
+                        + urlencode(
+                            {"code": code, "state": query["state"], "iss": state.origin}
+                        ),
+                    )
+                if self.command == "POST" and url.path == "/token":
+                    length = int(self.headers.get("Content-Length", "0"))
+                    if not 0 < length <= 8192:
+                        raise ValueError("invalid issuer request")
+                    return self.respond(
+                        200,
+                        state.exchange(
+                            self.parameters(self.rfile.read(length).decode())
+                        ),
+                    )
+                self.respond(404, {})
+
+            @staticmethod
+            def parameters(value):
+                if len(value) > 8192:
+                    raise ValueError("invalid issuer request")
+                pairs = parse_qs(value, strict_parsing=True)
+                if any(len(v) != 1 for v in pairs.values()):
+                    raise ValueError("duplicate issuer parameter")
+                return {k: v[0] for k, v in pairs.items()}
+
+            def do_GET(self):
+                if not gate.enter("api"):
+                    return self.respond(503, {})
+                try:
+                    self.dispatch()
+                except Exception:  # noqa: BLE001 - signed issuer errors are private
+                    self.respond(400, {"error": "invalid_request"})
+                finally:
+                    gate.leave("api")
+
+            do_POST = do_GET
+
+        # State is assigned before serving any announced URL.
+        super().__init__(folder, Handler)
+        self.state = DirectoryIssuerState(self.origin, subject, secret)
+
+
 def canonical_digest(raw):
     canonical = raw.replace(b"\r\n", b"\n")
     if b"\r" in canonical:
@@ -121,6 +750,12 @@ def source_snapshot():
             "apps/web/package.json",
             "packages/core/pyproject.toml",
             "tests/contract/test_account_web_fixture.py",
+            "tests/contract/test_directory_web_fixture.py",
+            "docs/integrations/tvt-directory-browser-runtime.md",
+            "tests/integration/test_tvt_directory_admission.py",
+            "tests/integration/test_tvt_account_flow_admission.py",
+            "tests/support/directory_source_gate.py",
+            "tests/tvt_parity/fixtures/directory-approved-sources.json",
             "docs/integrations/tvt-account-browser-fixture.md",
             ".github/workflows/account-browser.yml",
             "scripts/dev/provision-ci-postgres.py",
@@ -394,8 +1029,10 @@ def api_process(folder):
         PostgresSessionStore,
     )
     from wso_api.main import create_app
+    from wso_api.tvt.device_service import DirectoryWorkerExecutor
     from wso_api.tvt.session_service import AccountWorkerExecutor
     from wso_core.secrets import FileKeyProvider
+    from wso_core.tvt.directory_admission import DirectoryAdmission
     from wso_core.tvt.token_vault import TokenVault
 
     def forbidden(*args, **kwargs):
@@ -404,12 +1041,15 @@ def api_process(folder):
     FileKeyProvider.encryption_key = forbidden
     TokenVault.__init__ = forbidden
     AccountWorkerExecutor.__init__ = forbidden
+    DirectoryWorkerExecutor.__init__ = forbidden
+    DirectoryAdmission.__init__ = forbidden
     assert not any(
         os.getenv(k)
         for k in (
             "WSO_WORKER_DATABASE_URL",
             "WSO_CONNECTION_KEY_FILE",
             "WSO_TVT_ACCOUNT_PROFILE_FILE",
+            "WSO_TVT_DIRECTORY_PROFILE_FILE",
         )
     )
     settings = AuthSettings.from_environment()
@@ -462,7 +1102,7 @@ def api_process(folder):
             engine.dispose()
 
 
-def profile(origin):
+def profile(origin, *, directory=False):
     from wso_core.tvt.startup import APK_SHA256, StartupProfile
 
     return StartupProfile.model_validate(
@@ -483,7 +1123,8 @@ def profile(origin):
                 "source_reference": "agreement/PrivacyStatement_en.html",
                 "url": origin + "/tvt/policies/en/privacy",
             },
-            "local_routes": ["/tvt/settings", "/tvt/account"],
+            "local_routes": ["/tvt/settings", "/tvt/account"]
+            + (["/tvt/devices"] if directory else []),
         }
     ).model_dump_json()
 
@@ -496,6 +1137,15 @@ def coordinate():
 
     from tests.integration import test_tvt_account_rpc as accepted
     from tests.tvt_parity.test_bridge_mtls import certs
+
+    directory = directory_enabled()
+    if directory:
+        # Keep the original W05 historical packet untouched by this mode.
+        global EVIDENCE
+        EVIDENCE = (
+            ROOT
+            / ".superpowers/sdd/2026-09-27-superlive-plus-web-parity-implementation-plan/W07-directory-browser-runtime-evidence"
+        )
 
     path = Path(os.environ["WSO_TVT_ACCOUNT_BROWSER_STATE_FILE"])
     if (
@@ -575,10 +1225,16 @@ def coordinate():
 
             patch.setattr(accepted.tempfile, "mkdtemp", secured_mkdtemp)
             database = stack.enter_context(
-                contextmanager(accepted.runtime_db.__wrapped__)()
+                directory_database(patch)
+                if directory
+                else contextmanager(accepted.runtime_db.__wrapped__)()
             )
+            if directory:
+                patch.setattr(accepted, "Upstream", DirectoryUpstream)
+            directory_key_path = None
 
             def guarded_worker_popen(arguments, **kwargs):
+                nonlocal directory_key_path
                 # Narrowly adapt this reviewed helper's one owned worker launch.
                 expected = "from pathlib import Path;from tests.integration.test_tvt_account_rpc import serve;import sys;serve(Path(sys.argv[1]))"
                 if (
@@ -592,7 +1248,13 @@ def coordinate():
                     f"sys.argv={[str(Path(__file__).resolve()), '--worker', arguments[3], str(folder / 'admission.sqlite')]!r};"
                     "runpy.run_path(sys.argv[0],run_name='__main__')"
                 )
-                kwargs["env"] = kwargs["env"] | {"WSO_TEST_ACCOUNT_BROWSER": "1"}
+                worker_folder = Path(arguments[3])
+                kwargs["env"] = directory_worker_environment(
+                    worker_folder, kwargs["env"], enabled=directory
+                ) | {"WSO_TEST_ACCOUNT_BROWSER": "1"}
+                if directory:
+                    directory_key_path = worker_folder / "vault.key"
+                    seed_directory(database)
                 return subprocess.Popen([arguments[0], "-c", launch], **kwargs)
 
             patch.setattr(
@@ -612,7 +1274,7 @@ def coordinate():
                 )
             )
             engines, ids = database
-            certs(folder)
+            browser_certificates(folder, certs)
             shutil.copyfile(folder / "server.pem", folder / "api.pem")
             shutil.copyfile(folder / "server.key", folder / "api.key")
             origin = os.environ.get(
@@ -627,8 +1289,25 @@ def coordinate():
                 "WSO_OIDC_JWKS_URL": "https://w02.test/keys",
                 "WSO_AUTH_EXCHANGE_KEY": secrets.token_urlsafe(48),
                 "WSO_PUBLIC_ORIGIN": origin,
-                "WSO_TVT_STARTUP_PROFILE": profile(origin),
+                "WSO_TVT_STARTUP_PROFILE": profile(origin, directory=directory),
             }
+            if directory:
+                issuer_secret = secrets.token_urlsafe(48)
+                issuer = DirectoryIssuer(folder, str(ids["staff"]), issuer_secret, gate)
+                stack.callback(issuer.close)
+                with engines["ADMIN"].begin() as db:
+                    db.execute(
+                        text(
+                            "UPDATE public.users SET oidc_issuer=:issuer WHERE id=:actor"
+                        ),
+                        {"issuer": issuer.origin, "actor": ids["staff"]},
+                    )
+                env.update(
+                    WSO_TEST_DIRECTORY_BROWSER="1",
+                    WSO_OIDC_ISSUER=issuer.origin,
+                    WSO_OIDC_JWKS_URL=issuer.origin + "/jwks",
+                    SSL_CERT_FILE=str(folder / "ca.pem"),
+                )
             for role in ("APP", "IDENTITY", "SESSION"):
                 env[f"WSO_{role}_DATABASE_URL"] = engines[role].url.render_as_string(
                     hide_password=False
@@ -686,6 +1365,19 @@ def coordinate():
                 "controlFile": str(folder / "control.json"),
                 "sequence": 0,
             }
+            if directory:
+                state.update(
+                    directoryMode=True,
+                    directoryControlFile=str(folder / "directory-control.json"),
+                    browserEntrance=origin + "/api/auth/login",
+                    nextAuth={
+                        "WSO_OIDC_ISSUER": issuer.origin,
+                        "WSO_OIDC_CLIENT_ID": "fixture-web",
+                        "WSO_OIDC_CLIENT_SECRET": issuer_secret,
+                        "WSO_AUTH_EXCHANGE_KEY": env["WSO_AUTH_EXCHANGE_KEY"],
+                        "WSO_FLOW_ENCRYPTION_KEY": secrets.token_urlsafe(32),
+                    },
+                )
             current = None
 
             def fresh_session(sequence):
@@ -735,13 +1427,40 @@ def coordinate():
                 )
                 write_private(path, state)
 
-            fresh_session(0)
+            if directory:
+                # The real signed callback and restricted AuthService create it.
+                if directory_key_path is None:
+                    raise ValueError("owned directory worker key unavailable")
+                bind_directory_login(
+                    issuer, database, directory_key_path, gate, path, state
+                )
+                write_private(path, state)
+            else:
+                fresh_session(0)
             try:
                 while not stopped.wait(0.05):
                     if process.poll() is not None:
                         raise RuntimeError("owned API child exited")
+                    directory_control = folder / "directory-control.json"
+                    if directory and directory_control.exists():
+                        with directory_control.open("rb") as stream:
+                            deny = parse_directory_control(stream.read(257))
+                        directory_control.unlink()
+                        with gate.frozen() as (active_api, active_worker):
+                            if active_api or active_worker:
+                                raise ValueError(
+                                    "upstream control requires settled calls"
+                                )
+                            upstream.deny = deny
+                        write_private(
+                            folder / "directory-control-applied.json", {"deny": deny}
+                        )
                     control = folder / "control.json"
                     if control.exists():
+                        if directory:
+                            raise ValueError(
+                                "directory sessions require normal signed login"
+                            )
                         with control.open("rb") as stream:
                             sequence = parse_control(stream.read(257))
                         control.unlink()

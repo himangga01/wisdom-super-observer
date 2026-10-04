@@ -67,3 +67,10 @@ service DirectoryBridgeV1 {
   rpc SentShares(DirectorySentSharesRequest) returns (DirectoryReply);
   rpc ReceivedShares(DirectoryReceivedSharesRequest) returns (DirectoryReply);
 }
+
+// Local scope is derived exclusively from the purpose-bound ticket in SQL.
+message LocalDeviceVerifyRequest { RpcContext context = 1; }
+message LocalDeviceReply { bytes public_json = 1; string failure_code = 2; }
+service LocalDeviceBridgeV1 {
+  rpc Verify(LocalDeviceVerifyRequest) returns (LocalDeviceReply);
+}
