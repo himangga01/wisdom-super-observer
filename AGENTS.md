@@ -4,6 +4,7 @@
 
 - Keep completing requested work. Prefer purpose-built or direct filesystem tools for routine inspection and edits.
 - Do not reinstall Orca or its Claude/OpenCode status hooks unless explicitly requested.
+- Keep application source, tests, dependency manifests/locks and project reports tracked. Ignore generated/runtime/private files through `.gitignore`; do not hide unfinished source changes with ignore rules. `pnpm typecheck` regenerates the ignored Next.js declarations before checking types.
 
 ## Analysis reports and cross-agent handoff
 

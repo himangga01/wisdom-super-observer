@@ -1054,3 +1054,532 @@ def test_native_runner_keeps_scenario_cause_separate_from_cleanup(
     assert row["outcome"] == "DEFECT" and row["cleanup"] == "FAILED"
     assert "synthetic-private" not in json.dumps(row) + str(caught.value)
     native.validate_receipt(row, "parent-delete")
+
+
+def test_worker_helper_facts_ignore_dispatcher_absence(diagnostic_jobs, tmp_path):
+    from types import SimpleNamespace
+
+    from tests.support.asset_process import ProcessMode
+
+    jobs = diagnostic_jobs
+    (tmp_path / "helpers.json").write_text(
+        json.dumps(
+            {
+                "owner": jobs.h.owner,
+                "pids": [],
+                "complete": True,
+            }
+        )
+    )
+    jobs.processes = [
+        SimpleNamespace(
+            mode=ProcessMode.JOB_WORKER, spec=SimpleNamespace(control_path=tmp_path)
+        ),
+        SimpleNamespace(
+            mode=ProcessMode.DISPATCH,
+            spec=SimpleNamespace(control_path=tmp_path / "dispatch"),
+        ),
+    ]
+    facts = jobs.record_diagnostic("CRASH_HELPERS", ValueError(), 110).public()
+    assert facts["helpers"] == 0 and facts["helpers_complete"] is True
+    (tmp_path / "helpers.json").write_text(
+        '{"owner":"foreign-private","pids":[],"complete":true}'
+    )
+    later = jobs.record_diagnostic("PARENT_STOP", OSError(), 110).public()
+    assert later["helpers"] == -1 and later["helpers_complete"] is None
+    assert "foreign-private" not in json.dumps(later)
+
+
+@pytest.fixture
+def fixture_after_execute(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from celery.signals import worker_process_init, worker_process_shutdown
+    from kombu.transport.redis import Channel
+    from wso_core import job_runtime
+
+    from tests.support import asset_job_handlers as handlers
+
+    callbacks, events = [], []
+
+    def create_app(*args, **kwargs):
+        callbacks.append(kwargs["after_execute"])
+        return SimpleNamespace(conf=SimpleNamespace(broker_transport_options=None))
+
+    control = SimpleNamespace(
+        directory=tmp_path, owner="fixture-owner", callback=events.append
+    )
+    monkeypatch.setattr(handlers, "_CONTROL", handlers._CONTROL)
+    monkeypatch.setattr(Channel, "QoS", Channel.QoS)
+    monkeypatch.setattr(job_runtime, "create_app", create_app)
+    signals = (worker_process_init, worker_process_shutdown)
+    before = [{receiver for _, receiver in item.receivers} for item in signals]
+    try:
+        handlers.create_worker_app(
+            {
+                "WSO_ASSET_FIXTURE_BROKER_URL": "redis://127.0.0.1:6379/0",
+                "WSO_TEST_JOB_DATABASE_URL": "postgresql+psycopg://wso_job_worker:synthetic@127.0.0.1:5432/fixture_db",
+                "WSO_ASSET_FIXTURE_WORKER_ID": "fixture-worker",
+            },
+            control,
+        )
+        yield control, callbacks[0], events
+    finally:
+        for item, retained in zip(signals, before, strict=True):
+            for _, receiver in tuple(item.receivers):
+                if receiver not in retained:
+                    item.disconnect(receiver)
+
+
+def test_failed_handler_then_after_execute_is_an_event_without_success(
+    tmp_path, monkeypatch, fixture_after_execute
+):
+    from datetime import UTC, datetime, timedelta
+    from types import SimpleNamespace
+    from uuid import UUID
+
+    from tests.support import asset_broker as broker
+    from tests.support import asset_job_handlers as handlers
+
+    job_id = UUID(int=25)
+    private_error = ValueError("private-read-error")
+    control, after_execute, events = fixture_after_execute
+    monkeypatch.setattr(
+        handlers,
+        "reader_for_step",
+        lambda *a: SimpleNamespace(
+            read=lambda *a: (_ for _ in ()).throw(private_error)
+        ),
+    )
+    recorded = []
+    step = SimpleNamespace(
+        payload=handlers.AssetReadPayload(
+            operation_id=UUID(int=26), asset_id=UUID(int=27)
+        ),
+        lease=SimpleNamespace(
+            job_id=job_id,
+            generation=1,
+            expires_at=datetime.now(UTC) + timedelta(seconds=20),
+        ),
+        record_item=lambda *a: recorded.append(a),
+        complete=lambda *a: recorded.append(a),
+    )
+    with pytest.raises(ValueError) as caught:
+        handlers.read_handler(step)
+    assert caught.value is private_error and recorded == []
+    after_execute(SimpleNamespace(job_id=job_id))
+    assert [event.name for event in events] == ["JOB_AFTER_COMMIT"]
+    row = json.loads(
+        (tmp_path / ("read-progress-" + str(job_id) + ".json")).read_bytes()
+    )
+    public = broker.checked_read_progress(row, control.owner, job_id)
+    assert public["read_entered"] is True
+    assert public["read_failed"] is True and public["read_succeeded"] is False
+    assert public["after_execute"] is True and public["read_exception"] == "VALUE"
+    assert type(public["parent_daemon"]) is bool
+    assert "private-read-error" not in json.dumps(public)
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("parent_daemon", "private-daemon"),
+        ("read_failed", 1),
+        ("read_exception", "private-traceback"),
+        ("owner", "foreign-private"),
+        ("job_id", "foreign-private"),
+        ("raw_exception", "private-raw"),
+    ],
+)
+def test_hostile_read_progress_is_unknown(diagnostic_jobs, tmp_path, field, value):
+    from types import SimpleNamespace
+    from uuid import UUID
+
+    from tests.support.asset_process import ProcessMode
+
+    jobs = diagnostic_jobs
+    job_id = UUID(int=31)
+    worker = SimpleNamespace(
+        mode=ProcessMode.JOB_WORKER, spec=SimpleNamespace(control_path=tmp_path)
+    )
+    jobs.diagnostic_worker, jobs.diagnostic_job_id = worker, str(job_id)
+    row = {
+        "owner": jobs.h.owner,
+        "job_id": str(job_id),
+        "parent_daemon": True,
+        "read_entered": True,
+        "read_succeeded": False,
+        "read_failed": True,
+        "after_execute": True,
+        "read_exception": "VALUE",
+    }
+    row[field] = value
+    (tmp_path / ("read-progress-" + str(job_id) + ".json")).write_text(json.dumps(row))
+    facts = jobs.record_diagnostic("CRASH_CHECKPOINT", ValueError(), 110).public()
+    assert facts["read_entered"] is None and facts["parent_daemon"] is None
+    assert facts["read_exception"] == "UNKNOWN"
+    assert "private" not in json.dumps(facts)
+
+
+@pytest.mark.parametrize(
+    "stage",
+    [
+        "CHILD_IDENTITY",
+        "JOB_STATE",
+        "TRANSPORT_RESERVATION",
+        "COMMITTED_EFFECTS",
+        "PARENT_IDENTITY",
+    ],
+)
+def test_crash_failure_reports_exact_pre_signal_boundary(
+    diagnostic_jobs, monkeypatch, stage
+):
+    from types import SimpleNamespace
+    from uuid import UUID
+
+    from tests.support import asset_broker as broker
+
+    jobs = diagnostic_jobs
+    private_error = ValueError("private-stage-error")
+
+    def fail(*args, **kwargs):
+        raise private_error
+
+    worker = SimpleNamespace(process=SimpleNamespace(pid=12), identity=object())
+    child = SimpleNamespace(pid=13)
+    jobs.children = {13: (child, 44, worker)}
+    jobs.enqueue = lambda *a, **k: {"accepted": True, "job_id": str(UUID(int=33))}
+    jobs.launch_worker = lambda: worker
+    jobs.launch_dispatch = lambda: None
+    jobs.h.control_for = lambda w: SimpleNamespace(
+        arm=lambda *a, **k: None, wait=lambda *a: None
+    )
+    jobs.h.assert_helpers_settled = lambda w: None
+    jobs.h.deadlines.allowance = lambda cap, phase: cap
+    monkeypatch.setattr(broker, "process_identity", lambda *a: object())
+    monkeypatch.setattr(
+        broker,
+        "validate_process_identity",
+        fail if stage == "CHILD_IDENTITY" else lambda *a: None,
+    )
+    jobs.job = (
+        fail
+        if stage == "JOB_STATE"
+        else lambda job: {"state": "RUNNING", "attempts": 1, "lease_generation": 1}
+    )
+    jobs.broker.transport_facts = (
+        fail
+        if stage == "TRANSPORT_RESERVATION"
+        else lambda job: [{"event": "reserved"}]
+    )
+    jobs.h.query = (
+        fail
+        if stage == "COMMITTED_EFFECTS"
+        else lambda sql, params: [{"state": "SUCCEEDED"}]
+    )
+    monkeypatch.setattr(broker.os, "pidfd_open", fail, raising=False)
+    signalled = []
+    monkeypatch.setattr(
+        broker.signal,
+        "pidfd_send_signal",
+        lambda *a: signalled.append(a),
+        raising=False,
+    )
+    with pytest.raises(broker.PreforkSettlementError) as caught:
+        jobs.crash_and_recover(
+            {"id": str(UUID(int=34))}, "after-commit", recovery_seconds=160
+        )
+    public = caught.value.diagnostic.public()
+    assert caught.value.diagnostic.cause is private_error
+    assert public["stage"] == stage and not signalled
+    assert "private-stage-error" not in json.dumps(public)
+    if stage == "PARENT_IDENTITY":
+        assert public["job_state"] == "RUNNING"
+        assert public["job_attempts"] == public["job_generation"] == 1
+        assert (
+            public["reservations"]
+            == public["committed_reads"]
+            == public["committed_items"]
+            == 1
+        )
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("parent_mode", "private-mode"),
+        ("parent_daemon", 1),
+        ("read_exception", "private-error"),
+        ("job_state", "private-state"),
+        ("job_generation", True),
+        ("committed_items", 1000),
+    ],
+)
+def test_native_checker_rejects_hostile_new_fact_fields_before_output(
+    diagnostic_jobs,
+    tmp_path,
+    capsys,
+    field,
+    value,
+):
+    from tests.integration import test_private_asset_diagnostics as native
+
+    diagnostic = diagnostic_jobs.record_diagnostic("BODY", ValueError(), 110).public()
+    diagnostic[field] = value
+    row = native._receipt("after-read")
+    row["diagnostic"] = diagnostic
+    (tmp_path / "after-read.json").write_text(json.dumps(row))
+    with pytest.raises(ValueError):
+        native.check_results(
+            tmp_path,
+            pytest_exit=1,
+            postgres_cleanup="success",
+            source="a" * 40,
+            cases=("after-read",),
+        )
+    assert capsys.readouterr().out == ""
+
+
+def test_cleanup_parent_mode_and_required_worker_unknown_are_closed(
+    diagnostic_jobs, tmp_path
+):
+    from types import SimpleNamespace
+
+    from tests.support import asset_broker as broker
+    from tests.support.asset_process import ProcessMode
+
+    jobs = diagnostic_jobs
+    parent = SimpleNamespace(
+        mode=ProcessMode.JOB_WORKER, spec=SimpleNamespace(control_path=tmp_path)
+    )
+    jobs.processes = [parent]
+    failure = OSError("private-stop-error")
+
+    def stop(*args, **kwargs):
+        raise failure
+
+    jobs.h.stop_mode = stop
+    with pytest.raises(broker.PreforkSettlementError) as caught:
+        jobs.stop_processes(cleanup_cutoff=110)
+    facts = caught.value.diagnostic.public()
+    assert facts["parent_mode"] == "JOB_WORKER"
+    assert facts["helpers"] == -1 and facts["helpers_complete"] is None
+    assert caught.value.diagnostic.cause is failure and jobs.processes == [parent]
+    assert "private-stop-error" not in json.dumps(facts)
+
+
+def test_publication_failure_preserves_original_read_exception(tmp_path, monkeypatch):
+    from datetime import UTC, datetime, timedelta
+    from types import SimpleNamespace
+    from uuid import UUID
+
+    from tests.support import asset_faults
+    from tests.support import asset_job_handlers as handlers
+
+    first = ValueError("private-first-read")
+
+    def failed_read(*args):
+        raise first
+
+    def refused_publication(*args):
+        raise OSError("private-publication")
+
+    monkeypatch.setattr(
+        handlers, "_CONTROL", SimpleNamespace(owner="fixture-owner", directory=tmp_path)
+    )
+    monkeypatch.setattr(asset_faults, "snapshot_json", refused_publication)
+    monkeypatch.setattr(
+        handlers, "reader_for_step", lambda *a: SimpleNamespace(read=failed_read)
+    )
+    step = SimpleNamespace(
+        payload=handlers.AssetReadPayload(
+            operation_id=UUID(int=50), asset_id=UUID(int=51)
+        ),
+        lease=SimpleNamespace(
+            job_id=UUID(int=52), expires_at=datetime.now(UTC) + timedelta(seconds=20)
+        ),
+    )
+    with pytest.raises(ValueError) as caught:
+        handlers.read_handler(step)
+    assert caught.value is first and not list(tmp_path.iterdir())
+
+
+def test_native_checker_rejects_duplicate_new_fields_without_output(
+    diagnostic_jobs, tmp_path, capsys
+):
+    from tests.integration import test_private_asset_diagnostics as native
+
+    diagnostic = diagnostic_jobs.record_diagnostic("BODY", ValueError(), 110).public()
+    row = native._receipt("after-read")
+    row["diagnostic"] = diagnostic
+    encoded = json.dumps(row).replace(
+        '"read_exception": "UNKNOWN"',
+        '"read_exception":"private-poison","read_exception":"UNKNOWN"',
+    )
+    (tmp_path / "after-read.json").write_text(encoded)
+    with pytest.raises(ValueError):
+        native.check_results(
+            tmp_path,
+            pytest_exit=1,
+            postgres_cleanup="success",
+            source="a" * 40,
+            cases=("after-read",),
+        )
+    assert capsys.readouterr().out == ""
+
+
+@pytest.fixture
+def milestone_read_step(tmp_path, monkeypatch):
+    from datetime import UTC, datetime, timedelta
+    from types import SimpleNamespace
+    from uuid import UUID
+
+    from tests.support import asset_job_handlers as handlers
+
+    events = []
+
+    def read(*args):
+        events.append("READ")
+        return b"fixture-bytes"
+
+    monkeypatch.setattr(
+        handlers, "_CONTROL", SimpleNamespace(owner="fixture-owner", directory=tmp_path)
+    )
+    monkeypatch.setattr(
+        handlers, "reader_for_step", lambda *args: SimpleNamespace(read=read)
+    )
+    step = SimpleNamespace(
+        payload=handlers.AssetReadPayload(
+            operation_id=UUID(int=60), asset_id=UUID(int=61)
+        ),
+        lease=SimpleNamespace(
+            job_id=UUID(int=62),
+            token="fixture-token",
+            generation=1,
+            expires_at=datetime.now(UTC) + timedelta(seconds=20),
+        ),
+        record_item=lambda *args: events.append("RECORD_ITEM"),
+        complete=lambda *args: events.append("COMPLETE"),
+    )
+    return step, events
+
+
+@pytest.mark.parametrize("milestone", ["READ_ENTERED", "READ_SUCCEEDED"])
+@pytest.mark.parametrize("cancellation_type", [KeyboardInterrupt, SystemExit])
+def test_fresh_read_publication_cancellation_stops_handler(
+    tmp_path, monkeypatch, milestone_read_step, milestone, cancellation_type
+):
+    from tests.support import asset_faults
+    from tests.support import asset_job_handlers as handlers
+
+    step, events = milestone_read_step
+    cancellation = cancellation_type("private-fresh-cancellation")
+    original_snapshot = asset_faults.snapshot_json
+
+    def cancelled_publication(path, row):
+        if row.get(milestone.lower()) is True:
+            raise cancellation
+        original_snapshot(path, row)
+
+    monkeypatch.setattr(asset_faults, "snapshot_json", cancelled_publication)
+    with pytest.raises(cancellation_type) as caught:
+        handlers.read_handler(step)
+    assert caught.value is cancellation
+    assert events == ([] if milestone == "READ_ENTERED" else ["READ"])
+    assert not (tmp_path / "job-lease.json").exists()
+
+
+@pytest.mark.parametrize("cancellation_type", [KeyboardInterrupt, SystemExit])
+def test_fresh_after_execute_publication_cancellation_stops_callback(
+    monkeypatch, fixture_after_execute, cancellation_type
+):
+    from types import SimpleNamespace
+    from uuid import UUID
+
+    from tests.support import asset_faults
+
+    _, after_execute, events = fixture_after_execute
+    cancellation = cancellation_type("private-fresh-cancellation")
+    original_snapshot = asset_faults.snapshot_json
+
+    def cancelled_publication(path, row):
+        if row.get("after_execute") is True:
+            raise cancellation
+        original_snapshot(path, row)
+
+    monkeypatch.setattr(asset_faults, "snapshot_json", cancelled_publication)
+    with pytest.raises(cancellation_type) as caught:
+        after_execute(SimpleNamespace(job_id=UUID(int=63)))
+    assert caught.value is cancellation and events == []
+
+
+@pytest.mark.parametrize("original_type", [ValueError, KeyboardInterrupt, SystemExit])
+@pytest.mark.parametrize("publication_type", [OSError, KeyboardInterrupt, SystemExit])
+def test_failed_read_publication_preserves_active_original_exception(
+    monkeypatch, milestone_read_step, original_type, publication_type
+):
+    from types import SimpleNamespace
+
+    from tests.support import asset_faults
+    from tests.support import asset_job_handlers as handlers
+
+    step, events = milestone_read_step
+    original_error = original_type("private-original-read")
+    publication_error = publication_type("private-publication")
+    original_snapshot = asset_faults.snapshot_json
+
+    def failed_read(*args):
+        events.append("READ")
+        raise original_error
+
+    def failed_publication(path, row):
+        if row.get("read_failed") is True:
+            raise publication_error
+        original_snapshot(path, row)
+
+    monkeypatch.setattr(
+        handlers, "reader_for_step", lambda *args: SimpleNamespace(read=failed_read)
+    )
+    monkeypatch.setattr(asset_faults, "snapshot_json", failed_publication)
+    with pytest.raises(original_type) as caught:
+        handlers.read_handler(step)
+    assert caught.value is original_error and events == ["READ"]
+
+
+@pytest.mark.parametrize("milestone", ["READ_ENTERED", "READ_SUCCEEDED"])
+def test_normal_read_publication_io_failure_remains_best_effort(
+    monkeypatch, milestone_read_step, milestone
+):
+    from tests.support import asset_faults
+    from tests.support import asset_job_handlers as handlers
+
+    step, events = milestone_read_step
+    original_snapshot = asset_faults.snapshot_json
+
+    def failed_publication(path, row):
+        if row.get(milestone.lower()) is True:
+            raise OSError("private-publication")
+        original_snapshot(path, row)
+
+    monkeypatch.setattr(asset_faults, "snapshot_json", failed_publication)
+    result = handlers.read_handler(step)
+    assert result["byte_size"] == len(b"fixture-bytes")
+    assert events == ["READ", "RECORD_ITEM", "COMPLETE"]
+
+
+def test_after_execute_publication_io_failure_remains_best_effort(
+    monkeypatch, fixture_after_execute
+):
+    from types import SimpleNamespace
+    from uuid import UUID
+
+    from tests.support import asset_faults
+
+    _, after_execute, events = fixture_after_execute
+
+    def failed_publication(path, row):
+        raise OSError("private-publication")
+
+    monkeypatch.setattr(asset_faults, "snapshot_json", failed_publication)
+    after_execute(SimpleNamespace(job_id=UUID(int=64)))
+    assert [event.name for event in events] == ["JOB_AFTER_COMMIT"]

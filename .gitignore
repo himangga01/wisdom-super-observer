@@ -19,6 +19,21 @@ playwright-report/
 test-results/
 .superpowers/
 
+# Next.js regenerates this declaration during dev/build/type generation.
+/apps/web/next-env.d.ts
+
+# Local conversation uploads and accidental Windows cache output.
+/.codex-remote-attachments/
+/%SystemDrive%/
+
+# Local TLS material and native SDK binaries.
+*.pem
+*.key
+*.pfx
+*.p12
+*.dll
+*.exe
+
 # Device, account, capture and media data are kept outside Git.
 *.apk
 *.apks

@@ -67,7 +67,7 @@ def response_facts(response):
 
 def _receipt(case):
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "case": case,
         "outcome": "SETUP_FAILED",
         "stage": "SETUP",
@@ -211,7 +211,14 @@ def test_native_parent_delete_child_read(tmp_path):
 
 
 def validate_receipt(row, case):
-    from tests.support.asset_broker import DIAGNOSTIC_STAGES, PROC_STATES
+    from tests.support.asset_broker import (
+        DIAGNOSTIC_STAGES,
+        EXCEPTION_CATEGORIES,
+        JOB_STATES,
+        PARENT_MODES,
+        PROC_STATES,
+        READ_FLAGS,
+    )
 
     if type(row) is not dict or set(row) != set(_receipt(case)) or row["case"] != case:
         raise ValueError("invalid diagnostic receipt")
@@ -258,7 +265,7 @@ def validate_receipt(row, case):
         raise ValueError("invalid diagnostic receipt")
     if (
         type(row["schema_version"]) is not int
-        or row["schema_version"] != 1
+        or row["schema_version"] != 2
         or type(row["http_status"]) is not int
         or not (row["http_status"] == 0 or 100 <= row["http_status"] <= 599)
         or any(type(row[k]) is not bool for k in ("image", "physical_cleanup"))
@@ -285,6 +292,15 @@ def validate_receipt(row, case):
             "callers",
             "helpers",
             "helpers_complete",
+            "parent_mode",
+            "job_state",
+            "job_attempts",
+            "job_generation",
+            "reservations",
+            "committed_reads",
+            "committed_items",
+            "read_exception",
+            *READ_FLAGS,
         }
         if type(item) is not dict or set(item) != fields:
             raise ValueError("invalid diagnostic receipt")
@@ -302,23 +318,39 @@ def validate_receipt(row, case):
                 "OTHER",
             },
             "cutoff": {"EXPIRED", "LE_3S", "GT_3S"},
+            "parent_mode": PARENT_MODES,
+            "job_state": JOB_STATES,
+            "read_exception": EXCEPTION_CATEGORIES,
         }.items():
             if type(item[key]) is not str or item[key] not in choices:
                 raise ValueError("invalid diagnostic receipt")
         if any(
             item[k] is not None and type(item[k]) is not bool
-            for k in ("pidfd_ready", "helpers_complete")
+            for k in {"pidfd_ready", "helpers_complete"} | READ_FLAGS
         ):
             raise ValueError("invalid diagnostic receipt")
         if any(
             type(item[k]) is not int or not -1 <= item[k] <= 999
-            for k in ("children", "parents", "observers", "callers", "helpers")
+            for k in (
+                "children",
+                "parents",
+                "observers",
+                "callers",
+                "helpers",
+                "job_attempts",
+                "job_generation",
+                "reservations",
+                "committed_reads",
+                "committed_items",
+            )
         ):
             raise ValueError("invalid diagnostic receipt")
     return row
 
 
 def check_results(directory, *, pytest_exit, postgres_cleanup, source, cases=CASES):
+    from wso_core.asset_process import decode_control
+
     if not re.fullmatch(r"[0-9a-f]{40}", source):
         raise ValueError("invalid source binding")
     rows = []
@@ -326,7 +358,7 @@ def check_results(directory, *, pytest_exit, postgres_cleanup, source, cases=CAS
         path = directory / (case + ".json")
         if path.stat().st_size > 32768:
             raise ValueError("invalid diagnostic receipt")
-        rows.append(validate_receipt(json.loads(path.read_bytes()), case))
+        rows.append(validate_receipt(decode_control(path.read_bytes()), case))
     passed = (
         pytest_exit == 0
         and postgres_cleanup == "success"

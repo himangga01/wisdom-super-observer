@@ -76,6 +76,54 @@ _READER = None
 _CONTROL = None
 
 
+def publish_read_milestone(job_id, milestone, error=None):
+    """Best-effort fixed facts; preserve fresh cancellation or an active error."""
+    if _CONTROL is None:
+        return
+    try:
+        import multiprocessing
+
+        from wso_core.asset_process import decode_control
+
+        from tests.support.asset_broker import checked_read_progress, exception_category
+        from tests.support.asset_faults import snapshot_json as private_json
+
+        require(
+            milestone
+            in {"READ_ENTERED", "READ_SUCCEEDED", "READ_FAILED", "AFTER_EXECUTE"}
+        )
+        job_id = UUID(str(job_id))
+        path = _CONTROL.directory / ("read-progress-" + str(job_id) + ".json")
+        if milestone == "READ_ENTERED" or not path.exists():
+            row = {
+                "owner": _CONTROL.owner,
+                "job_id": str(job_id),
+                "parent_daemon": multiprocessing.current_process().daemon,
+                "read_entered": False,
+                "read_succeeded": False,
+                "read_failed": False,
+                "after_execute": False,
+                "read_exception": "NONE",
+            }
+        else:
+            with path.open("rb") as stream:
+                raw = stream.read(4097)
+            require(len(raw) <= 4096)
+            row = decode_control(raw)
+            checked_read_progress(row, _CONTROL.owner, job_id)
+        row[milestone.lower()] = True
+        if milestone == "READ_FAILED":
+            row["read_exception"] = exception_category(error)
+        checked_read_progress(row, _CONTROL.owner, job_id)
+        private_json(path, row)
+    except Exception:  # noqa: BLE001 -- ordinary diagnostic failures are best effort.
+        return
+    except BaseException:  # Preserve an already caught handler failure.
+        if error is None:
+            raise
+        return
+
+
 def reader_for_step(step, env):
     from wso_core.asset_crypto import AssetCipher, LocalAssetKeyProvider
     from wso_core.assets import (
@@ -145,9 +193,13 @@ def read_handler(step):
         time.monotonic() + 20,
         time.monotonic() + (step.lease.expires_at - datetime.now(UTC)).total_seconds(),
     )
+    publish_read_milestone(step.lease.job_id, "READ_ENTERED")
     try:
         data = reader_for_step(step, os.environ).read(step, payload.asset_id)
-    except AssetFailure as error:
+    except BaseException as error:
+        publish_read_milestone(step.lease.job_id, "READ_FAILED", error)
+        if not isinstance(error, AssetFailure):
+            raise
         if error.status not in {403, 404}:
             raise
         from tests.support.asset_faults import snapshot_json as private_json
@@ -163,6 +215,7 @@ def read_handler(step):
             },
         )
         raise JobFailure(error.status, "ASSET_READ_DENIED") from None
+    publish_read_milestone(step.lease.job_id, "READ_SUCCEEDED")
     result = {"sha256": hashlib.sha256(data).hexdigest(), "byte_size": len(data)}
     del data
     if _CONTROL is not None:
@@ -226,6 +279,7 @@ def create_worker_app(env, control):
     observer = {}
 
     def after_execute(reference):
+        publish_read_milestone(reference.job_id, "AFTER_EXECUTE")
         control.callback(AssetEvent("JOB_AFTER_COMMIT", reference.job_id))
 
     app = create_app(

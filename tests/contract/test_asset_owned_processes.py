@@ -432,8 +432,6 @@ class SyntheticProcess:
 
 
 def synthetic_runtime(monkeypatch, process):
-    from types import SimpleNamespace
-
     import wso_core.asset_process as processes
 
     monkeypatch.setattr(processes, "_slots", threading.BoundedSemaphore(2))
@@ -441,9 +439,9 @@ def synthetic_runtime(monkeypatch, process):
     monkeypatch.setattr(processes, "_unreaped", {})
     monkeypatch.setattr(processes, "_owned", {})
     monkeypatch.setattr(
-        processes.multiprocessing,
-        "get_context",
-        lambda mode: SimpleNamespace(Process=lambda **kw: process),
+        processes,
+        "_OwnedSpawnProcess",
+        lambda **kw: process,
     )
 
     def deadline(*args, **kwargs):
@@ -655,3 +653,231 @@ def test_owned_sdk_multipart_pagination_preserves_all_maximum_ids(
     assert observed == expected
     assert len(state["limits"]) > 1
     assert max(state["limits"]) == _multipart_page_limit()
+
+
+def identity_echo_child(sock: socket.socket) -> None:
+    import multiprocessing
+    import os
+
+    from wso_core.asset_process import child_request, child_response, quiet_child
+    from wso_core.storage import CHUNK_BYTES
+
+    quiet_child()
+    control, body, deadline = child_request(sock, CHUNK_BYTES + 19)
+    assert control == {"operation": "fixture-echo"}
+    child_response(
+        sock,
+        {
+            "pid": os.getpid(),
+            "ppid": os.getppid(),
+            "bootstrap_detached": multiprocessing.current_process()._popen is None,
+        },
+        body,
+        CHUNK_BYTES + 19,
+        deadline,
+    )
+    sock.close()
+
+
+def daemon_exchange_parent(connection, mode: str) -> None:
+    import multiprocessing
+    import os
+
+    import wso_core.asset_process as processes
+    from wso_core.storage import CHUNK_BYTES, IOBudget, StorageFailure
+
+    processes.quiet_child()
+    original_send = processes.send_frame
+    custody = []
+    native_handles = []
+    native_objects = []
+    native_closes = set()
+
+    if os.name == "nt":
+        original_close = processes._winapi.CloseHandle
+
+        def observed_close(handle):
+            with processes._registry_lock:
+                owned = [
+                    value._popen
+                    for value in processes._owned.values()
+                    if value._popen is not None
+                ]
+            retained = [
+                value
+                for value in owned
+                if handle in (value._read_handle, value.sentinel)
+            ]
+            original_close(handle)
+            native_closes.update((id(value), int(handle)) for value in retained)
+
+        processes._winapi.CloseHandle = observed_close
+
+    def record_native(handle):
+        if os.name == "nt":
+            native_handles.extend(
+                (
+                    (id(handle._popen), handle._popen._read_handle),
+                    (id(handle._popen), handle._popen._handle),
+                )
+            )
+            native_objects.append(handle._popen)
+
+    def observe_send(*args):
+        handles = tuple(processes._owned.values())
+        assert len(handles) == 1
+        custody.append(handles[0].pid)
+        record_native(handles[0])
+        return original_send(*args)
+
+    processes.send_frame = observe_send
+    if mode == "cancel":
+
+        def cancel(*args):
+            raise KeyboardInterrupt()
+
+        processes.receive_frame = cancel
+    if mode == "kill":
+
+        def refuse_terminate(self):
+            raise OSError("private-terminate-error")
+
+        processes._OwnedSpawnProcess.terminate = refuse_terminate
+    if mode == "startup-interrupt":
+        from billiard import reduction
+
+        original_dump = reduction.dump
+
+        def interrupt_dump(value, stream):
+            if isinstance(value, processes._OwnedSpawnProcess):
+                record_native(value)
+                raise KeyboardInterrupt()
+            original_dump(value, stream)
+
+        reduction.dump = interrupt_dump
+    started = time.monotonic()
+    facts = {"daemon": multiprocessing.current_process().daemon}
+    try:
+        control, body = processes.exchange_owned(
+            identity_echo_child if mode == "echo" else incomplete_child,
+            {"operation": "fixture-echo"} if mode == "echo" else {},
+            b"x" * (CHUNK_BYTES + 19) if mode == "echo" else b"",
+            request_cap=CHUNK_BYTES + 19 if mode == "echo" else 0,
+            response_cap=CHUNK_BYTES + 19 if mode == "echo" else 0,
+            budget=IOBudget(started + (8 if mode == "echo" else 4)),
+            mutating=mode != "echo",
+        )
+        facts.update(
+            exchanged=True,
+            direct_child=control["ppid"] == os.getpid(),
+            exact_handle=bool(custody) and set(custody) == {control["pid"]},
+            frame_bytes=body == b"x" * (CHUNK_BYTES + 19),
+            startup_handle_detached=control["bootstrap_detached"],
+        )
+    except StorageFailure as error:
+        facts.update(exchanged=False, code=error.code, unknown=error.outcome_unknown)
+    except KeyboardInterrupt:
+        facts.update(exchanged=False, code="CANCELLED", dispatched=bool(custody))
+    facts.update(
+        cleanup_complete=processes.local_cleanup_complete(),
+        helpers_empty=processes.owned_helper_pids() == (),
+        retained=len(processes._unreaped),
+        owned=len(processes._owned),
+        elapsed=time.monotonic() - started,
+    )
+    if os.name == "nt":
+        import ctypes
+        from ctypes import wintypes
+
+        get_handle = ctypes.windll.kernel32.GetHandleInformation
+        get_handle.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD)]
+        get_handle.restype = wintypes.BOOL
+        flags = wintypes.DWORD()
+        # Successful native close plus retained object state proves custody.
+        # A later numeric sample cannot identify the original closed object.
+        facts["native_handles_closed"] = (
+            bool(native_handles)
+            and all(handle in native_closes for handle in native_handles)
+            and all(
+                value._read_handle is None
+                and value.sentinel is None
+                and value.returncode is not None
+                for value in native_objects
+            )
+        )
+        facts["closed_numeric_samples_valid"] = sum(
+            bool(get_handle(handle, ctypes.byref(flags)))
+            for handle in {value for _identity, value in native_handles}
+        )
+    connection.send(facts)
+    connection.close()
+
+
+@pytest.mark.parametrize(
+    "mode", ["echo", "incomplete", "cancel", "kill", "startup-interrupt"]
+)
+@pytest.mark.parametrize("parent_backend", ["stdlib", "billiard"])
+def test_real_daemon_parent_exchange_has_exact_custody_and_settlement(
+    mode, parent_backend
+) -> None:
+    import multiprocessing
+    import os
+
+    import billiard
+
+    if mode == "startup-interrupt" and os.name != "nt":
+        pytest.skip("Windows native partial-start custody boundary")
+
+    context = (multiprocessing if parent_backend == "stdlib" else billiard).get_context(
+        "spawn"
+    )
+    receive, send = context.Pipe(duplex=False)
+    from wso_core.asset_process import _OwnedSpawnProcess
+
+    process_type = context.Process if parent_backend == "stdlib" else _OwnedSpawnProcess
+    parent = process_type(target=daemon_exchange_parent, args=(send, mode), daemon=True)
+    started = time.monotonic()
+    try:
+        parent.start()
+        send.close()
+        assert receive.poll(11), "bounded owned daemon parent did not report"
+        facts = receive.recv()
+        parent.join(max(0, 12 - (time.monotonic() - started)))
+        assert not parent.is_alive()
+        assert parent.exitcode == 0
+        print("DAEMON_EXCHANGE " + repr(facts))
+        assert facts["daemon"] is True
+        assert facts["cleanup_complete"] is True
+        assert facts["helpers_empty"] is True
+        assert facts["retained"] == facts["owned"] == 0
+        if os.name == "nt":
+            assert facts["native_handles_closed"] is True
+        if mode == "echo":
+            assert facts["exchanged"] is True
+            assert (
+                facts["direct_child"] and facts["exact_handle"] and facts["frame_bytes"]
+            )
+            assert facts["elapsed"] < 8
+            assert facts["startup_handle_detached"] is True
+        elif mode == "cancel":
+            assert facts["code"] == "CANCELLED" and facts["dispatched"] is True
+            assert facts["elapsed"] < 4.5
+        elif mode == "startup-interrupt":
+            assert facts["code"] == "CANCELLED" and facts["dispatched"] is False
+            assert facts["elapsed"] < 4.5
+        else:
+            assert facts["exchanged"] is False
+            assert facts["code"] == "DEADLINE" and facts["unknown"] is True
+            assert facts["elapsed"] < 4.5
+    finally:
+        receive.close()
+        send.close()
+        if parent.pid is not None:
+            if parent.is_alive():
+                parent.terminate()
+            parent.join(1)
+            if parent.is_alive():
+                parent.kill()
+                parent.join(1)
+            assert not parent.is_alive()
+        parent.close()

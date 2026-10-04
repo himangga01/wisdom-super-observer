@@ -13,6 +13,7 @@ from uuid import UUID, uuid4
 
 import redis
 from sqlalchemy import create_engine, text
+from wso_core.asset_process import decode_control
 
 from tests.support.asset_faults import (
     ProcessIdentity,
@@ -295,13 +296,72 @@ DIAGNOSTIC_STAGES = frozenset(
         "CRASH_SETUP",
         "CRASH_CHECKPOINT",
         "CRASH_HELPERS",
-        "CRASH_IDENTITY",
+        "CHILD_IDENTITY",
+        "JOB_STATE",
+        "TRANSPORT_RESERVATION",
+        "COMMITTED_EFFECTS",
+        "PARENT_IDENTITY",
         "CRASH_SIGNAL",
         "CRASH_READINESS",
         "RECOVERY",
         "BROKER_CLOSE",
     }
 )
+PARENT_MODES = frozenset(
+    {mode.value for mode in ProcessMode} | {"UNKNOWN", "NOT_OBSERVED"}
+)
+JOB_STATES = frozenset(
+    {
+        "QUEUED",
+        "RUNNING",
+        "SUCCEEDED",
+        "PARTIAL",
+        "FAILED",
+        "NEEDS_USER_INPUT",
+        "CANCELLED",
+        "UNKNOWN",
+    }
+)
+READ_FLAGS = frozenset(
+    {"parent_daemon", "read_entered", "read_succeeded", "read_failed", "after_execute"}
+)
+EXCEPTION_CATEGORIES = frozenset(
+    {
+        "NONE",
+        "DEADLINE",
+        "CONTRACT",
+        "TIMEOUT",
+        "OS",
+        "VALUE",
+        "ASSERTION",
+        "RUNTIME",
+        "OTHER",
+        "UNKNOWN",
+    }
+)
+
+
+def unknown_read_progress():
+    return dict.fromkeys(READ_FLAGS) | {"read_exception": "UNKNOWN"}
+
+
+def checked_read_progress(row, owner, job_id):
+    require(
+        type(row) is dict
+        and set(row) == READ_FLAGS | {"owner", "job_id", "read_exception"}
+        and row["owner"] == owner
+        and row["job_id"] == str(job_id)
+        and all(type(row[field]) is bool for field in READ_FLAGS)
+        and type(row["read_exception"]) is str
+        and row["read_exception"] in EXCEPTION_CATEGORIES - {"UNKNOWN"}
+    )
+    return {field: row[field] for field in READ_FLAGS | {"read_exception"}}
+
+
+def bounded_count(value):
+    return min(value, 999) if type(value) is int and value >= 0 else -1
+
+
 PROC_STATES = frozenset(
     {
         "R",
@@ -397,9 +457,18 @@ class AssetJobs:
         self.diagnostic_lock = threading.Lock()
         self.diagnostic_stage = "CRASH_SETUP"
         self.diagnostic_cutoff = harness.deadlines.cutoffs[harness.phase]
+        self.diagnostic_worker, self.diagnostic_job_id = None, None
+        self.diagnostic_job_facts = {
+            "job_state": "UNKNOWN",
+            "job_attempts": -1,
+            "job_generation": -1,
+            "reservations": -1,
+            "committed_reads": -1,
+            "committed_items": -1,
+        }
 
     def record_diagnostic(
-        self, stage, error, cutoff, *, identity=None, descriptor=None
+        self, stage, error, cutoff, *, identity=None, descriptor=None, parent_mode=None
     ):
         require(stage in DIAGNOSTIC_STAGES)
         ready, proc = None, "NOT_OBSERVED"
@@ -425,15 +494,20 @@ class AssetJobs:
             children = len(self.children)
         helpers, helper_complete = 0, True
         for parent in tuple(self.processes):
+            if getattr(parent, "mode", None) is not ProcessMode.JOB_WORKER:
+                continue
             try:
                 with (parent.spec.control_path / "helpers.json").open("rb") as stream:
                     raw = stream.read(4097)
                 require(len(raw) <= 4096)
-                value = json.loads(raw)
+                value = decode_control(raw)
                 require(
-                    value["owner"] == self.h.owner
+                    set(value) == {"owner", "pids", "complete"}
+                    and value["owner"] == self.h.owner
                     and type(value["pids"]) is list
+                    and len(value["pids"]) <= 999
                     and all(type(pid) is int and pid > 0 for pid in value["pids"])
+                    and len(set(value["pids"])) == len(value["pids"])
                     and type(value["complete"]) is bool
                 )
                 helpers += len(value["pids"])
@@ -441,6 +515,20 @@ class AssetJobs:
             except Exception:  # noqa: BLE001 -- unknown is not settled.
                 helpers, helper_complete = -1, None
                 break
+        progress = unknown_read_progress()
+        if self.diagnostic_worker is not None and self.diagnostic_job_id is not None:
+            try:
+                path = self.diagnostic_worker.spec.control_path / (
+                    "read-progress-" + str(UUID(self.diagnostic_job_id)) + ".json"
+                )
+                with path.open("rb") as stream:
+                    raw = stream.read(4097)
+                require(len(raw) <= 4096)
+                progress = checked_read_progress(
+                    decode_control(raw), self.h.owner, self.diagnostic_job_id
+                )
+            except Exception:  # noqa: BLE001 -- invalid required evidence remains unknown.
+                progress = unknown_read_progress()
         facts = {
             "stage": stage,
             "exception": exception_category(error),
@@ -457,6 +545,13 @@ class AssetJobs:
             "callers": min(len(self.h.callers), 999),
             "helpers": min(helpers, 999),
             "helpers_complete": helper_complete,
+            "parent_mode": parent_mode.value
+            if type(parent_mode) is ProcessMode
+            else "NOT_OBSERVED"
+            if parent_mode is None
+            else "UNKNOWN",
+            **progress,
+            **self.diagnostic_job_facts,
         }
         diagnostic = getattr(error, "diagnostic", None)
         if not isinstance(diagnostic, PreforkDiagnostic):
@@ -792,6 +887,7 @@ class AssetJobs:
                     error,
                     cutoff,
                     identity=getattr(process, "identity", None),
+                    parent_mode=getattr(process, "mode", None),
                 )
                 first = first or error
         self.child_stop.set()
@@ -852,6 +948,7 @@ class AssetJobs:
         require(result["accepted"])
         job_id = result["job_id"]
         worker = self.launch_worker()
+        self.diagnostic_worker, self.diagnostic_job_id = worker, job_id
         control = self.h.control_for(worker)
         event = "JOB_AFTER_READ" if position == "after-read" else "JOB_AFTER_COMMIT"
         checkpoint_cutoff = time.monotonic() + self.h.deadlines.allowance(
@@ -866,7 +963,7 @@ class AssetJobs:
         control.wait(checkpoint_cutoff)
         self.diagnostic_stage = "CRASH_HELPERS"
         self.h.assert_helpers_settled(worker)
-        self.diagnostic_stage = "CRASH_IDENTITY"
+        self.diagnostic_stage = "CHILD_IDENTITY"
         child = next(
             identity
             for identity, _fd, parent in self.children.values()
@@ -874,10 +971,20 @@ class AssetJobs:
         )
         descriptor = self.children[child.pid][1]
         validate_process_identity(child, process_identity(child.pid, self.h.owner))
+        self.diagnostic_stage = "JOB_STATE"
         row = self.job(job_id)
         first_attempt, first_generation = row["attempts"], row["lease_generation"]
+        self.diagnostic_job_facts.update(
+            job_state=row["state"]
+            if type(row["state"]) is str and row["state"] in JOB_STATES
+            else "UNKNOWN",
+            job_attempts=bounded_count(first_attempt),
+            job_generation=bounded_count(first_generation),
+        )
+        self.diagnostic_stage = "TRANSPORT_RESERVATION"
         facts = self.broker.transport_facts(job_id)
         reserved = [f for f in facts if f["event"] == "reserved"]
+        self.diagnostic_job_facts["reservations"] = bounded_count(len(reserved))
         require(reserved)
 
         def effects():
@@ -896,8 +1003,13 @@ class AssetJobs:
                 ),
             }
 
+        self.diagnostic_stage = "COMMITTED_EFFECTS"
         committed = effects() if position == "after-commit" else None
         if committed is not None:
+            self.diagnostic_job_facts.update(
+                committed_reads=bounded_count(len(committed["reads"])),
+                committed_items=bounded_count(len(committed["items"])),
+            )
             require(
                 len(committed["reads"]) == 1
                 and len(committed["items"]) == 1
@@ -913,7 +1025,7 @@ class AssetJobs:
             return value
 
         self.diagnostic_cutoff = recovery_cutoff
-        self.diagnostic_stage = "CRASH_IDENTITY"
+        self.diagnostic_stage = "PARENT_IDENTITY"
         parent_fd = os.pidfd_open(worker.process.pid)
         try:
             validate_process_identity(

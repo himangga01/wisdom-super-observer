@@ -5,6 +5,26 @@ below is dated2026-10-03 unless a later update is explicitly identified.
 
 ## Continuation update — 2026-10-04
 
+### Git hygiene and checkout synchronization
+
+At the user's follow-up cleanup request, remote `main` was at `bd70738` while
+the primary local checkout was49 commits behind. Its24 local Markdown files
+were copied to a hash-verified ignored backup before fast-forward pull. The
+modified tracked plan already matched remote main; duplicate/older audit copies
+were replaced by current tracked versions. Three previously untracked historical
+reports were preserved for source control, retaining their original analysis dates.
+
+The remaining asset-process code, dependency declaration/lock, diagnostics and
+tests are source changes and are included in the cleanup commit, rather than
+ignored. Fresh focused verification passed247 tests in31.69 seconds; this does
+not establish native Linux acceptance or resolve the full-suite failures below.
+Next's generated `next-env.d.ts` is removed from tracking but kept locally;
+`typecheck` now runs `next typegen` first so fresh checkouts regenerate it.
+Conversation attachments, accidental `%SystemDrive%` cache output, local TLS
+material and native binary artifacts are explicitly ignored. Existing runtime,
+APK, capture and environment exclusions remain. No stash or destructive reset
+was used; the private backup remains under the primary checkout's `.superpowers`.
+
 ### Requested main publication checkpoint — 2026-10-04
 
 The user explicitly requested committing and pushing the current service work
