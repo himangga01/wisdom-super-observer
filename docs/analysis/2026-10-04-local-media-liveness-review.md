@@ -383,7 +383,111 @@ reviewed wall; a distinct "no signal" error code end-to-end (and forwarding the
 upstream code through the proxy) joins the multi-view backend plan together
 with the 2-stream ceiling.
 
+## 6c. Multi-view Phase 0 measurement (executed 2026-10-05)
+
+Purpose: the measured per-stream server cost that the multi-view plan
+(`docs/superpowers/plans/2026-10-04-multiview-live-plan.md`, Phase 0) and the
+deferred final-review item I3 require before any cap is raised. No source was
+changed: run `local-devices-7db2e0382b4a46c8a8582dd1433dc182` used the
+unchanged approval c5 (worktree clean at `6436748`), controller-launched Chrome
+(R105) and the real recorders, driven from the `/connections` panels.
+
+Method: 60 s windows per load level. SQL rates are `pg_stat_database` deltas
+for the run's owned database (transactions = commits + rollbacks) and WAL is
+the `pg_current_wal_lsn()` delta; CPU is the per-process
+`TotalProcessorTime` delta in percent of one core (12 logical cores).
+Scratch tools: `phase0_sql.py`, `phase0_cpu.ps1` (session scratchpad; they
+print no URLs, credentials or private values).
+
+| Live main streams (1280×1936 HEVC, ~10 fps) | 0 | 1 (store 2 ch 1) | 2 (+ store 1 ch 2) |
+| --- | ---: | ---: | ---: |
+| SQL transactions/s | ~0 | **665** | **1,263** |
+| Tuples returned/s | 0 | 5,077 | 12,844 |
+| Buffer hits/s | 0 | 11,420 | 25,113 |
+| Tuples written/s | 0 | 0.5 | 1.1 |
+| WAL bytes/s | 69 | **200,851** | **392,943** |
+| Runtime Python process CPU | 0.6% (all Python) | **54%** | **134%** |
+| Decoder child CPU | — | 11% | 13% + 11% |
+| Native child CPU | — | 1.4% | 1.5% + 1.3% |
+| Chrome CPU (all processes) | 1.3% | 4.5% | 8.7% |
+
+Findings:
+
+- **I3 is confirmed and is the first scaling blocker.** About 630 SQL
+  transactions per second per stream, roughly 60 authority checks per
+  decoded frame. Almost no tuples are written, yet WAL grows by about 200 KB/s
+  per stream, which is consistent with the `FOR SHARE` row locks in every check
+  (about 300 WAL bytes per transaction). Twelve streams would extrapolate to
+  about 7,600 transactions/s and 2.4 MB/s of WAL (about 200 GB/day).
+- **The single runtime process is the second blocker.** CPU rose
+  super-linearly (54% to 134%) from one to two main streams, and Chrome began
+  dropping frames (20 and 98 over the window). Twelve main-stream pipelines in
+  one Python process are not feasible. Sub streams (smaller frames, fewer
+  packets and authority round trips per frame) and a bounded authority budget
+  are prerequisites for an all-cameras wall.
+- **No-video channel.** Store 1 channel 1 (opens, sends no video) returned
+  HTTP **504 after 20.0 s** from `POST live-sessions` (the 20 s start
+  deadline, masked by the web proxy as `LOCAL_DEVICE_UNAVAILABLE`). The start
+  waits for the first decoded frame until the whole deadline expires. The 429s
+  seen for the same channel in the wall runs came from concurrent-start
+  interplay, not from the channel itself. A first-frame bound with a distinct
+  no-signal code is required.
+- **Recorder limits are not readable locally.** The official app never reads
+  `maxConnNum`/`maxMainstreamNum`/`maxSubstreamNum` on local connections
+  (only its cloud bean has them). Its `querySystemCaps` reply parser knows
+  `previewMaxWin` and bandwidth fields, but nothing uses them. The connection
+  limit must be measured in the sizing gate. The app's only live-open refusal
+  codes are `0x20000029` (no authority) and `0x20000030` (device busy).
+
+Cleanup: 3/3 leases `CLOSED` with `cleanup_confirmed`; coordinator exit 0,
+original process reaped, state removed, 0 known private occurrences; Chrome
+closed through the DevTools protocol; ports 3543 and 9333 free; no Python
+processes left. The owned PostgreSQL 17 cluster keeps running.
+
 ## 7. Verification limits
+
+### 2026-10-06 c7 measured resolution changes and R137 repair
+
+Source baseline: branch HEAD6436748, author-frozen uncommitted scoped tree
+20c4a7d7. Retired c7 actual run
+`local-devices-f9758a95e9194b2782dcf9d3b0db7af4` proved an adapter format-change
+failure after first HEVC352x240 output at2421ms. A1280x720 retry stayed live over
+nine minutes, then failed the same guard after another channel on the recorder
+started; its heartbeat404 followed the format failure. The second recorder's
+channel stayed live. This establishes the measured initiating boundary, not a
+TTL-cache defect. Four leases CLOSED/confirmed; original owners retired, source
+preserved/private0, optional observation terminal/hash complete.
+
+R137 permits strictly validated same-codec dimension changes through bounded
+source-layer decoder rotation. The exact predecessor retires before its
+successor; original native/identity/peer and global PTS/ordinals persist. Five
+seconds and16 rotations per rolling60s, FIFO16frames/4MiB and latestRGB1 remain
+the bounds. Invalid input still fences the source. Author reports92 combined,
+21 expanded transitions,138 existing Windows synthetic decoder/WebRTC/worker
+and1 actual local synthetic VP8 same-peer transition cases passing, plus scoped
+Ruff/mypy. Independent scoped review approved C0/I0/M0 with ten authored paths
+matching the frozen source, without rerunning author tests; no repaired recorder result,
+four/12-tile stability or final sizing acceptance is claimed. New immutable c8
+approval follows that review. Historical c6/c7 evidence remains unchanged.
+
+## 6d. Stage-1 source gate before device sizing — 2026-10-05
+
+Plan-start6436748, uncommitted corrected source treef9a872b9. Tasks1–6 and
+combined native/source observation/final composition corrections independently
+reviewed. Stage1 native review: C0/I0/M0. Stage1 final review: C0/I0/M0.
+Optional observation fix1: C0/I0/M0. Final467 web/112 focused author tests;
+current Root guardedSQL47/47 rundf37f981d8ff466f8edc0a13d3792509 with original
+child retirement, ownedDB removal, source preservation and private0.
+R130–R135 decisions and actual source/verification qualifications remain in
+the plan ledger and canonical report. This is a source gate; no new recorder
+or Chrome run has executed. c6 is to pin the reviewed source and safe
+observation tools before1/4/12-tile sizing. Actual outcomes follow after the
+owned runtime retires; sources/documents must stay fixed during execution.
+
+Final-phase startup clocks preserve source authority/original cleanup while
+allowing valid delayed typed outcomes; up to127s combined fallback perattempt
+is a tradeoff, not a latency target. Observer completion requires original
+resources terminal plus canonical summary hash, not summary stop flag alone.
 
 No device, browser or network was used for the reviews. Scratch latencies in
 review r0 were injected assumptions; the SQL figures above are real
@@ -410,3 +514,197 @@ failure record exists for the earlier cutoff sessions.
   native receipt and approval c2, continuous two-store playback accepted on
   real recorders; user-reported proportions traced to stretch-by-default in the
   official app (R112).
+- 2026-10-05 — Section 6c: multi-view Phase 0 measurement on the real
+  recorders (I3 confirmed at about 630 SQL tx/s and 200 KB/s WAL per stream;
+  runtime CPU 54% → 134% for 1 → 2 main streams; a no-video channel ends at
+  the 20 s deadline with 504).
+
+
+## 2026-10-05 stage-1 Task 5 capacity and R132 startup reservation
+
+Source baseline: reviewed Tasks 1?4 tree `20bc7cbd0839c3250550dc6535b1158bb6ebbc16`; uncommitted Task 5 delta in the active `codex/superlive-web-service` worktree. This addendum records implemented and synthetic/SQL-tested behavior, not device acceptance.
+
+Native original-owner capacity and media source capacity are now 16. Full native capacity returns BUSY immediately; otherwise live attempts share a wait deadline of min(remaining caller authority, 10 s) across the attempt lock and uncertain original custody, polling custody at 50 ms or the shorter remainder. Inventory verification still refuses pending live owners; this remains a stage-2 limitation. New migration 0015 changes only media issue caps to 16 per tenant/actor and 64 globally and restores the exact 0013 issue body on downgrade. Migration 0013/0014 bodies were preserved. The test runtime pins/migrates 0015 and admits 32 RPC calls; the API client registry already defaults to 32.
+
+RF3 was reproduced with real PostgreSQL checkout: sixteen pending startup callbacks exhausted the approved 8 + 8 pool while an established live lease still needed observe(). After freshness elapsed, its checkout timed out at 1 s and denial became sticky. Controller ruling R132 therefore reserves capacity by limiting long open() transactions to eight. A per-admission bounded semaphore is acquired before checkout, with at most 50 ms polling and min(caller remaining, 10 s) total waiting. It releases after transaction settlement on every path. Eight pool slots cannot be consumed by these long starts; authority freshness, sticky denial and SQL/pool timeouts remain unchanged. A burst can return BUSY after the bound; active-stream capacity stays 16. Arbitrarily stalled short queries can still exhaust finite resources, so Task 7 load sizing remains necessary.
+
+Executed evidence: 409 native/inert-runtime contract tests, 124 media tests, and all 47 guarded SQL cases passed. The real SQL regression verifies eight admitted startup callbacks with sixteen callers, current(existing) after freshness, completion of remaining starts after release, and original admission cleanup. Final guarded run `56958a74e0e841d185d90cbc8fed979b` reports owned database removal, unchanged source database, original child reaped and zero known private occurrences. Scope included new actor/global cap cases and upgrade/downgrade through the fixture. Ruff check/format pass for eleven changed non-runtime files and production strict mypy passes for four files. Existing runtime formatting/import/type debt is unchanged; no whole-repository static success is claimed.
+
+Prior device acceptance in section 6 remains historical two-stream evidence. No SDK/device/browser acceptance ran for Task 5; source/native receipts remain stale pending Task 7 independent review. Recorders' connection limits, simultaneous-load timing and cold-start BUSY behavior remain open measurement questions. No new portable authority path is introduced; subsequent changes should read this addendum with the canonical service analysis and update their evidence after verification.
+
+
+## R138 source gate and c8 actual pressure ? 2026-10-06
+
+Retired c8 pinned123sources, approval2dc9764c. Initialcoldsub200/rendered and
+oneactualresolutionrotation succeeded, but sixofseven attemptsfirstfailed
+sourceingressqueueoverflow duringdecoderlaunch/rotation. Allseven leasesCLOSED
+confirmed,originalownersretired0/sourceunchanged/private0/observerCOMPLETE.
+One-stream complete60s SQL6stable samples19.584?21.8tx/s/live, clusterWAL
+about198?214B/s; this does not establish4/12streamperformance. LasttinyCPU
+interval was invalid; no correctedc8CPUaggregate is asserted.
+
+R138 independent source/native gate C0/I0/M0 at scopedtree387bcb12861a615d899dc070e9cb2b3b2590dd43.
+Author75parent/provider,102source/transition/observation,139actualsynthetic
+Windowsdecoder/WebRTC/worker selections pass; scopedRuff9/strictmypy3.
+Bounded sourcecredit/nativeACKpause preserves16frames/4MiB eachFIFO,
+callback256chunks/1MiB, originalowner/identity/peer/globalordering, authority
+andretirement. Pressure5s orshorterexistingbounds; upstreamcallbackoverload
+anddelayedkeepalive remainactual-loadquestions. CPUcontrollerperhandlebracket
+repair independentlyC0/I0/M0; actual7rolemeasurementnotyetrun. Nativeprotected
+receipt c41e023ffeb7a6cc14276fc6843b0cf89f148810816cce2a9b93b7e71d1dea81,
+12OWNED/14dependencies/14bundlerows checked withoutSDKcalls. Root prepares
+immutablec9thenactual1/4/12 withsourcefixeduntiloriginalresourcesretire.
+No repaired12tile/fiveminuteacceptance orAPKparity isclaimedbythesourcegate.
+
+## Stage-1 actual sizing and c11 retirement — 2026-10-06
+
+Baseline: HEAD6436748 plus uncommitted stage-1 Tasks1–6 and reviewed R136–R142.
+The canonical service report retains separate c6–c11 outcomes. These updates
+supersede earlier "preparing c9" statements, without replacing their evidence.
+
+In c9, six stable SQL samples per60s load window measured19.500–22.065tx/s/live
+at one stream,18.861–21.084 at four and19.538–20.850 at eight. This meets the
+stage-1 SQL target for those measured windows, not for twelve simultaneous
+streams. Cluster-wide WAL was186–450,790–7629 and1619–5958B/s respectively.
+One/four-stream process-family CPU counter windows were complete; eight-stream
+coverage was incomplete, so no whole-family eight-stream CPU figure is accepted.
+Original decoder rotations worked on actual recorder media after R137/R138.
+
+c10 exposed BUSY head starvation and a qualified duplicate derived timestamp,
+then failed normal cleanup. R141 per-target bounded parks and R142 separate
+raw/presentation clocks passed independent C0/I0/M0 source review. Exceptional
+c10 worker retirement remains FAILED/unconfirmed, not normal cleanup evidence.
+
+c11's356.080s browser snapshot contains nine rendered substreams, including
+all four second-recorder channels while first-recorder targets remained BUSY.
+It records32 BUSY429 and two protocol502 responses; nine start samples have
+API p50/p95=5.857/7.722s and first presented frame p50/p95=6.233/8.036s.
+Video times214.946–295.396s do not prove five minutes on every tile. The later
+hold exceeded the900s browser observation lifetime and eventually login expiry.
+No trustworthy complete long-hold frame/PTS result is available from that run.
+
+The c11 pre-shutdown SQL query found201 issued leases allCLOSED/confirmed.
+Original Chrome and coordinator exited0/reaped; API/worker settled, context
+removed, source unchanged, private occurrences0. The observation terminal was
+FAILED with6850 write failures, despite normal resource retirement. Its last
+schema2 snapshot contains90 attempts/nine peers and stop_requested=false;
+65055bytes approach the65536-byte writer bound. Diagnosis and a reviewed fix
+must precede another immutable runtime. Twelve-tile acceptance remains open;
+per-tile logins continue to encounter recorder BUSY. No universal connection
+limit, production readiness or APK MATCHED status is inferred.
+
+## c12 completed observation and normal cleanup — 2026-10-06
+
+Frozen146-source approvald6cdf6e2/native0e7880d6 executed as
+`local-devices-790c686c772b4fe29db973dce986901a`. Nine substreams progressed
+over a common300.849s interval,3008–3009 total frame increments each; dropped
+increments0–187, so total frames are not lossless presented-frame counts.
+Initial nine API starts p50/p95=2.555/3.035s; first presentation3.025/3.391s.
+Actual1280×1936 main focus and352×240 sub return worked. Ten rapid UI focus/
+return pairs finished nine live subleases; only one main reached native handoff,
+so this is cancellation/composition evidence, not ten completed main starts.
+
+Six stable9-stream/60s SQL samples give19.722–20.789tx/s/live, under25 for this
+window; cluster WAL1801.6–5707.2B/s. Five complete original-role/descendant CPU
+samples sum worker114.457–121.497%/Chrome10.932–14.024% of one core. Corresponding
+private-memory sums728.1–734.3/627.4–642.6MiB. Per-process read brackets remain
+different windows; these are not common-window whole-family CPU measurements.
+
+Live-test elapsed1091.280s ended nine progressing videos. Focus remounted video
+elements and their clocks; original source life is separate. No timestamp,
+ingress overflow or format_changed first failure is recorded. Browser window1
+was saved/retired before900s and a distinct window2 installed; no combined
+startup-latency or exact R142 equal-time branch-execution claim is made.
+
+All90 leases CLOSED/confirmed (main3/sub87), original Chrome/coordinator0/reaped,
+API/worker settled/context removed, owned database removed/source database
+preserved, approved source stable/private0. Observer schema2/stoptrue90sources/
+12peers/errors+omissions0, terminalCOMPLETE/writersettled and strict hash gate
+passed (`ccd899a5be25a7d53776cc8131948a0cfe0924460df526d7175fb3d197975ff2`).
+45511 compact bytes replace what would be71089 bytes in the old pretty encoding;
+the former64KiB publication failure is now exceeded successfully in actual use.
+Normal c12 completion does not rewrite failed c10/c11 evidence. Twelve tiles
+remain unaccepted with per-tile logins; per-recorder shared transport is stage2.
+
+
+### Chrome launch and GPT control transport unavailable (2026-10-06)
+
+Fresh browser schema3 source approval `9f81ae2c` pins304 sources; approved
+helper `5c980d3f`. Owned run `local-devices-0e3da80780754b61886dbfc95249e430`
+started actual Node/runtime and reached ready. Original installed Chrome was
+launched with fresh profile/loopback9333, original Popen retained and no
+certificate bypass. Runtime parent exec session8726 and Chrome owner session2746
+are retained. This establishes launch/readiness, not displayed TLS/page/video
+acceptance. Do not infer a browser pass from the launcher receipt.
+
+GPT Browser Use returned no available browsers; selectingcdp reported unavailable.
+The bundled Computer Use skill was read and its documented direct `@oai/sky`
+initialization was used. list_apps failed because its Windows native pipe is
+unavailable, including prescribed2s retry and one Node-kernel reset/reinitialize.
+No windows/input/screenshot were returned or used. No raw CDP, shell UI automation,
+custom native-client/start/install or certificate bypass workaround was applied.
+User was asked asynchronously to close the owned localhost Chrome and reconnect
+Browser/Computer Use or restart Codex. Actual12-camera/300s/focus/rapid-handoff/
+per-load CPU-SQL-memory browser gates remain unexecuted.
+
+Pending shutdown: the owned Chrome must close normally before the durable runtime
+shutdown marker, so its profile is released before context cleanup. Do not report
+normal final cleanup until original helper sessions/observer/DB/source/privacy
+receipts settle. Source304 pins remain frozen; canonical service/handoff/ledger
+updates are outside that source closure. Backend raw2/raw4 COMPLETE receipts are
+independent and preserved. First raw setup failure remains FAILED/unknown cause.
+
+Git read-only hygiene: fetch --prune origin succeeded, branch remains ahead3/
+behind0, actual index empty. No tracked/unignored APK/DLL/SO/PEM/key/EXE/DB file
+was found; .superpowers/auth-state/.venv/node_modules are ignored. No stage, stash,
+reset, commit, pull integration or push occurred; approved uncommitted source and
+three existing local commits are preserved. APK parity/release readiness remains
+separate and incomplete.
+
+
+### Current browser checkpoint: real inventory, expired run, final Chrome close pending
+
+Date:2026-10-06, Asia/Seoul. The documented Chrome extension/native-manifest
+checks found the default extension installed/enabled. The documented
+`open-chrome-window.js --browser chrome` opened that approved default profile,
+and GPT Browser Use connected (extension browser1). No installation, security
+change or raw CDP/shell UI automation was used. Computer Use remains unavailable.
+The default-profile GPT-owned test tab was marked handoff; it is a distinct
+profile from the retained isolated original Chrome. Do not attribute its UI
+activity or process metrics to that isolated original.
+
+Executed in actual GPT-controlled Chrome: localhost login page rendered without
+certificate interstitial, synthetic OWNER login completed, connection manager
+verified recorder1 eight channels and recorder2 four channels through the real
+backend. DOM video progress/12-stream/common300s/focus/rapid-pair measurements
+were not executed. Screenshot capture timed out and no saved screenshot is
+claimed. Later DOM shows ERR_CONNECTION_REFUSED after bounded runtime shutdown.
+
+The old run's reporting time expired during tool transport recovery. Runtime
+parent session8726 completed exit1 with original Node coordinator reaped, source
+pins unchanged, private known-signature occurrences0, ready_seen true,
+observation_failure true and state_removed false. Next exit0, runtime exit1.
+Separate current context receipts establish API exit0 and original worker exit0/
+reaped/Job limits+assignment confirmed/Job empty+closed/writer+stdin settled,
+no failed/incomplete/uncertain/retained flags. Owned DB receipt cleanup=true,
+source before/after equal and content_equal=true. These normal component
+retirements do not turn the full browser run into COMPLETE; final observer
+terminal/resources receipt is absent and protected context remains.
+
+Only the original isolated Chrome owner session2746 remains pending (original
+PID2100 from retained metadata, title `Synthetic directory sign in - Chrome`).
+Port3543 is no longer listening;9333 belongs to that original idle Chrome.
+User was asked to close precisely this window. GPT's default-profile task tab
+should remain open; no Codex/plugin restart is currently needed. After original
+Chrome exit/reap, verify its helper receipt and all remaining original custody,
+then remove only this exact owned context using the existing marker guard.
+Preserve this run as FAILED/expired and create a fresh bounded source-reviewed
+runtime for the complete12-camera/300s and per-load/focus/rapid/cleanup gates.
+Never reset an expired observer clock or reuse its old proof.
+
+Raw2 0899e1ad/raw4 10cec96c remain independently COMPLETE, including current-run
+wire/post-cut frames and normal original/observer/DB/source/privacy receipts.
+All accepted feature source remains uncommitted; HEAD6436748, ahead3/behind0
+after fetch, index empty. APK equality/release readiness and publication are
+still not complete. No additional service feature or source change is authorized
+by a control-tool recovery observation.

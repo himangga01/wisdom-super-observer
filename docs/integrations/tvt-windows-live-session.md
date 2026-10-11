@@ -1,5 +1,69 @@
 # Windows owned local live session
 
+## R139 login-time BUSY propagation — 2026-10-06
+
+The retired c9 run's channel-open failures were login-handshake rejection
+0x20000030 before inventory or live-open, as recorded in the portable
+[diagnosis](../analysis/2026-10-06-c9-channel-open-diagnosis.md). The parent
+supervisor now preserves that exact original structured result after confirmed
+reap and retained receipt identity/generation validation.
+
+`NativeLocalLiveProvider.open_session` consumes the supervisor's SafeResult.
+Only handshake/rejected/0x20000030, with no login acceptance/inventory/live-open,
+matching original authority generation and confirmed original owner/reap, can
+become `LOCAL_DEVICE_BUSY`/429. The earlier parent failure must be protocol or
+normal closed. Caller cancel, elapsed deadline and denied/errored current
+authority take precedence; cancel/deadline are rechecked after current returns.
+The closed native authority is never revived, and no session is handed off for
+a rejected login. Other native codes, parse errors, foreign/missing receipts
+and uncertain custody retain their existing failures. Existing downstream busy
+scheduling applies without a new provider reconnect or retry.
+
+This implements the approved stage-1 conditional login-BUSY behavior, with one
+original login per tile. It does not establish a universal five-session limit
+or twelve-tile acceptance; c9's measured concurrency and final cleanup remain
+separate canonical evidence. Inert original-child refusal and precedence tests
+cover the source change. No recorder, Chrome, SQL or live service execution was
+performed; new independent native review/receipt/approval is required first.
+
+## R138 consumer credit at the parent IPC boundary — 2026-10-06
+
+Source baseline: c8's immutable reviewed123-file closure on the uncommitted
+stage-1 worktree at HEAD6436748. The c8 runtime fully retired before this edit.
+Read this update before reusing the parent pump; Root owns source receipts and
+canonical execution evidence.
+
+The media source now requests only free16-frame/4MiB FIFO credit and waits
+boundedly when full. Source-only waiting would transfer pressure to this
+parent queue. `LiveParentAuthority.pump` therefore first checks current authority,
+cancellation, expiry and permanent closure, then pauses before `recv_bytes` if
+any parsed frame remains. This conservative credit rule accommodates the next
+envelope's unknown size/multiple parsed pictures without an extra retained media
+batch or a raised bound. It also rechecks sticky close after the callback; a
+callback that closes the owner and returnsTrue cannot grant continued pumping.
+
+While paused, the one original pending message, sequence and ACK remain
+unchanged. Consumer `read_frames` drains the existing FIFO; the next pump reads
+and validates that exact message. Control/Send/keepalive ACKs resume in order.
+Malformed messages and duplicate setup are still rejected after credit resumes;
+pausing does not accept their contents. Startup ACK and the10s first-frame
+deadline, current renewal and30s native orphan deadline are unchanged. The pump's
+True during a pause means only that its existing authority remains current; it
+does not report message acceptance or transmit an ACK.
+
+Native callback capacity remains256 chunks/1MiB, envelope1MiB, parent16 frames/
+4MiB including retained source bytes. The native child waits for the same parent
+decision and retains its original callback/codec/socket owners. Source pressure
+is bounded to5s or an earlier existing bound; real callback accumulation during
+such a pause remains an actual-load acceptance question. No callback, ABI,
+codec, decoder wire, permission, selected-stream or SQL change was made.
+
+Executed inert evidence: parent pressure plus existing provider selection
+**75 passed**. Source/parent/remote composition preserved forty exact ordered
+inputs through a1.8s decoder launch pause and resumed the same IPC sequence.
+No SDK/device/browser/SQL execution occurred. Independent scoped/native review,
+new protected receipt and immutable approval remain required before1/4/12 sizing.
+
 Analysis date: **2026-10-04 (Asia/Seoul)**. Source baseline:
 `211d1484aa16eb30f5d362758f149f98dec9dfdf`; the dispatched worktree was clean.
 This report describes the new M3/M4 native session implementation. Concurrent
@@ -17,8 +81,13 @@ before changing this layer; update affected source and execution evidence after.
 `services/tvt-bridge/src/wso_tvt_bridge/local_live_provider.py` supplies
 `NativeLocalLiveProvider.open_session(credentials, selection, deadline_monotonic,
 current, cancel)`. It accepts the core `LocalMediaChannel` or private immutable
-`LiveSelection`. Only the existing proved default main/stream1 path is admitted;
-substream requests fail. There is no inferred quality mapping or socket sharing.
+`LiveSelection`. The service path now carries explicit `main`/stream 1 or
+`sub`/stream 2 selection through the private request, child setup and both codecs.
+The parent rejects setup that differs from its original selection. Peer capability
+5 or later selects command 1285 for sub; earlier peers use command 1281 with
+stream 2. Main and diagnostic `capture_live` keep stream 1. There is no inferred
+quality mapping or socket sharing. See the dated Task 3 update below for the
+synthetic verification limits; this change has not had actual-device acceptance.
 
 The existing Windows supervisor still validates the source receipt, DLL bundle,
 ACLs, interpreter and original Job admission. A service live request starts a
@@ -255,3 +324,70 @@ Ruff, format check and strict mypy passed. This worker change needs independent
 native review and a new Root source receipt. Real-device and Chrome acceptance
 with the keepalive (playback beyond 30 s) is **pending**; nothing here shows that
 a recorder keeps streaming.
+
+
+### Stage 1 Task 3 ? stream propagation and refusal handling, 2026-10-05
+
+Source baseline: controller snapshot tree
+`693734b96d17720ba5d7c62d8434d85671a1f613`, with reviewed but uncommitted Tasks 1?2
+already present. Those changes and the historical reviews above are preserved.
+The source now carries explicit stream selection from `LocalMediaChannel` through
+`LiveSelection`, integer `PrivateRequest.stream`, the supervisor packet, fresh
+same-session inventory setup, and `serve_live`. Integers are restricted to 1 or 2;
+booleans and malformed values are rejected. Setup must match the parent's stream
+and original channel selection before either end opens or publishes media.
+
+Both codecs independently validate the matching command 1281 or 1285 success
+acknowledgement and the selected stream in the media header. The parent exposes
+only a private read-only `sub_stream_adaptation_off` diagnostic when the codec's
+1285 acknowledgement carries advisory warning `0x20000060`. The warning grants
+no readiness or frames and is absent from public DTOs and `SafeResult`.
+
+A class-3 refusal is forwarded as the original envelope only after the child
+codec raises `LiveRefused`. The parent parses that envelope with its own codec,
+retaining the pending command and task correlation established in Task 2/R129.
+The command's low 28 bits identify the pending request; the reason is the `oz0`
+integer at payload offset 72. Busy (`0x20000030`) becomes `LOCAL_DEVICE_BUSY`/429;
+no authority (`0x20000029`) and other correlated refusals become
+`LOCAL_DEVICE_UPSTREAM_REJECTED`/502. Uncorrelated command/task replies fence the
+child as codec failures, without waiting indefinitely or manufacturing a device
+reason. The original watchdog/expiry and cleanup still bound parent retirement.
+Existing first-frame product timeout changes belong to Task 4.
+
+The 6-second keepalive, original-owner custody, current-authority gates,
+credential discard before setup/Send, orphan expiry and diagnostic capture
+policy retain their previous behavior. The carried M8 comment in
+`local_media_service.py` now describes an authority observation at most 100 ms
+old, matching Task 1; no authority-cache behavior was changed here.
+
+Executed verification (synthetic envelopes, fake natives and inert Windows
+children only):
+
+- Causal RED: both contract files initially reported **41 failed / 308 passed**.
+  Missing stream propagation, refusal mapping, validation and setup schema caused
+  the failures. Updated pre-existing fixtures also exercised the new required
+  setup field. One subsequent failing sub handoff exposed a fixture media header
+  still marked stream 1; the codec correctly rejected it. The fixture now emits
+  its explicitly selected stream.
+- `python -m pytest tests/contract/test_local_live_provider.py
+  tests/contract/test_windows_socket.py tests/tvt_parity/test_local_live.py -q
+  --tb=short`: **499 passed in 22.07 s**, exit 0, no skips or warnings.
+  Counts: provider **54**, socket **309**, codec parity **136**. The brief's
+  historical 313 baseline was the combined socket/provider count (290 + 23),
+  rather than the socket file alone. Current combined contract count is **363**.
+- Coverage includes main/sub Windows process handoff; fresh drive/inventory
+  selection and credential discard for both streams; cap 6 command 1285 and cap 4
+  command 1281/stream 2; exact keepalive bytes/times; parent mismatch denial;
+  read-only warning state; correlated busy/denied/unknown refusals; wrong command
+  and wrong task fencing; and final original native Stop/Destroy/Quit cleanup.
+- Scoped Ruff and format checks passed on the four bridge modules, both contract
+  files and the comment-only core file. Strict mypy passed on all four bridge
+  modules. Scoped `git diff --check` passed.
+
+Limits and next priorities: this is source and synthetic execution evidence.
+No SDK, real device, credential retrieval, SQL, browser, phone or network operation
+was used. Full application/integration suites were not run for this slice.
+Controller-owned receipts remain intentionally stale; independent review and Task 7
+receipt/actual-device acceptance must precede a device run. Recorder-specific sub
+stream availability, warnings, refusal behavior and broader multiview capacity
+remain open acceptance questions. This update makes no production-readiness claim.

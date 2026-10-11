@@ -8,7 +8,8 @@ import time
 from collections import deque
 from collections.abc import Callable
 from contextlib import suppress
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
+from uuid import UUID
 
 from aiortc import (
     RTCConfiguration,
@@ -22,7 +23,14 @@ from av import VideoFrame
 from wso_core.tvt.windows_decode import DecodeBinding, PrivateRGBFrame
 
 from .codec import FrameLimits, MediaDenied, frame_to_video, validate_frame
+from .native_source import FailureObserver, NativeDecodedSource, observe_failure
 from .signaling import SessionAnswer, SignalingDenied, validate_offer
+
+if TYPE_CHECKING:
+    from aiortc.rtcrtpparameters import RTCRtpCodecParameters
+    from aiortc.rtcrtpsender import RTCEncodedFrame
+
+    from .mux_budget import MediaCredit, MediaCreditLedger
 
 # A stale (not revoked) emission permit withholds media at most this long.
 STALE_GRACE_SECONDS = 2.0
@@ -127,6 +135,7 @@ class _AuthorizedTrack(VideoStreamTrack):
         self._source_timestamp: int | None = None
 
     async def recv(self) -> VideoFrame:
+        frame = None
         try:
             while True:
                 self.owner._check()
@@ -134,8 +143,13 @@ class _AuthorizedTrack(VideoStreamTrack):
                 self.owner._check()
                 if self.owner._permitted():
                     break
+                if self.owner.observation_counts is not None:
+                    self.owner.observation_counts["withheld_decoded_frames"] += 1
+                self.owner._release_rgb(frame)
+                frame = None
                 # Stale, not revoked: withhold this frame and wait for a fresh
                 # one; the watcher bounds how long staleness may last.
+            self.owner._reserve_conversion(frame)
             video = frame_to_video(frame, self.owner.binding, self.owner.limits)
             if frame.ordinal <= self._ordinal or (
                 self._source_timestamp is not None
@@ -154,6 +168,9 @@ class _AuthorizedTrack(VideoStreamTrack):
         except Exception:  # noqa: BLE001 -- decoder/callback failures stop RTP.
             self.owner._schedule_close()
             raise MediaStreamError() from None
+        finally:
+            if frame is not None:
+                self.owner._release_rgb(frame)
 
 
 class LocalWebRtcSession:
@@ -177,13 +194,23 @@ class LocalWebRtcSession:
         permitted: Callable[[], bool] | None = None,
         limits: FrameLimits | None = None,
         on_delivery: Callable[[PrivateRGBFrame], None] | None = None,
+        observe: FailureObserver | None = None,
+        media_credit: MediaCreditLedger | None = None,
+        registration: UUID | None = None,
     ) -> None:
+        if media_credit is not None and type(registration) is not UUID:
+            raise MediaDenied()
+        self._media_credit, self._registration = media_credit, registration
+        self._conversion: list[MediaCredit] = []
+        self._conversion_bytes = 0
+        self._encode_tasks: set[asyncio.Task[RTCEncodedFrame | None]] = set()
         if (
             type(binding) is not DecodeBinding
             or not callable(current)
             or (permitted is not None and not callable(permitted))
         ):
             raise MediaDenied()
+        self._observe = observe
         self.binding, self.source, self.current = binding, source, current
         self.permitted = permitted
         self.limits, self.on_delivery = limits or FrameLimits(), on_delivery
@@ -191,6 +218,7 @@ class LocalWebRtcSession:
         self._closed = False
         self._fenced = False
         self._stale_since: float | None = None
+        self.observation_counts: dict[str, int] | None = None
         self._cleanup_failed = False
         self._original_close_failed = False
         self._closed_event = asyncio.Event()
@@ -204,6 +232,22 @@ class LocalWebRtcSession:
         self.peer = RTCPeerConnection(RTCConfiguration(iceServers=[]))
         self.track = _AuthorizedTrack(self)
         transceiver = self.peer.addTransceiver(self.track, direction="sendonly")
+        if self._media_credit is not None:
+            # aiortc cancels _run_rtp on stop, but an encoder callable submitted
+            # to run_in_executor continues owning its AV input. Shield the exact
+            # original encode coroutine, retaining its executor await until the
+            # callable really returns. Do not replace/reimplement its encoder.
+            original_next = transceiver.sender._next_encoded_frame
+
+            async def retained_next(
+                codec: RTCRtpCodecParameters,
+            ) -> RTCEncodedFrame | None:
+                task = asyncio.create_task(original_next(codec))
+                self._encode_tasks.add(task)
+                task.add_done_callback(self._encode_finished)
+                return await asyncio.shield(task)
+
+            transceiver.sender._next_encoded_frame = retained_next  # type: ignore[method-assign]
         # VP8 is baseline browser WebRTC support; opaque HEVC never enters RTP.
         transceiver.setCodecPreferences(
             [
@@ -228,15 +272,70 @@ class LocalWebRtcSession:
             # ConnectionError would end aiortc's original _run_rtp.
             if self._permitted():
                 await original_send(data)
+            elif self.observation_counts is not None:
+                self.observation_counts["withheld_datagrams"] += 1
 
         transport._send_rtp = fenced_send  # type: ignore[method-assign]
 
         @self.peer.on("connectionstatechange")
         async def state_change() -> None:
-            if self.peer.connectionState in ("failed", "closed"):
+            state = self.peer.connectionState
+            if state in ("failed", "closed"):
+                observe_failure(
+                    self._observe,
+                    "peer_connection",
+                    "connection_failed" if state == "failed" else "connection_closed",
+                )
                 self._schedule_close()
+            elif state == "connected":
+                observe_failure(self._observe, "milestone", "peer_connected")
 
         self._monitor = asyncio.create_task(self._watch())
+
+    def enable_observation(self) -> dict[str, int]:
+        """Fixture opt-in counters; no callbacks, I/O or authority decisions."""
+        if self.observation_counts is None:
+            self.observation_counts = {
+                "permit_lapse_episodes": 0,
+                "withheld_datagrams": 0,
+                "withheld_decoded_frames": 0,
+            }
+        return self.observation_counts
+
+    def _release_rgb(self, frame: PrivateRGBFrame) -> None:
+        if self._media_credit is not None:
+            if not isinstance(self.source, NativeDecodedSource):
+                raise MediaDenied()
+            self.source.release_rgb(frame)
+
+    def _reserve_conversion(self, frame: PrivateRGBFrame) -> None:
+        if self._media_credit is None:
+            return
+        assert self._registration is not None
+        # One sender serially awaits each encode. Retain a conservative aligned
+        # high-water charge for its current/previous video, padded conversion
+        # buffers and encoder input until the original sender/peer has settled.
+        # A returned AV VideoFrame cannot carry a Python weakref finalizer.
+        aligned = ((frame.width * 3 + 63) // 64) * 64 * frame.height
+        needed = 6 * aligned
+        if needed > self._conversion_bytes:
+            credit = self._media_credit.reserve_conversion(
+                self._registration, needed - self._conversion_bytes
+            )
+            if credit is None:
+                raise MediaDenied()
+            self._conversion.append(credit)
+            self._conversion_bytes = needed
+
+    def _encode_finished(self, task: asyncio.Task[RTCEncodedFrame | None]) -> None:
+        if task.cancelled():
+            # Our cancellation boundary never cancels this original. An
+            # unexpected external cancellation cannot certify executor custody.
+            self._original_close_failed = True
+            self._cleanup_failed = True
+        else:
+            task.exception()  # Retrieve errors even after the RTP waiter stopped.
+        self._encode_tasks.discard(task)
 
     @staticmethod
     def _deadline(value: float) -> float:
@@ -249,16 +348,21 @@ class LocalWebRtcSession:
         return float(value)
 
     def _check(self) -> None:
+        reason = "current_false"
         try:
-            allowed = (
-                not self._closed
-                and not self._fenced
-                and time.monotonic() < self.expires_at
-                and self.current() is True
-            )
+            # Preserve the original short-circuit order and call current once.
+            if self._closed:
+                allowed, reason = False, "closed"
+            elif self._fenced:
+                allowed, reason = False, "fenced"
+            elif not time.monotonic() < self.expires_at:
+                allowed, reason = False, "deadline"
+            else:
+                allowed = self.current() is True
         except Exception:  # noqa: BLE001 -- authority infrastructure fails closed.
-            allowed = False
+            allowed, reason = False, "current_error"
         if not allowed:
+            observe_failure(self._observe, "peer_check", reason)
             self._fenced = True
             raise MediaDenied()
 
@@ -278,11 +382,17 @@ class LocalWebRtcSession:
             self._stale_since = None
         elif self._stale_since is None:
             self._stale_since = time.monotonic()
+            if self.observation_counts is not None:
+                self.observation_counts["permit_lapse_episodes"] += 1
         return allowed
 
     def renew(self, expires_at: float) -> None:
         self._check()
-        next_deadline = self._deadline(expires_at)
+        try:
+            next_deadline = self._deadline(expires_at)
+        except MediaDenied:
+            observe_failure(self._observe, "peer_deadline", "invalid_deadline")
+            raise
         self._check()
         self.expires_at = next_deadline
 
@@ -294,6 +404,7 @@ class LocalWebRtcSession:
                 )
                 self._check()
                 if getattr(self.source, "closed", False):
+                    observe_failure(self._observe, "peer_watch", "source_ended")
                     raise MediaDenied()
                 if not self._permitted():
                     since = self._stale_since
@@ -301,6 +412,7 @@ class LocalWebRtcSession:
                         since is not None
                         and time.monotonic() - since > STALE_GRACE_SECONDS
                     ):
+                        observe_failure(self._observe, "peer_watch", "stale_permit")
                         raise MediaDenied()
         except asyncio.CancelledError:
             return
@@ -308,6 +420,7 @@ class LocalWebRtcSession:
             self._schedule_close()
 
     def _schedule_close(self) -> None:
+        observe_failure(self._observe, "peer", "close_scheduled")
         self._fenced = True
         if self._close_task is None:
             self._close_task = asyncio.create_task(self._dispose())
@@ -348,6 +461,7 @@ class LocalWebRtcSession:
 
     async def close(self, reason: str = "closed") -> None:
         del reason  # Caller text is never returned in public error messages.
+        observe_failure(self._observe, "peer", "explicit_close")
         self._fenced = True
         self._schedule_close()
         assert self._close_task is not None
@@ -381,6 +495,7 @@ class LocalWebRtcSession:
             self._cleanup_failed = True
 
     async def _settle_resources(self) -> None:
+        settled = False
         try:
             for task in (self._source_close_task, self._peer_close_task):
                 assert task is not None
@@ -389,10 +504,28 @@ class LocalWebRtcSession:
                 except Exception:  # noqa: BLE001 -- original close failure remains observable.
                     self._cleanup_failed = True
                     self._original_close_failed = True
+            # Peer closure stops further sender calls, so only retained original
+            # operations remain. Never cancel them to meet a controller timeout.
+            while self._encode_tasks:
+                await asyncio.gather(
+                    *(asyncio.shield(task) for task in tuple(self._encode_tasks)),
+                    return_exceptions=True,
+                )
+            settled = True
         finally:
-            # This event reflects settlement of both original tasks, never a
-            # timeout of the controller's waits.
-            self._closed_event.set()
+            if (
+                settled
+                and not self._original_close_failed
+                and self._media_credit is not None
+            ):
+                for credit in self._conversion:
+                    self._media_credit.release(credit)
+                self._conversion.clear()
+                self._conversion_bytes = 0
+            # Includes the actual encoder callable; RTP/peer coroutine exit or
+            # cancellation of this settlement waiter is not that barrier.
+            if settled:
+                self._closed_event.set()
 
     @property
     def original_close_failed(self) -> bool:

@@ -1,6 +1,10 @@
 # SuperLive Plus APK to web service: feature parity review
 
 - **Analysis date:** 2026-10-04 (Asia/Seoul).
+- **Latest scoped update:** 2026-10-06 (Asia/Seoul); HEAD6436748 plus uncommitted
+  stage-1 changes, c9–c11 actual evidence and current source review. The original
+  inventory and unrelated statuses remain dated2026-10-04; affected live rows
+  below were refreshed. No APK side-by-side acceptance ran.
 - **Requested by:** parent controller (read-only APK feature parity review).
 - **Status of this file:** canonical APK feature parity matrix. Written by an independent read-only
   reviewer and adopted into the project by the controller on 2026-10-04 (section 9 steps 1-3 done;
@@ -124,8 +128,8 @@ P-IDs refer to the contracts in audit 12.
 | --- | ---: | ---: | ---: |
 | `ACCEPTED_REAL` | 2 | 1.4% | 1.5% |
 | `IMPLEMENTED_UNACCEPTED` | 12 | 8.5% | 8.8% |
-| `PARTIAL` | 12 | 8.5% | 8.8% |
-| `MISSING` | 111 | 78.7% | 81.0% |
+| `PARTIAL` | 14 | 9.9% | 10.2% |
+| `MISSING` | 109 | 77.3% | 79.6% |
 | `NOT_APPLICABLE` | 4 | 2.8% | — |
 
 - Two `MISSING` rows are APK declaration-only `(D)`: AC-08 and FL-05.
@@ -141,7 +145,7 @@ P-IDs refer to the contracts in audit 12.
 | AC Account and security | 18 | 0 | 7 | 1 | 10 | 0 |
 | DV Devices: list, add, manage | 15 | 1 | 3 | 4 | 7 | 0 |
 | SH Sharing and friends | 6 | 0 | 1 | 0 | 5 | 0 |
-| LV Live view | 17 | 1 | 0 | 4 | 12 | 0 |
+| LV Live view | 17 | 1 | 0 | 6 | 10 | 0 |
 | PT PTZ and camera controls | 11 | 0 | 0 | 0 | 11 | 0 |
 | PB Playback and backup | 9 | 0 | 0 | 0 | 9 | 0 |
 | AI Smart search, face, plate | 8 | 0 | 0 | 0 | 8 | 0 |
@@ -153,7 +157,7 @@ P-IDs refer to the contracts in audit 12.
 | LS Local settings | 10 | 0 | 0 | 1 | 6 | 3 |
 | TY Tyco alarm panel | 5 | 0 | 0 | 0 | 5 | 0 |
 | HA Help, About and miscellaneous | 6 | 0 | 0 | 0 | 6 | 0 |
-| **Total** | **141** | **2** | **12** | **12** | **111** | **4** |
+| **Total** | **141** | **2** | **12** | **14** | **109** | **4** |
 
 ### 3.3 Verdict
 
@@ -170,7 +174,7 @@ unaccepted.**
   - cloud device, channel and share reads;
   - the serial-number device registration form;
   - the consent gate.
-- **Partial (12), missing (111), not applicable (4).**
+- **Partial (14), missing (109), not applicable (4).**
 
 Entire APK domains are absent:
 
@@ -274,11 +278,11 @@ jobs and assets. These are outside the matrix.
 | SH Sharing | SH-06 Friends (search, apply, accept) and friend groups | `/sdk/searchMyFriendByLoginName`, `/sdk/sendApplyForAddFriends`, `/sdk/agreeApplyToNewFriendWithApplyId`, group routes; P17.1 | — | MISSING | — |
 | LV Live | LV-01 Single-channel live video | `com.tvt.live.LiveViewLayout`, `com.tvt.video.VideoView`; `defpackage/cw3` (`jb`; keepalive `fu3.N1` → `cw3.v5`); P03.1 | `web/features/connections/local-live-panel.tsx`; `web/lib/tvt/local-live-{player,api,proxy}.ts`; `web/app/api/live-sessions/[[...segments]]/route.ts`; `api/tvt/local_media.py:209-313`; `core/tvt/local_media_{admission,service}.py`; `bridge/local_live_{provider,ipc}.py`, `bridge/local_media_rpc.py`; `media/{native_source,live,worker}.py`; `mig/0013_tvt_local_media_leases.py` | **ACCEPTED_REAL** | Real Chrome against real recorders (run `local-devices-06c7327498f8…`, 2026-10-04): store 1 channel 2 played continuously for about 5 minutes; store 2 channel 1 played 81.7 s at the same time; about 10 fps with server-confirmed PLAYING. Stop and reopen worked, and every lease closed with confirmed cleanup. Limits: main stream only; video only (HEVC decoded and re-encoded to VP8); OWNER only; local SN devices only; reachable only from the `/connections` OWNER page; runs only in the owned test runtime, not the production bootstrap. |
 | LV Live | LV-02 Live for cloud-account (directory) devices | `LiveViewLayout` streams every logged-in device, including account devices; P03.1 | — | MISSING | Directory devices have no media path. Only `TVT_DEVICE` connections can stream. |
-| LV Live | LV-03 Concurrent live from several devices and channels | `LiveViewLayout` + `VideoManagerLayout` (tiles across devices); 32 auto-connected devices; P04.1 | Same path as LV-01. Caps: `bridge/windows_socket.py:977`, `media/worker.py:115,145`, `mig/0013…:128-130` | PARTIAL | Two concurrent streams are accepted (one per store). Hard caps apply: 2 native owners, 2 media sources, 4 leases per user, 32 global, 1 active lease per channel. Near-simultaneous starts return 429 and are not retried. |
-| LV Live | LV-04 Multi-split layouts 1/2/4/6/8/9/13/16 | `com.tvt.video.VideoManagerLayout` (16 preallocated `VideoView`s; display-mode switch); `view_segmentation_item.xml`; `defpackage/a63`; bottom `iv_bottom_display`; P04.1 | — (one `<video>` per connection card: `local-live-panel.tsx:40`) | MISSING | See section 5. |
+| LV Live | LV-03 Concurrent live from several devices and channels | `LiveViewLayout` + `VideoManagerLayout`; P04.1 | `/monitoring`; `web/features/monitoring/live-wall.tsx`; `web/lib/tvt/live-wall-scheduler.ts`; `bridge/windows_socket.py`; `media/worker.py`; `mig/0015_tvt_local_media_capacity.py` | PARTIAL | Updated2026-10-06: native/media/wall caps16, SQL actor16/global64, serial starts and bounded per-target BUSY waits. c9/c11/c12 rendered nine substreams across two stores; c12 verified a common300.849s progress window and ended a1091.280s live test with nine progressing videos. All twelve did not open; per-tile recorder logins encounter BUSY and occasional pre-login connection/greeting errors. c11 normal cleanup confirmed all201 leases but observation failed; repaired c12 confirmed all90 leases and COMPLETE observation with zero errors/omissions. One recorder connection carrying multiple tasks, viewer fan-out and production wiring remain absent. |
+| LV Live | LV-04 Multi-split layouts 1/2/4/6/8/9/13/16 | `VideoManagerLayout`; `view_segmentation_item.xml`; P04.1 | `/monitoring`; `live-wall.tsx`, `live-tile.tsx` | PARTIAL | Updated2026-10-06: responsive automatic/2-column/3-column/4-column grids, store filter and single-channel focus are implemented; a real12-tile surface with nine playing channels was observed. Exact APK split presets, paging and complete12-channel simultaneous acceptance remain absent. |
 | LV Live | LV-05 Tile gestures (swap, drag to close, double-tap to maximize, swipe to switch channel or page) | `VideoManagerLayout` gesture handlers (single- and two-finger slide, exchange, delete, double click); P04.1 | — | MISSING | — |
 | LV Live | LV-06 Channel selection and switching | `ServerListViewLayout2`; `com.tvt.live.popup.DeviceListPopWindow`; P03.1 | Channel `<select>` in `local-live-panel.tsx` (stops, then starts) | PARTIAL | Switching works only by restarting the stream. Two channels are accepted on real devices. An earlier bounded capture on store 1 position 1 was heartbeat-only and is unresolved. No swipe switching. |
-| LV Live | LV-07 Stream and quality selection (main/sub; Full HD/HD/SD/Low presets) and automatic sub-stream in split view | `video_menu_view.xml` `menu_rate`; `view_screen_rate.xml`; strings `LiveView_Ultra_Clear`, `LiveView_Very_Clear`, `LiveView_HD`, `LiveView_SD`, `LiveView_Low_Clearance`, `LiveView_Lowest_QCIF_Clearance`; persisted `CodeStreamType`; `LiveViewLayout.Z1`; `cw3.jb` / `cw3.kb`; P03.2 | Contract allows main or sub (`contracts/tvt/local_media.py:18`). The frontend always sends main (`web/lib/tvt/local-live-api.ts:46`). The provider rejects sub (`bridge/local_live_provider.py:39,52,203-204`). | MISSING | The sub-stream (stream 2 / command 1285) lifecycle is not implemented. The codec only serializes 1285 (`core/tvt/local_live.py:300-309`), and a 1285 reply is not a success ack (`:452`). |
+| LV Live | LV-07 Stream and quality selection (main/sub; Full HD/HD/SD/Low presets) and automatic sub-stream in split view | `LiveViewLayout.Z1`; `cw3.jb/kb`; persisted `CodeStreamType`; P03.2 | `local-live-panel.tsx`; `local-live-api.ts`; `live-wall.tsx`; `core/tvt/local_live.py`; `bridge/local_live_provider.py`, `local_live_ipc.py`, `windows_socket_worker.py` | PARTIAL | Updated2026-10-06: main/sub selection is wired end to end; split tiles request sub, focus stops sub then requests main, returning closes main before sub. c9/c10 actual switching worked; c11 showed352x240 and704x480 substreams.1285 modern and1281 legacy sub opens and bounded refusal handling are source-tested. APK named quality presets/custom bitrate/adaptive policy and formal APK comparison remain missing. |
 | LV Live | LV-08 Custom stream parameters (resolution, frame rate, bitrate) | `view_custom_rate.xml`; `ku3` `ChangeLiveStream`; P03.2 | — | MISSING | — |
 | LV Live | LV-09 Full screen | `video_menu_view.xml` `menu_full_screen`; P03.2 | — (`controls={false}`, no fullscreen action) | MISSING | The browser Fullscreen API is not used. |
 | LV Live | LV-10 Digital zoom (pinch or two-finger scale) | `VideoView` two-finger scale gesture; `GL2JNIView` scale enable | — | MISSING | — |
@@ -287,7 +291,7 @@ jobs and assets. These are outside the matrix.
 | LV Live | LV-13 Local recording to MP4 | `VideoView` + `com.sdk.mediacodec.H264Decode` MP4 recorder; `iv_record_src`; P05.1 | — | MISSING | — |
 | LV Live | LV-14 Live audio (listen) | `com.tvt.live.a` (LiveAudioManager); `view_live_bottom_tab.xml` `iv_bottom_audio`; P04.2 | — (video-only `recvonly` transceiver, `web/lib/tvt/local-live-player.ts:25`; native audio unsupported) | MISSING | — |
 | LV Live | LV-15 Two-way talk | `com.tvt.live.LiveTalkManager`; `iv_bottom_talk`; P04.2 | — | MISSING | Needs microphone capture, an uplink codec and a device talk session. |
-| LV Live | LV-16 Per-tile state (connecting, offline, no permission, retry) | `VideoView` state overlays; P03.1 | `local-live-panel.tsx` status text (connecting, negotiating, playing, stopped, failed) | PARTIAL | One generic failure message. No distinction between offline, permission and busy; no retry or backoff. |
+| LV Live | LV-16 Per-tile state (connecting, offline, no permission, retry) | `VideoView` state overlays; P03.1 | `live-wall.tsx`, `live-tile.tsx`, `live-wall-scheduler.ts`; `local-live-panel.tsx` | PARTIAL | Updated2026-10-06: queued/start/negotiating/live/failure states, bounded phase clocks, BUSY per-target3/6/12/15s parks, manual retry and terminal NO_SIGNAL without retry exist. c11 showed BUSY waits while other-recorder channels progressed. Real denied/offline/expiry variants and the full APK state mapping are not independently accepted. Store1 channels1/3 supply valid substream placeholder frames and must not be forced into NO_SIGNAL. |
 | LV Live | LV-17 Jump from a live tile to playback of the same channel | `view_live_bottom_tab.xml` `iv_bottom_playback`; `LiveOperateBarView`; P07.1 | — | MISSING | Playback is absent. |
 | PT PTZ | PT-01 PTZ pan and tilt (buttons and gestures) | `video_menu_view.xml` `menu_pan_title_control`; PTZ commands in `cw3` / `ew3`; P05.2 | — | MISSING | — |
 | PT PTZ | PT-02 Zoom, focus, iris and PTZ speed | `view_ptz_ctrl.xml` (`tv_zoom`, `tv_focus`, `tv_iris`, `sb_speed`); P05.2 | — | MISSING | — |
@@ -437,7 +441,7 @@ This section is static evidence; the class, method and resource names are from t
   already appear in our cloud projection (`core/tvt/directory_projection.py:160-165`), but the local
   live path does not use them.
 
-### 5.2 What our stack limits today (file:line in the worktree)
+### 5.2 Historical stack limits — 2026-10-04 (superseded for changed layers)
 
 | Layer | Limit | Evidence | Effect on a dashboard |
 | --- | --- | --- | --- |
@@ -459,7 +463,22 @@ This section is static evidence; the class, method and resource names are from t
 | Bootstrap | **The production bridge factory does not wire the media worker** | `bridge/server.py:540,637-651` (`create_server_from_environment` passes no `local_media_worker`). Only the test runtime does: `scripts/test-local-devices/runtime.py:739-787`. The worker is accepted at `bridge/server.py:434,495-498`. | Live video exists only inside the owned test runtime. |
 | Device scope | Live is available only for `TVT_DEVICE` (SN plus device credentials) connections | `api/tvt/local_media.py` routes take `connection_id`; the directory reads in `api/tvt/devices.py` have no media path | Cloud-account devices, which the APK shows in its device list, cannot be put on a dashboard. |
 
-### 5.3 Consequence for "2 stores × 12 cameras" and beyond
+### 5.2.1 Current stage-1 limits and execution — 2026-10-06
+
+The table above is retained historical evidence. Current changed limits are:
+
+| Layer | Current implemented behavior | Executed evidence and remaining limits |
+| --- | --- | --- |
+| SQL | Migration0014 nonlocking hot-path observe,100ms start-anchored cache;0015 actor16/global64 |47 guarded SQL tests passed; c9 stable1/4/8-stream windows19.500–22.065,18.861–21.084,19.538–20.850tx/s/live. No twelve-stream sample. |
+| Pool/startup |8+8 pool, at most eight long startups reserving remaining pool slots | Real SQL contention regression passed; finite short-query stalls remain possible. |
+| Native/media/wall |16 sources/owners, serial starts,10s bounded original-custody wait | Real maximum nine playing sources, not a measured universal recorder cap. |
+| Stream/UI | End-to-end main/sub; split=sub, focus=main then return=sub; responsive monitoring wall | Actual c9/c10 switching and c11 nine substreams. Exact APK layouts/presets are incomplete. |
+| Decoder/ingress | Same-owner bounded same-codec rotation,16frames/4MiB producer credit, original retirement before successor | c9 actual rotations and4/8 healthy streams; R142 raw/mapped timestamp repair is reviewed. c11 long-hold evidence was lost to writer capacity; repaired c12 completed1091s with no recorded timestamp/queue/format first failure, without per-branch equality telemetry. |
+| Startup refusal | Exact proven post-reap login BUSY maps429; per-target bounded retry does not starve another recorder | c11 second recorder reached all four channels while first-recorder BUSY targets waited. Two actual502 responses occurred before login at connect/greeting, not incorrectly recovered BUSY. |
+| Session model | One login/process/Job per tile; no per-device multiplexer | Twelve simultaneously live tiles remain unaccepted. APK uses one login with multiple channel tasks. |
+| Unchanged scope | OWNER/local devices only, no viewer fan-out, no TURN or production media bootstrap | Source/runtime tests and local Chrome playback do not establish production or APK parity. |
+
+### 5.3 Historical consequence for "2 stores × 12 cameras" and beyond
 
 | Aspect | APK | Today |
 | --- | --- | --- |
@@ -677,3 +696,18 @@ Because this review was explicitly read-only, neither was written. The parent sh
   - No execution or repository changes.
 - **2026-10-04 (Asia/Seoul):** adopted into `docs/analysis/`, registered in `AGENTS.md` and cross-linked from
   `docs/service-analysis.md` by the controller; content unchanged from the reviewer's deliverable.
+
+- **2026-10-06 (Asia/Seoul):** scoped stage-1 update at HEAD6436748 plus
+  uncommitted reviewed changes. LV-03/04/07/16 and current limits refreshed from
+  source and c9/c10/c11 receipts; LV-04/07 change MISSING to PARTIAL (two rows).
+  Counts are now2 accepted/12 implemented-unaccepted/14 partial/109 missing/4
+  not applicable. Original inventory and unrelated rows are historical; no
+  full re-inventory, production acceptance or APK MATCHED claim. Canonical
+  service report records failed12-tile gate, c10 exceptional retirement and
+  c11 normal resource cleanup with FAILED observation publication.
+
+- **2026-10-06 (Asia/Seoul), c12 actual refresh:** common five-minute nine-stream
+  progress, main/sub return, ten rapid click pairs and90CLOSED/confirmed leases;
+  repaired observer COMPLETE/hash/zeroerrors+omissions. Source statuses/counts
+  remain unchanged: LV-03/04/07/16 stillPARTIAL and12tile gate stillopen. See
+  [independent acceptance audit](2026-10-06-multiview-stage1-acceptance.md).

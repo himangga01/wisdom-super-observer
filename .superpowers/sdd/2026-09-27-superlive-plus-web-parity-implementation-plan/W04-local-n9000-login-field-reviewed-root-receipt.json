@@ -1,0 +1,31 @@
+{
+  "status": "SOURCE_ACCEPTED_UNPUBLISHED",
+  "files": {
+    "packages/core/src/wso_core/tvt/local_n9000.py": {
+      "bytes": 26938,
+      "sha256": "d53238cf2d6eda58995d1dc0c427ca28d226f7c44b730f85411d3c4b6bd509f4"
+    },
+    "tests/tvt_parity/test_local_n9000.py": {
+      "bytes": 41542,
+      "sha256": "5539367dd754b32a21e6bf811e77456374a3c678eac4294fc3c47a9d20a0fbf8"
+    },
+    "docs/integrations/tvt-local-n9000-codec.md": {
+      "bytes": 34779,
+      "sha256": "1174b27a868cc180d172dd613324f201e24a15e44d37371c4082a07a769a544d"
+    }
+  },
+  "report_full_read": true,
+  "review_full_read": true,
+  "review_sha256": "90a9c711ff6986c02d7e4fafe1891e298437efc92b9ab1af458d081636a2581d",
+  "critical": 0,
+  "important": 0,
+  "minor": 0,
+  "custody_files": 524,
+  "private_text_files": 462,
+  "known_private18_and_CCTV_UTF8_UTF16": "PASS",
+  "production_caller_adaptation": "pending",
+  "actual_authentication": false,
+  "offset16_success_field": "source parsed but unused; not rejection code",
+  "MATCHED": 0,
+  "release_ready": false
+}

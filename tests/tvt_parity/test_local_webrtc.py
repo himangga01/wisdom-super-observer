@@ -92,6 +92,61 @@ async def make_offer(peer):
     return peer.localDescription.sdp
 
 
+async def test_same_vp8_peer_presents_equal_raw_timestamps_as_distinct_rtp_frames():
+    from aiortc import RTCSessionDescription
+    from wso_tvt_media.native_source import NativeFrameAdapter
+
+    from tests.tvt_parity.test_local_media_source import PROOF, frame
+
+    adapter = NativeFrameAdapter(PROOF)
+    packets = [
+        adapter.packet(frame(timestamp=raw, index=index))
+        for index, raw in enumerate([1000000] * 4 + [1100000, 1200000], 1)
+    ]
+    selected = packets[0].binding
+    source = BoundedDecodedSource(binding=selected, current=lambda: True)
+    delivered = []
+    server = LocalWebRtcSession(
+        binding=selected,
+        source=source,
+        current=lambda: True,
+        expires_at=time.monotonic() + 20,
+        on_delivery=lambda item: delivered.append((item.timestamp_us, item.ordinal)),
+    )
+    original = server.peer
+    client = RTCPeerConnection(RTCConfiguration(iceServers=[]))
+    track_ready = asyncio.Future()
+    client.on("track", lambda track: track_ready.set_result(track))
+    try:
+        answer = await server.answer(await make_offer(client), "equal-raw-offer")
+        await client.setRemoteDescription(
+            RTCSessionDescription(answer.sdp, answer.type)
+        )
+        track = await asyncio.wait_for(track_ready, 5)
+        for packet in packets:
+            source.put_nowait(
+                rgb(packet.ordinal, packet.timestamp_us, selected=selected)
+            )
+            await asyncio.sleep(0.06)
+        received = [await asyncio.wait_for(track.recv(), 5) for _ in range(4)]
+        assert [item.pts for item in received] == [0, 2, 4, 6]
+        assert all(item.time_base == Fraction(1, 90000) for item in received)
+        assert all((item.width, item.height) == (64, 48) for item in received)
+        assert delivered == [
+            (1000000, 1),
+            (1000024, 2),
+            (1000048, 3),
+            (1000072, 4),
+            (1100000, 5),
+            (1200000, 6),
+        ]
+        assert server.peer is original and not server._fenced
+    finally:
+        await server.close()
+        await client.close()
+    assert server.peer.connectionState == "closed" and source.closed
+
+
 async def test_real_loopback_encodes_vp8_and_closes_original_peer_on_revoke():
     current = [True]
     source = BoundedDecodedSource(binding=binding(), current=lambda: current[0])
@@ -157,6 +212,51 @@ async def test_offer_replay_closes_session_and_no_frames_before_offer():
         with pytest.raises(SignalingDenied):
             await server.answer(sdp, "one")
         assert server.peer.connectionState == "closed"
+    finally:
+        await server.close()
+        await client.close()
+
+
+async def test_original_vp8_peer_receives_up_and_down_resolution_with_increasing_pts():
+    from aiortc import RTCSessionDescription
+
+    source = BoundedDecodedSource(binding=binding(), current=lambda: True)
+    server = LocalWebRtcSession(
+        binding=binding(),
+        source=source,
+        current=lambda: True,
+        expires_at=time.monotonic() + 20,
+    )
+    client = RTCPeerConnection(RTCConfiguration(iceServers=[]))
+    track_ready = asyncio.Future()
+    client.on("track", lambda track: track_ready.set_result(track))
+    original = server.peer
+    ordinal, last_pts = 0, -1
+    try:
+        answer = await server.answer(await make_offer(client), "resolution-offer")
+        await client.setRemoteDescription(
+            RTCSessionDescription(answer.sdp, answer.type)
+        )
+        track = await asyncio.wait_for(track_ready, 5)
+        for width, height in [(352, 240), (1280, 720), (352, 240)]:
+            for _ in range(3):
+                ordinal += 1
+                source.put_nowait(
+                    rgb(
+                        ordinal,
+                        1_000_000 + ordinal * 100_000,
+                        width=width,
+                        height=height,
+                    )
+                )
+                await asyncio.sleep(0.1)
+            while True:
+                received = await asyncio.wait_for(track.recv(), 5)
+                assert received.pts > last_pts
+                last_pts = received.pts
+                if (received.width, received.height) == (width, height):
+                    break
+            assert server.peer is original and not server._fenced
     finally:
         await server.close()
         await client.close()
@@ -589,3 +689,34 @@ async def test_original_peer_close_failure_is_reported_read_only_and_sticky(
         await asyncio.wait_for(server.wait_closed(), 2)
     assert server.original_close_failed is True and source.closed
     assert server.peer.connectionState == "closed"
+
+
+async def test_optional_observation_counts_lapses_and_actual_withholding(monkeypatch):
+    permit = [False]
+    source, server, hook, sent = stale_session(monkeypatch, permit)
+    try:
+        assert server.observation_counts is None
+        counts = server.enable_observation()
+        await hook(b"one")
+        await hook(b"two")
+        assert counts == {
+            "permit_lapse_episodes": 1,
+            "withheld_datagrams": 2,
+            "withheld_decoded_frames": 0,
+        }
+        permit[0] = True
+        await hook(b"fresh")
+        permit[0] = False
+        await hook(b"three")
+        assert counts["permit_lapse_episodes"] == 2
+        assert counts["withheld_datagrams"] == 3
+        source.put_nowait(rgb(1, 1_000_000))
+        pending = asyncio.create_task(server.track.recv())
+        await asyncio.sleep(0)
+        assert counts["withheld_decoded_frames"] == 1
+        permit[0] = True
+        source.put_nowait(rgb(2, 1_100_000))
+        assert (await asyncio.wait_for(pending, 1)).pts == 1_100_000
+        assert sent == [b"fresh"] and not server._fenced
+    finally:
+        await server.close()

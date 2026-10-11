@@ -11,7 +11,10 @@ import { publicConnection } from "../../lib/connections";
 import { ServiceShell } from "../../components/service-shell";
 import { SessionRefresh } from "../../components/session-refresh";
 import { LiveWall } from "../../features/monitoring/live-wall";
+import { ownedSharedMode } from "../../lib/tvt/owned-shared-mode";
 export const dynamic = "force-dynamic";
+
+
 export default async function MonitoringPage({
   searchParams,
 }: {
@@ -65,6 +68,7 @@ export default async function MonitoringPage({
     <ServiceShell csrf={csrf} active="monitoring" connectionTenant={owner}>
       <SessionRefresh expiresAt={me.expires_at} />
       <LiveWall
+        sharedMode={ownedSharedMode()}
         tenantId={owner}
         csrf={csrf}
         stores={stores.filter(

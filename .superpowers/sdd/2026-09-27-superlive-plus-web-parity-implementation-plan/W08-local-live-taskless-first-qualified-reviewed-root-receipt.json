@@ -1,0 +1,49 @@
+{
+  "status": "SOURCE_ACCEPTED_WITH_EVIDENCE_QUALIFICATION_UNPUBLISHED",
+  "files": {
+    "packages/core/src/wso_core/tvt/local_live.py": {
+      "bytes": 20970,
+      "sha256": "cb3f550da623f868331382cb080b92455297f651ebbf0fa0ff03b22d0235816e"
+    },
+    "tests/tvt_parity/test_local_live.py": {
+      "bytes": 25805,
+      "sha256": "df442510b42a295d0585f8158b9a0363a6fede23a19f3a9e325913dbd57911ec"
+    },
+    "docs/integrations/tvt-local-live-codec.md": {
+      "bytes": 25205,
+      "sha256": "04f2c50550e7e08b80dd1ebf3ce821a818c55f854a26e71f52dc419cf73bb97e"
+    }
+  },
+  "dependencies": {
+    "packages/core/src/wso_core/tvt/frames.py": {
+      "bytes": 10485,
+      "sha256": "e5cd9dc73c8a0602e83e958ff2f5b36971b894b224c63498f9b6227f94a31b9f"
+    }
+  },
+  "report_full_read": true,
+  "review_full_read": true,
+  "review_sha256": "0372e8e82246d839935c21da84380535f57f9aad10ca10662c569f9749d3141f",
+  "reviewer_critical": 0,
+  "reviewer_important": 1,
+  "reviewer_minor": 0,
+  "open_blocking_source_findings": 0,
+  "I1_disposition": "Historical receipt custody incomplete; canonical report and acceptance explicitly qualified; final-source verification retained; no fabricated or full historical TDD claim.",
+  "M1_disposition": "Already addressed in accepted source fidelity; existing current bounds preserved.",
+  "taskless_route0_scope": "Explicit exclusive_first_task=True; caller proves fresh original socket/generation and first-only stream1 task, no reuse/replacement; exact pending open ACK before media; current owner and ep3 channel checks. Parser cannot prove physical socket freshness; no wire task fabricated.",
+  "initial_integration_scope": "R96 stream1 after actual same-generation login/source-supported metadata branch and current explicit read/live original-owner admission",
+  "unsupported": [
+    "route0 outside explicit fresh first-task scope",
+    "route1",
+    "1285 receive lifecycle",
+    "encrypted media",
+    "audio/playback/Y7",
+    "unproved receive correlation variants"
+  ],
+  "custody_files": 52,
+  "private_text_files": 52,
+  "known_private18_and_CCTV_UTF8_UTF16": "PASS",
+  "actual_frames": false,
+  "decoded_frame": false,
+  "MATCHED": 0,
+  "release_ready": false
+}

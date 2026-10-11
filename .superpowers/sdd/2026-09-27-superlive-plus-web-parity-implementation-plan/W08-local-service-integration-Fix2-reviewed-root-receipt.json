@@ -1,0 +1,40 @@
+{
+  "status": "SOURCE_ACCEPTED_UNPUBLISHED",
+  "sources": {
+    "packages/contracts/src/wso_contracts/tvt/local_device.py": {
+      "bytes": 2260,
+      "sha256": "df2b3d0f7e983d4c5fda577e7ebf5f1d036a213d8d156f0e14fdbb5f0106b583"
+    },
+    "packages/core/src/wso_core/tvt/local_admission.py": {
+      "bytes": 13007,
+      "sha256": "88a073d0a1b684dea4226f02f24b1d7c898efdbaf53303e01941234770562b7d"
+    },
+    "packages/core/src/wso_core/tvt/local_service.py": {
+      "bytes": 8587,
+      "sha256": "6501d0b9a7d70f8c28423dbf4c8d532bd669440437727d92cde2d460e06276cc"
+    },
+    "infra/migrations/versions/0012_tvt_local_devices.py": {
+      "bytes": 24158,
+      "sha256": "883b4e09532dad7f9df62621a160b45a9561757599281737f98d1cfa54271ab3"
+    },
+    "tests/tvt_parity/test_local_device_service.py": {
+      "bytes": 11333,
+      "sha256": "5dfa4a5ce75d3697edbdb5f47955ecd5d75b081665b334ac47955328456deffa"
+    },
+    "tests/integration/test_local_device_admission.py": {
+      "bytes": 12627,
+      "sha256": "71d8f229ce1075bdf3fe2c8993d0b45a0fa4fbc012100fb38c77070c0cc0d7dd"
+    }
+  },
+  "review": {
+    "path": ".superpowers\\sdd\\2026-09-27-superlive-plus-web-parity-implementation-plan\\W08-local-service-integration-review\\fix2\\independent-review.md",
+    "sha256": "50b89ba16a8024dcaff705cc17fb65ba1e18137a8003a9b57d0d275b56e3da56",
+    "critical": 0,
+    "important": 0,
+    "minor": 0
+  },
+  "actual_SQL": "PENDING",
+  "known_private18": "PASS",
+  "MATCHED": 0,
+  "release_ready": false
+}

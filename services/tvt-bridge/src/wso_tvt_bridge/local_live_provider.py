@@ -21,12 +21,13 @@ from .local_live_ipc import (
     frame_storage,
 )
 from .windows_socket import (
-    PENDING_OWNERS,
     ChildOwner,
     PrivateRequest,
     ProviderBusy,
     ProviderConfig,
     WindowsSocketProvider,
+    is_login_busy,
+    remove_confirmed_owner,
 )
 
 
@@ -36,7 +37,7 @@ class LiveSelection:
     raw_index: int
     window_index: int
     ordinal: int
-    stream: Literal["main"] = "main"
+    stream: Literal["main", "sub"] = "main"
 
     def __post_init__(self) -> None:
         if (
@@ -49,15 +50,20 @@ class LiveSelection:
             or not 0 <= self.window_index <= 65535
             or type(self.ordinal) is not int
             or not 1 <= self.ordinal <= 256
-            or self.stream != "main"
+            or type(self.stream) is not str
+            or self.stream not in ("main", "sub")
         ):
             raise ValueError("Invalid private live selection")
 
 
 def failure(reason: str) -> LocalDeviceFailure:
     code, status = {
+        "device_busy": ("LOCAL_DEVICE_BUSY", 429),
+        "device_denied": ("LOCAL_DEVICE_UPSTREAM_REJECTED", 502),
+        "device_refused": ("LOCAL_DEVICE_UPSTREAM_REJECTED", 502),
         "cancelled": ("LOCAL_DEVICE_CANCELLED", 409),
         "deadline": ("LOCAL_DEVICE_DEADLINE_EXCEEDED", 504),
+        "no_signal": ("LOCAL_DEVICE_NO_SIGNAL", 504),
         "denied": ("LOCAL_DEVICE_DENIED", 404),
         "overflow": ("LOCAL_DEVICE_UNAVAILABLE", 503),
         "closed": ("LOCAL_DEVICE_DENIED", 404),
@@ -169,8 +175,8 @@ class OwnedLocalLiveSession:
         self._authority.deny("closed")
         confirmed = self._owner.finish()
         confirmed = self._authority.wait_retirement() and confirmed
-        if confirmed and self._owner in PENDING_OWNERS:
-            PENDING_OWNERS.remove(self._owner)
+        if confirmed:
+            remove_confirmed_owner(self._owner)
         return confirmed
 
     def close(self) -> bool:
@@ -200,14 +206,14 @@ class NativeLocalLiveProvider:
         error: LocalDeviceFailure | None = None
         try:
             if type(selection) is LocalMediaChannel:
-                if selection.stream != "main":
+                if selection.stream not in ("main", "sub"):
                     raise LocalDeviceFailure("LOCAL_DEVICE_INPUT_INVALID", 422)
                 selection = LiveSelection(
                     selection.guid,
                     selection.raw_index,
                     selection.window_index,
                     selection.ordinal,
-                    "main",
+                    "sub" if selection.stream == "sub" else "main",
                 )
                 authority.selection = selection
             if (
@@ -231,8 +237,40 @@ class NativeLocalLiveProvider:
                 live_read_opt_in=True,
                 store_ref="SERVICE",
                 channel_position=selection.ordinal,
+                stream=2 if selection.stream == "sub" else 1,
             )
-            native.run(self._config, request, service=authority, current=current)
+            result = native.run(
+                self._config, request, service=authority, current=current
+            )
+            if (
+                not authority.handed_off
+                and is_login_busy(result)
+                and result.generation == authority.generation
+                and result.reaped
+                and native.owner is not None
+                and native.owner.confirmed
+                and authority.failure in ("protocol", "closed")
+            ):
+                # Passive refusal recovery does not revive the closed authority.
+                # Caller cancellation/expiry and the original current predicate
+                # still win before a retryable public outcome is returned.
+                if cancel.is_set():
+                    raise failure("cancelled")
+                if time.monotonic() >= deadline_monotonic:
+                    raise failure("deadline")
+                try:
+                    allowed = current() is True
+                except LocalDeviceFailure:
+                    raise
+                except Exception:  # noqa: BLE001 -- authority errors never become BUSY.
+                    allowed = False
+                if cancel.is_set():
+                    raise failure("cancelled")
+                if time.monotonic() >= deadline_monotonic:
+                    raise failure("deadline")
+                if not allowed:
+                    raise failure("denied")
+                raise failure("device_busy")
             if (
                 not authority.handed_off
                 or native.owner is None
@@ -252,8 +290,7 @@ class NativeLocalLiveProvider:
             del credentials
             if native.owner is not None:
                 native.owner.finish()
-                if native.owner.confirmed and native.owner in PENDING_OWNERS:
-                    PENDING_OWNERS.remove(native.owner)
+                remove_confirmed_owner(native.owner)
             elif not authority.handed_off:
                 authority.close()
         if session is not None:

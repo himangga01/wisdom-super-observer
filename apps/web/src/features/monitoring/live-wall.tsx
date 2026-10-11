@@ -4,9 +4,10 @@ import type {ConnectionView} from '../../lib/connections';
 import type {Store} from '../../lib/session';
 import {LocalDeviceError, localDeviceMessage, readLocalDevice, type LocalDeviceView} from '../../lib/tvt/local-device-api';
 import type {LocalLiveBinding} from '../../lib/tvt/local-live-api';
-import {LocalLivePlayer, type LivePlayerState} from '../../lib/tvt/local-live-player';
+import {LocalLivePlayer, type LivePlayerState, type LivePlayerStartupPhase} from '../../lib/tvt/local-live-player';
 import {createLiveWallScheduler, isRequested, LIVE_WALL_CONCURRENCY, tileState, type LiveStartFailure, type LiveWallScheduler, type LiveWallSnapshot, type LiveWallTimer} from '../../lib/tvt/live-wall-scheduler';
-import {channelBadge, focusRing, LivePill, LiveTile, LiveVideo, TileStatus, type LiveTileModel, type VideoFit} from './live-tile';
+import {LiveWallGroupController} from '../../lib/tvt/live-wall-group';
+import {channelBadge, focusRing, LivePill, LiveTile, LiveVideo, QualityBadge, TileStatus, type LiveTileModel, type VideoFit} from './live-tile';
 
 /** The subset of LocalLivePlayer the wall drives; tests inject a fake through `createPlayer`. */
 export type LiveWallPlayer = {
@@ -16,8 +17,10 @@ export type LiveWallPlayer = {
   readonly closed: boolean;
   /** HTTP status that failed the start/offer/playing request (429: device busy), or null. */
   readonly failureStatus: number | null;
+  readonly failureCode: string | null;
+  readonly currentLeaseId: string | null;
 };
-export type LiveWallPlayerEvents = {state(value: LivePlayerState): void; stream(value: MediaStream | null): void};
+export type LiveWallPlayerEvents = {state(value: LivePlayerState): void; stream(value: MediaStream | null): void; startupPhase?(value: LivePlayerStartupPhase): void};
 export type LiveWallPlayerFactory = (binding: LocalLiveBinding, csrf: string, events: LiveWallPlayerEvents) => LiveWallPlayer;
 /** External store for the header clock (`read` returns `YYYY-MM-DD HH:MM:SS`, or '' before the first tick). */
 export type LiveWallClock = {subscribe(onTick: () => void): () => void; read(): string};
@@ -30,6 +33,8 @@ export type LiveWallProps = {
   clock?: LiveWallClock;
   /** Scheduler timer for start deadlines, retries and cool-downs; injected in tests. */
   timer?: LiveWallTimer;
+  /** Owned server bootstrap enables shared transport; omitted retains the legacy mode. */
+  sharedMode?: boolean;
 };
 
 const createLocalPlayer: LiveWallPlayerFactory = (binding, csrf, events) => new LocalLivePlayer(binding, csrf, events);
@@ -106,7 +111,7 @@ type Source = {key: string; store: Store; connection: ConnectionView};
 type Load = {status: 'ready'; view: LocalDeviceView} | {status: 'error'; message: string};
 type Tile = LiveTileModel & {storeId: string; binding: LocalLiveBinding};
 type Section = {store: Store; aliases: string[]; tiles: Tile[]; loading: boolean; needsCheck: string[]; problems: string[]};
-type Feed = {stream: MediaStream; player: LiveWallPlayer};
+export type Feed = {stream: MediaStream; player: LiveWallPlayer; quality: 'main' | 'sub'};
 
 /** Each active store paired with every usable TVT recorder linked to it, in store order. */
 function pairSources(tenantId: string, stores: Store[], connections: ConnectionView[]): Source[] {
@@ -171,11 +176,17 @@ function buildSections(tenantId: string, sources: Source[], loads: Record<string
 }
 
 type RuntimeConfig = {tiles: ReadonlyMap<string, Tile>; csrf: string; createPlayer: LiveWallPlayerFactory};
-type WallRuntime = {
+export type WallRuntime = {
+  readonly stopping: boolean;
+  subscribeStopping(listener: (stopping: boolean) => void): () => void;
   scheduler: LiveWallScheduler;
   configure(config: RuntimeConfig): void;
+  focus(id: string | null, force?: boolean): void;
+  play(ids: readonly string[]): void;
+  stop(ids: string | readonly string[]): void;
+  stopAll(): Promise<void>;
   presented(id: string, player: LiveWallPlayer, presentedFrames: number): void;
-  dispose(): void;
+  dispose(): Promise<void>;
 };
 
 /**
@@ -186,16 +197,89 @@ type WallRuntime = {
  * The backend counts a closing session until its native close is confirmed,
  * and a stop request settles only then. A new session therefore opens only
  * after every stop already in flight has settled; meanwhile the tile shows
- * 연결 중, and the scheduler's start deadline still bounds the wait.
+ * 연결 중. A bounded Stop wait precedes separately bounded request, negotiation
+ * and presentation phases; timing out never removes an original Stop promise.
  *
  * A start refused with HTTP 429 is reported as `busy` (the device is still
  * retiring a session), so the scheduler re-queues it instead of failing it.
  */
-function createWallRuntime(setFeeds: Dispatch<SetStateAction<Record<string, Feed>>>, timer?: LiveWallTimer): WallRuntime {
+export function createWallRuntime(setFeeds: Dispatch<SetStateAction<Record<string, Feed>>>, timer?: LiveWallTimer, group?: LiveWallGroupController): WallRuntime {
   const players = new Map<string, LiveWallPlayer>();
   const stopping = new Set<Promise<void>>();
+  const starting = new Map<string, AbortController>();
+  const startingRefs = new Map<string, string>();
+  const bindings = new Map<string, LocalLiveBinding>();
+  const transfers = new Map<string, string>();
+  const playerRefs = new Map<LiveWallPlayer, string>();
+  const attachments = new Map<string, {resolve(): void; reject(): void}>();
+  const promotions = new Map<string, number>();
+  const sources = new Map<string, {generation: number; resolve(player: LiveWallPlayer): void; reject(): void}>();
+  const cleanupListeners = new Set<(stopping: boolean) => void>();
+  let focusRun: number | null = null;
+  let intent = 0;
+  let focusAbort = new AbortController();
+  let focusTail: Promise<void> = Promise.resolve();
+  let disposed = false;
+  let wallClosing: Promise<void> | null = null;
   let config: RuntimeConfig | null = null;
-  const failure = (player: LiveWallPlayer): LiveStartFailure => player.failureStatus === 429 ? 'busy' : 'failed';
+  let focused: string | null = null;
+  const failure = (player: LiveWallPlayer): LiveStartFailure => player.failureCode === 'LOCAL_DEVICE_NO_SIGNAL' ? 'nosignal' : player.failureStatus === 429 ? 'busy' : 'failed';
+  function promote(id: string, player: LiveWallPlayer) {
+    const generation = promotions.get(id);
+    if (!group || generation === undefined || generation !== intent || focused !== id || players.get(id) !== player || player.closed || !player.currentLeaseId) return;
+    if (focusRun === generation) {
+      const pending = sources.get(id);
+      if (pending?.generation === generation) pending.resolve(player);
+      return;
+    }
+    promotions.delete(id);
+    queueMicrotask(() => {
+      if (!disposed && intent === generation && focused === id && players.get(id) === player && !player.closed && player.currentLeaseId) runtime.focus(id, true);
+    });
+  }
+  function waitSource(id: string, signal: AbortSignal, generation: number): Promise<LiveWallPlayer> {
+    const current = players.get(id);
+    if (signal.aborted || intent !== generation) return Promise.reject(new Error('Focus source intent ended'));
+    if (current && !current.closed && current.currentLeaseId) return Promise.resolve(current);
+    return new Promise((resolve, reject) => {
+      const pending = {
+        generation,
+        resolve(player: LiveWallPlayer) {
+          if (sources.get(id) !== pending || signal.aborted || intent !== generation || players.get(id) !== player || player.closed || !player.currentLeaseId) return;
+          finish(); resolve(player);
+        },
+        reject() {finish(); reject(new Error('Focus source intent ended'));},
+      };
+      const finish = () => {signal.removeEventListener('abort', pending.reject); if (sources.get(id) === pending) sources.delete(id);};
+      sources.set(id, pending);
+      signal.addEventListener('abort', pending.reject, {once: true});
+      if (signal.aborted) pending.reject();
+    });
+  }
+  function attached(id: string, player: LiveWallPlayer, reference?: string) {
+    if (!reference || players.get(id) !== player || player.closed || !player.currentLeaseId || !group?.isUsable(reference)) return;
+    group.attached(reference);
+    attachments.get(reference)?.resolve();
+    attachments.delete(reference);
+  }
+  function waitAttachment(id: string, reference: string, signal: AbortSignal): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const finish = (failed: boolean) => {
+        signal.removeEventListener('abort', abort);
+        attachments.delete(reference);
+        if (failed) reject(new Error('Focus attachment ended')); else resolve();
+      };
+      const abort = () => {
+        // Only retire this transition's original replacement, never a later player.
+        const player = players.get(id);
+        if (player && playerRefs.get(player) === reference) scheduler.reportFailed(id, 'handoff');
+        finish(true);
+      };
+      attachments.set(reference, {resolve: () => finish(false), reject: () => finish(true)});
+      signal.addEventListener('abort', abort, {once: true});
+      if (signal.aborted) abort();
+    });
+  }
   const dropFeed = (id: string) => setFeeds(feeds => {
     if (!(id in feeds)) return feeds;
     const next = {...feeds};
@@ -207,48 +291,209 @@ function createWallRuntime(setFeeds: Dispatch<SetStateAction<Record<string, Feed
     onStart(id) {
       const tile = config?.tiles.get(id);
       if (!config || !tile) throw new Error('Unknown live wall tile');
-      const player = config.createPlayer(tile.binding, config.csrf, {
-        state(value) {
-          if (players.get(id) !== player) return;
-          if (value === 'playing') scheduler.reportLive(id);
-          else if (value === 'failed') scheduler.reportFailed(id, failure(player));
-          // The wall forgets a player before stopping it, so 'stopped' from the current one means it
-          // failed: LocalLivePlayer.fail() emits 'stopped' at once but 'failed' only after its stop
-          // request settles. Report after this stop() call returns, so onStop gets its closing promise.
-          else if (value === 'stopped') queueMicrotask(() => { if (players.get(id) === player) scheduler.reportFailed(id, failure(player)); });
-        },
-        stream(stream) {
-          if (players.get(id) !== player) return;
-          if (stream) setFeeds(feeds => ({...feeds, [id]: {stream, player}}));
-          else dropFeed(id);
-        },
-      });
-      players.set(id, player);
-      const begin = () => {
-        if (players.get(id) !== player) return;
-        player.start().catch(() => { if (players.get(id) === player) scheduler.reportFailed(id, failure(player)); });
+      const abort = new AbortController();
+      starting.set(id, abort);
+      const reference = transfers.get(id);
+      transfers.delete(id);
+      if (reference) startingRefs.set(id, reference);
+      // Shared main always needs a ref. Explicit focused Play bootstraps sub
+      // first; only its accepted exact current lease can trigger promotion.
+      const stream: 'main' | 'sub' = id === focused && (!group || reference) ? 'main' : 'sub';
+      const startFailure = (player: LiveWallPlayer): LiveStartFailure => {
+        const kind = failure(player);
+        const promotion = promotions.get(id) === intent || (focusRun === intent && focused === id && stream === 'sub');
+        return kind === 'nosignal' ? kind : reference || (promotion && kind !== 'busy') ? 'handoff' : kind;
       };
-      if (stopping.size === 0) begin();
-      else void Promise.allSettled([...stopping]).then(begin);
+      const ownedConfig = config;
+      const buildPlayer = (wallId?: string) => {
+        if (abort.signal.aborted || disposed || starting.get(id) !== abort) return;
+        if (reference && !group?.isUsable(reference)) {scheduler.reportFailed(id, 'handoff'); return;}
+        const binding: LocalLiveBinding = {...tile.binding, stream, ...(wallId ? {wallId} : {}), ...(reference ? {focusRefId: reference} : {})};
+        const player = ownedConfig.createPlayer(binding, ownedConfig.csrf, {
+          startupPhase(phase) {
+            if (players.get(id) !== player) return;
+            if (phase === 'negotiating') {attached(id, player, reference); promote(id, player);}
+            scheduler.reportStartupPhase(id, phase);
+          },
+          state(value) {
+            if (players.get(id) !== player) return;
+            if (value === 'playing') {attached(id, player, reference); promote(id, player); scheduler.reportLive(id);}
+            else if (value === 'failed') scheduler.reportFailed(id, startFailure(player));
+            // The wall forgets a player before stopping it, so 'stopped' from the current one means it
+            // failed: LocalLivePlayer.fail() emits 'stopped' at once but 'failed' only after its stop
+            // request settles. Report after this stop() call returns, so onStop gets its closing promise.
+            else if (value === 'stopped') queueMicrotask(() => { if (players.get(id) === player) scheduler.reportFailed(id, startFailure(player)); });
+          },
+          stream(stream) {
+            if (players.get(id) !== player) return;
+            if (stream) setFeeds(feeds => ({...feeds, [id]: {stream, player, quality: binding.stream ?? 'sub'}}));
+            else dropFeed(id);
+          },
+        });
+        players.set(id, player);
+        bindings.set(id, binding);
+        if (reference) playerRefs.set(player, reference);
+        const begin = () => {
+          if (players.get(id) !== player) return;
+          // A further switch can add another stop while this player waits. Recheck
+          // all original closing owners before starting the still-current player.
+          if (stopping.size > 0) { void Promise.all([...stopping]).then(begin, () => {if (players.get(id) === player) scheduler.reportFailed(id, 'handoff');}); return; }
+          if (wallClosing || (reference && !group?.isUsable(reference))) {scheduler.reportFailed(id, 'handoff'); return;}
+          player.start().catch(() => { if (players.get(id) === player) scheduler.reportFailed(id, startFailure(player)); });
+        };
+        begin();
+      };
+      if (group) void group.ensure(abort.signal).then(buildPlayer).catch(() => {if (starting.get(id) === abort && !abort.signal.aborted) scheduler.reportFailed(id, 'handoff');});
+      else buildPlayer();
     },
-    onStop(id) {
+    onStop(id, reason) {
+      if (reason !== 'queued') {promotions.delete(id); sources.get(id)?.reject();}
       const player = players.get(id);
+      const reference = player ? playerRefs.get(player) : startingRefs.get(id);
+      startingRefs.delete(id);
+      starting.get(id)?.abort();
+      starting.delete(id);
       players.delete(id);
+      bindings.delete(id);
       dropFeed(id);
+      if (player) playerRefs.delete(player);
+      if (reference) {
+        attachments.get(reference)?.reject();
+        attachments.delete(reference);
+        const settlement = group!.cancelFocus(reference, reason === 'failed' || reason === 'nosignal' ? 'FAILED' : 'CANCELLED');
+        stopping.add(settlement);
+        void settlement.then(() => stopping.delete(settlement), () => undefined);
+      }
       if (!player) return;
-      const closing = player.stop().catch(() => undefined);
+      const closing = player.stop();
       stopping.add(closing);
-      void closing.finally(() => { stopping.delete(closing); });
+      void closing.then(() => { stopping.delete(closing); }, () => undefined);
     },
   });
-  return {
+  function fenceIntent() {intent++; promotions.clear(); focusAbort.abort(); focusAbort = new AbortController();}
+  const cleanupPending = () => wallClosing !== null || !!group?.isFenced;
+  function publishCleanup() {const pending = cleanupPending(); for (const listener of [...cleanupListeners]) listener(pending);}
+  function stopAll(): Promise<void> {
+    if (wallClosing) return wallClosing;
+    let resolve!: () => void, reject!: (error: unknown) => void;
+    const original = new Promise<void>((done, failed) => {resolve = done; reject = failed;});
+    wallClosing = original;
+    let releaseOwners!: () => void, failOwners!: (error: unknown) => void;
+    const owners = new Promise<void>((done, failed) => {releaseOwners = done; failOwners = failed;});
+    fenceIntent();
+    // Claim the original group promise before stop effects can reenter from
+    // state subscribers or an invalidated heartbeat.
+    const groupStop = group?.stopAll(owners);
+    scheduler.stopAll();
+    const settleOwners = async () => {
+      await focusTail;
+      const results = await Promise.allSettled([...stopping]);
+      const failed = results.find((result): result is PromiseRejectedResult => result.status === 'rejected');
+      if (failed) throw failed.reason;
+    };
+    void settleOwners().then(releaseOwners, failOwners);
+    void (groupStop ?? owners).then(resolve, reject);
+    publishCleanup();
+    void original.then(() => {if (wallClosing === original) wallClosing = null; publishCleanup();}, () => publishCleanup());
+    return original;
+  }
+  const unsubscribeGroup = group?.subscribe(event => {
+    if (event.kind === 'failed') {void stopAll().catch(() => undefined); return;}
+    for (const [id, player] of players) if (playerRefs.get(player) === event.referenceId) scheduler.reportFailed(id, 'handoff');
+    for (const [id, reference] of startingRefs) if (reference === event.referenceId) scheduler.reportFailed(id, 'handoff');
+    for (const [id, reference] of transfers) if (reference === event.referenceId) {
+      transfers.delete(id);
+      attachments.get(reference)?.reject();
+      scheduler.reportFailed(id, 'handoff');
+    }
+  });
+  const runtime: WallRuntime = {
+    get stopping() {return cleanupPending();},
+    subscribeStopping(listener) {cleanupListeners.add(listener); listener(cleanupPending()); return () => {cleanupListeners.delete(listener);};},
     scheduler,
     configure(next) { config = next; },
+    play(ids) {
+      if (disposed || wallClosing || group?.isFenced) return;
+      if (group && focused !== null && ids.includes(focused) && !isRequested(scheduler.getSnapshot(), focused)) promotions.set(focused, intent);
+      scheduler.requestPlay(ids);
+    },
+    focus(next, force = false) {
+      if (focused === next && !force) return;
+      fenceIntent();
+      const currentIntent = intent;
+      const signal = focusAbort.signal;
+      const previous = focused;
+      focused = next;
+      if (group) {
+        focusRun = currentIntent;
+        const target = next === null ? undefined : players.get(next);
+        if (next !== null && isRequested(scheduler.getSnapshot(), next) && (!target || (!target.closed && !target.currentLeaseId && bindings.get(next)?.stream === 'sub'))) promotions.set(next, currentIntent);
+        const run = async () => {
+          if (signal.aborted || disposed || intent !== currentIntent) return;
+          const restart: string[] = [];
+          const reserved: string[] = [];
+          try {
+            // The coordinator allows one pending ref. Return the old main and
+            // observe its exact fresh sub lease before reserving another main.
+            const candidates: [string, LiveWallPlayer | null][] = [...players].sort(([a], [b]) => Number(a === next) - Number(b === next));
+            if (next !== null && isRequested(scheduler.getSnapshot(), next) && !players.has(next)) candidates.push([next, null]);
+            for (const [id, originalPlayer] of candidates) {
+              if (signal.aborted || intent !== currentIntent) throw new Error('Focus intent ended');
+              let player = originalPlayer;
+              if (id === next && isRequested(scheduler.getSnapshot(), id) && (!player || (!player.closed && !player.currentLeaseId))) {
+                // Preserve the existing queued/requesting sub intent. The old
+                // main's return above has settled before this queued priority.
+                scheduler.focus(next);
+                player = await waitSource(id, signal, currentIntent);
+              }
+              if (!player || players.get(id) !== player) continue;
+              const binding = bindings.get(id)!;
+              const desired = id === next ? 'main' : 'sub';
+              if (binding.stream === desired || !isRequested(scheduler.getSnapshot(), id)) continue;
+              if (!player.currentLeaseId || player.closed) {scheduler.requestStop(id); continue;}
+              promotions.delete(id);
+              const value = await group.beginFocus(binding, player, desired === 'main' ? 'FORWARD' : 'RETURN', signal);
+              reserved.push(value.reference.id);
+              if (signal.aborted || intent !== currentIntent || players.get(id) !== player || !isRequested(scheduler.getSnapshot(), id)) throw new Error('Focus intent ended');
+              transfers.set(id, value.reference.id);
+              restart.push(id);
+              const accepted = waitAttachment(id, value.reference.id, signal);
+              scheduler.focus(next, [id]);
+              await accepted;
+            }
+            if (signal.aborted || intent !== currentIntent) throw new Error('Focus intent ended');
+            scheduler.focus(next);
+          } catch {
+            for (const id of restart) transfers.delete(id);
+            await Promise.all(reserved.map(ref => group.cancelFocus(ref, signal.aborted ? 'CANCELLED' : 'FAILED')));
+            if (!signal.aborted && intent === currentIntent) {
+              // No automatic unreferenced reconnect after a bounded handoff failure.
+              for (const [id, binding] of bindings) if (binding.stream !== (id === next ? 'main' : 'sub')) scheduler.reportFailed(id, 'handoff');
+              scheduler.focus(next);
+            }
+          }
+        };
+        focusTail = focusTail.then(run, run).catch(() => undefined).finally(() => {
+          if (focusRun !== currentIntent) return;
+          focusRun = null;
+          const player = next === null ? undefined : players.get(next);
+          if (player && next !== null) promote(next, player);
+        });
+        return;
+      }
+      // Keep the user's playback intent across the stream change. A stopped,
+      // failed or no-signal tile is never revived merely by opening/closing focus.
+      const restart = [previous, next].filter((id): id is string => id !== null && isRequested(scheduler.getSnapshot(), id));
+      scheduler.focus(next, restart);
+    },
+    stop(ids) {fenceIntent(); scheduler.requestStop(ids);},
+    stopAll,
     presented(id, player, presentedFrames) {
       if (players.get(id) === player && !player.closed) player.presented(presentedFrames).catch(() => undefined);
     },
-    dispose() { scheduler.stopAll(); },
+    dispose() {disposed = true; unsubscribeGroup?.(); const original = stopAll(); void group?.dispose().catch(() => undefined); return original;},
   };
+  return runtime;
 }
 
 const idleSnapshot: LiveWallSnapshot = Object.freeze({states: Object.freeze({}), queue: Object.freeze([]), retrying: Object.freeze([]), busy: Object.freeze([]), coolingDown: false, focused: null, capacity: LIVE_WALL_CONCURRENCY});
@@ -266,7 +511,7 @@ function Clock({clock}: {clock: LiveWallClock}) {
  * Nothing plays until the user presses 전체 재생 or a tile's play button; the
  * scheduler then starts tiles one at a time within the backend capacity.
  */
-export function LiveWall({tenantId, csrf, stores, connections, createPlayer = createLocalPlayer, clock = systemClock, timer}: LiveWallProps) {
+export function LiveWall({tenantId, csrf, stores, connections, createPlayer = createLocalPlayer, clock = systemClock, timer, sharedMode = false}: LiveWallProps) {
   const [loads, setLoads] = useState<Record<string, Load>>({});
   const [snapshot, setSnapshot] = useState<LiveWallSnapshot>(idleSnapshot);
   const [feeds, setFeeds] = useState<Record<string, Feed>>({});
@@ -274,6 +519,7 @@ export function LiveWall({tenantId, csrf, stores, connections, createPlayer = cr
   const [storeFilter, setStoreFilter] = useState<string | null>(null);
   const [focusedId, setFocusedId] = useState<string | null>(null);
   const [fit, setFit] = useState<VideoFit>('fill');
+  const [wallStopping, setWallStopping] = useState(false);
   const runtime = useRef<WallRuntime | null>(null);
   const enlargeButtons = useRef(new Map<string, HTMLButtonElement>());
   const backButton = useRef<HTMLButtonElement | null>(null);
@@ -295,15 +541,18 @@ export function LiveWall({tenantId, csrf, stores, connections, createPlayer = cr
   // Layout effects: the runtime and its tile map are updated in the same commit
   // that renders new tile buttons, so no click can reach the scheduler with a stale map.
   useLayoutEffect(() => {
-    const created = createWallRuntime(setFeeds, timer);
+    const group = sharedMode ? new LiveWallGroupController({tenantId, csrf, timer}) : undefined;
+    const created = createWallRuntime(setFeeds, timer, group);
     runtime.current = created;
     const unsubscribe = created.scheduler.subscribe(setSnapshot);
+    const unsubscribeCleanup = created.subscribeStopping(setWallStopping);
     return () => {
       unsubscribe();
-      created.dispose();
+      unsubscribeCleanup();
+      void created.dispose().catch(() => undefined);
       if (runtime.current === created) runtime.current = null;
     };
-  }, [timer]);
+  }, [timer, tenantId, csrf, sharedMode]);
   useLayoutEffect(() => { runtime.current?.configure({tiles: tileIndex, csrf, createPlayer}); });
   useEffect(() => {
     const controller = new AbortController();
@@ -331,25 +580,27 @@ export function LiveWall({tenantId, csrf, stores, connections, createPlayer = cr
     const current = scheduler()?.getSnapshot();
     return current ? isRequested(current, id) : false;
   };
-  const playAll = () => scheduler()?.requestPlay(visibleTiles.map(tile => tile.id));
-  const stopAll = () => scheduler()?.stopAll();
-  const toggle = (tile: Tile) => { if (requested(tile.id)) scheduler()?.requestStop(tile.id); else scheduler()?.requestPlay([tile.id]); };
-  const retry = (tile: Tile) => scheduler()?.requestPlay([tile.id]);
+  const playAll = () => {if (!wallStopping && !runtime.current?.stopping) runtime.current?.play(visibleTiles.map(tile => tile.id));};
+  const stopAll = () => {
+    void runtime.current?.stopAll().catch(() => undefined);
+  };
+  const toggle = (tile: Tile) => {if (wallStopping || runtime.current?.stopping) return; if (requested(tile.id)) runtime.current?.stop(tile.id); else runtime.current?.play([tile.id]);};
+  const retry = (tile: Tile) => {if (!wallStopping && !runtime.current?.stopping) runtime.current?.play([tile.id]);};
   function selectStore(storeId: string | null) {
     setStoreFilter(storeId);
     if (storeId === null) return;
     // Tiles hidden by the filter would hold the scarce live slots out of sight.
     const hidden = tiles.filter(tile => tile.storeId !== storeId && requested(tile.id)).map(tile => tile.id);
-    if (hidden.length > 0) scheduler()?.requestStop(hidden);
+    if (hidden.length > 0) runtime.current?.stop(hidden);
   }
   function openFocus(tile: Tile) {
     setFocusedId(tile.id);
-    scheduler()?.focus(tile.id);
+    runtime.current?.focus(tile.id);
   }
   function closeFocus() {
     restoreFocus.current = focusedId;
     setFocusedId(null);
-    scheduler()?.focus(null);
+    runtime.current?.focus(null);
   }
   const reportFrame = (id: string) => (presentedFrames: number) => {
     const feed = feeds[id];
@@ -375,12 +626,13 @@ export function LiveWall({tenantId, csrf, stores, connections, createPlayer = cr
         <span className={pill}>{`실시간 ${liveCount}`}</span>
         <span className={pill}>{`재생 대기 ${queuedCount}`}</span>
         <span className={pill}>{`전체 채널 ${tiles.length}`}</span>
+        {wallStopping && <span className={pill}>영상 재생 중지 · 정리 확인 중</span>}
       </p>
       <div className="flex flex-wrap items-center gap-2">
         <div role="group" aria-label="화면 배치" className="inline-flex rounded-lg border border-[var(--lw-border-strong)] bg-[var(--lw-panel)] p-0.5">
           {layouts.map(option => <button key={option.value} type="button" aria-pressed={layout === option.value} onClick={() => setLayout(option.value)} className={segment(layout === option.value)}>{option.label}</button>)}
         </div>
-        <button type="button" onClick={anyRequested ? stopAll : playAll} disabled={!anyRequested && visibleTiles.length === 0} className={primaryButton}>
+        <button type="button" onClick={anyRequested ? stopAll : playAll} disabled={wallStopping || (!anyRequested && visibleTiles.length === 0)} className={primaryButton}>
           <span aria-hidden="true">{anyRequested ? '■' : '▶︎'}</span>{anyRequested ? '전체 정지' : '전체 재생'}
         </button>
       </div>
@@ -455,7 +707,7 @@ function StoreSection({section, layout, tenantId, filtered, onFilter, onEnlarge,
 }
 
 const stripStatus = (snapshot: LiveWallSnapshot, id: string) => ({
-  idle: '정지됨', stopped: '정지됨', starting: '연결 중', live: '', failed: '연결 실패', queued: `대기 ${snapshot.queue.indexOf(id) + 1}`,
+  idle: '정지됨', stopped: '정지됨', starting: '연결 중', live: '', failed: '연결 실패', nosignal: '영상 신호 없음', queued: `대기 ${snapshot.queue.indexOf(id) + 1}`,
 })[tileState(snapshot, id)];
 
 function FocusView({tile, sections, fit, onFit, onBack, onSelect, backRef, snapshot, feeds, onToggle, onRetry, reportFrame}: TileView & {
@@ -475,6 +727,7 @@ function FocusView({tile, sections, fit, onFit, onBack, onSelect, backRef, snaps
       <button ref={backRef} type="button" onClick={onBack} className={secondaryButton}><span aria-hidden="true">←</span>통합 관제</button>
       <h2 id={headingId} className="min-w-0 break-words text-lg font-semibold">{tile.label}</h2>
       {state === 'live' && <LivePill/>}
+      <QualityBadge quality={feeds[tile.id]?.quality ?? 'main'}/>
       <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
         <button type="button" onClick={() => onToggle(tile)} aria-label={`${tile.label} ${playing ? '중지' : '재생'}`} className={primaryButton}>
           <span aria-hidden="true">{playing ? '■' : '▶︎'}</span>{playing ? '중지' : '재생'}

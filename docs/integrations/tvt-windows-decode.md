@@ -1,5 +1,27 @@
 # Private Windows compressed video decoder
 
+## Source-owned dimension rotation — 2026-10-06 (R137)
+
+The decoder's single-format contract and binary protocol remain unchanged.
+`NativeDecodedSource` may now retain one original native lease/binding/peer while
+serially rotating isolated decoders for validated same-codec dimensions. It
+closes and actually waits for the exact old decoder before allocating a successor;
+it never feeds a dimension change into the old decoder or replaces pending
+custody. Each successor starts with complete parameter sets and a random-access
+picture. Global source PTS/ordinal continue across successors. Late output from
+an older observed format cannot publish. Source transition wait and churn bounds
+are five seconds and sixteen rotations per rolling sixty seconds; source FIFO
+and decoder bounds remain unchanged. See the dated R137 section in
+[media service authority](tvt-local-media-service.md) for the full contract.
+
+Source baseline `6436748` plus uncommitted stage-1 changes. The focused existing
+decoder/WebRTC/worker suite passed **138 tests** with explicit Windows synthetic
+codec selection; the new source transition suite passed **21 inert cases**.
+These are separate proofs: real isolated H264/HEVC decoder behavior, and source
+rotation/lifecycle behavior with inert decoder owners. They do not establish
+actual recorder transition acceptance or twelve-tile performance. No core
+decoder, worker protocol, dependency or native receipt was changed.
+
 Analysis date: **2026-10-04, Asia/Seoul** (Fix1; original acceptance 2026-10-03). Root supplied executable baseline
 `756946ca73cff31d7ebb23141873088b470a96b4` and documentation baseline
 `36fc954e4754d69721596e190c35f9cf14de3e4c`. Git was not invoked by this task.

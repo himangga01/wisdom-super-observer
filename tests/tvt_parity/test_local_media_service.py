@@ -9,6 +9,7 @@ import pytest
 from wso_contracts.tvt.media import MediaLease
 from wso_core.tvt.local_service import LocalDeviceFailure
 
+from tests.tvt_parity.test_local_media_admission_pool import URL, Key
 from tests.tvt_parity.test_local_media_contracts import local_values
 
 
@@ -236,9 +237,11 @@ def test_real_media_redemption_retains_cleanup_owner_on_commit_failure(failure):
                 else:
                     raise RuntimeError("uncertain transport completion")
 
-    admission = object.__new__(LocalMediaAdmission)
+    # Constructed normally: close() also retires the lease's authority gate
+    # state (R120). Only the engine under the real SQL ports is inert.
+    admission = LocalMediaAdmission(URL, Key())
+    admission._engine.dispose()
     admission._engine = Engine()
-    admission.worker_epoch = uuid4()
     worker = executor(admission, Provider(Session()), clock=lambda: ticks[0])
     with pytest.raises(LocalDeviceFailure):
         worker.start(
@@ -269,8 +272,6 @@ def test_shutdown_retries_failed_start_original_and_reports_uncertainty():
 
 
 def test_uncertain_committed_redemption_retries_exact_binding_after_close_recovers():
-    from threading import RLock
-
     from sqlalchemy.exc import SQLAlchemyError
     from wso_core.tvt.local_media_admission import LocalMediaAdmission
 
@@ -317,11 +318,11 @@ def test_uncertain_committed_redemption_retries_exact_binding_after_close_recove
             if state["phase"] == "LOGIN":
                 raise RuntimeError("uncertain commit")
 
-    admission = object.__new__(LocalMediaAdmission)
+    # Constructed normally: close() also retires the lease's authority gate
+    # state (R120). Only the engine under the real SQL ports is inert.
+    admission = LocalMediaAdmission(URL, Key())
+    admission._engine.dispose()
     admission._engine = Engine()
-    admission.worker_epoch = uuid4()
-    admission._cleanup_lock = RLock()
-    admission._pending_cleanup = {}
     worker = executor(admission, Provider(Session()))
     with pytest.raises(LocalDeviceFailure):
         worker.start("a" * 64, deadline_ms=20000, correlation_id="start")
@@ -501,6 +502,55 @@ def test_real_api_issuer_accepts_only_three_closed_control_purposes():
     assert issuer.issue_control("b" * 64, uuid4(), "playing") == "a" * 64
     with pytest.raises(LocalDeviceFailure):
         issuer.issue_control("b" * 64, uuid4(), "decode")
+
+
+def test_executor_fences_immediately_despite_fresh_gate():
+    from threading import Thread
+
+    from tests.tvt_parity.test_local_media_authority_gate import Clock, gated_executor
+
+    # A frozen gate clock: every gate answer stays fresh for the whole test.
+    first_session, second_session = Session(), Session()
+    sessions = iter((first_session, second_session))
+    entered, release = Event(), Event()
+
+    def slow_close():
+        entered.set()
+        assert release.wait(2)
+        first_session.closed += 1
+        return True
+
+    first_session.close = slow_close
+
+    class Sessions:
+        def open_session(self, credentials, selection, **kwargs):
+            return next(sessions)
+
+    worker, admission, sql = gated_executor(Sessions(), clock=Clock())
+    first = worker.start("a" * 64, deadline_ms=20000, correlation_id="first").lease
+    second = worker.start("b" * 64, deadline_ms=20000, correlation_id="second").lease
+    leases = {view.id: worker._owned[view.id].lease for view in (first, second)}
+    assert worker.current(first.id) and worker.current(second.id)
+    assert sql.count() == 2
+    closer = Thread(target=lambda: worker.close(first.id), name="executor-close")
+    closer.start()
+    try:
+        assert entered.wait(2)
+        # The executor fences before native or SQL retirement, while the gate
+        # still holds a fresh True for the same lease.
+        assert not worker.current(first.id)
+        assert admission.current(leases[first.id]) is True
+    finally:
+        release.set()
+        closer.join(2)
+    assert not closer.is_alive() and first_session.closed == 1
+    assert admission.current(leases[first.id]) is False
+    assert worker.current(second.id) and sql.count() == 2
+    # Shutdown fences the remaining lease the same way, without new SQL.
+    assert worker.shutdown() is True
+    assert not worker.current(second.id) and second_session.closed == 1
+    assert admission.current(leases[second.id]) is False
+    assert sql.count() == 2 and {name for name, _, _ in sql.calls} == {"observe"}
 
 
 def test_attach_denies_shutdown_that_crosses_its_current_check():

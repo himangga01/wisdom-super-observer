@@ -13,7 +13,7 @@ def module(name):
     return importlib.import_module("wso_tvt_bridge." + name)
 
 
-def test_live_selection_rejects_substream_and_scope_substitution():
+def test_live_selection_rejects_invalid_stream_and_scope_substitution():
     live = module("local_live_provider")
     selection = live.LiveSelection(b"C" * 16, 17, 3, 1)
     assert selection.channel_guid == b"C" * 16
@@ -21,7 +21,7 @@ def test_live_selection_rejects_substream_and_scope_substitution():
         (bytes(16), 17, 3, 1),
         (b"C" * 16, 256, 3, 1),
         (b"C" * 16, 17, 3, 0),
-        (b"C" * 16, 17, 3, 1, "sub"),
+        (b"C" * 16, 17, 3, 1, "invalid"),
     ]:
         with pytest.raises(ValueError):
             live.LiveSelection(*values)
@@ -141,17 +141,18 @@ from wso_tvt_bridge.local_live_ipc import LiveRemoteAuthority
 authority=LiveRemoteAuthority.from_handle(packet["service_authority_handle"],packet["generation"],packet["deadline"])
 authority.require("prepare")
 selection=packet["live_selection"]
-setup=dict(session=(b"S"*16).hex(),channel=selection["channel_guid"],task=(b"T"*16).hex(),open_request=(b"O"*16).hex(),peer_version=6,callback_generation=int(packet["generation"][:15],16)+1,raw_index=selection["raw_index"],window_index=selection["window_index"],ordinal=selection["ordinal"],live_basis="explicit_lp",login_accepted=True,serial_matched=True)
+assert packet["request"]["stream"]==selection["stream"]
+setup=dict(session=(b"S"*16).hex(),channel=selection["channel_guid"],task=(b"T"*16).hex(),open_request=(b"O"*16).hex(),peer_version=6,callback_generation=int(packet["generation"][:15],16)+1,raw_index=selection["raw_index"],window_index=selection["window_index"],ordinal=selection["ordinal"],stream=selection["stream"],live_basis="explicit_lp",login_accepted=True,serial_matched=True)
 packet.pop("request")
 authority.setup(setup)
 def envelope(command,body,sequence=6):
     return struct.pack("<IiHBBIII",825307441,len(body)+16,6,2,1,command,sequence,max(0,len(body)-72))+body
-authority.envelope(envelope(0x10000501,b""))
+authority.envelope(envelope(0x10000505,bytes(72)+struct.pack("<i",0)) if setup["stream"]==2 else envelope(0x10000501,b""))
 routing=b"O"*16+b"S"*16+bytes.fromhex(selection["channel_guid"])+b"\\x02\\0\\0\\0"+b"T"*16+b"\\x01\\0\\0\\0"
 for index in range(1,100):
     payload=b"\\0\\0\\0\\1\\x65inert"
     body=struct.pack("<BBBBiQQ",0,17,0,0,len(payload),116444736000000000+index*10000,116444736000010000+index*10000)+struct.pack("<BBH4shhIB",0,0,0,b"H264",640,480,0,0)+payload+bytes((-len(payload))%4)
-    media=struct.pack("<4sHBB",b"RAW!",6,1,int(index==1))+bytes.fromhex(selection["channel_guid"])+struct.pack("<iQii",len(body),116444736000020000+index*10000,index,0)+body
+    media=struct.pack("<4sHBB",b"RAW!",6,setup["stream"],int(index==1))+bytes.fromhex(selection["channel_guid"])+struct.pack("<iQii",len(body),116444736000020000+index*10000,index,0)+body
     authority.require("frame")
     authority.envelope(envelope(65537,routing+media))
 time.sleep(30)
@@ -254,7 +255,7 @@ def test_real_windows_original_process_handoff_bounded_read_and_retirement(
         session.close()
 
 
-def test_two_original_windows_live_sessions_are_isolated_and_third_is_busy(
+def test_sixteen_original_windows_live_sessions_are_isolated_and_seventeenth_is_busy(
     tmp_path, monkeypatch
 ):
     from wso_core.tvt.local_credentials import LocalDeviceCredentials
@@ -271,27 +272,30 @@ def test_two_original_windows_live_sessions_are_isolated_and_third_is_busy(
                 password="inert-secret",
             ),
             live.LiveSelection(guid, 3, 2, 1),
-            deadline_monotonic=time.monotonic() + 3,
+            deadline_monotonic=time.monotonic() + 20,
             current=lambda: True,
             cancel=threading.Event(),
         )
 
     sessions = []
     try:
-        sessions.append(opened(b"C" * 16))
-        sessions.append(opened(b"D" * 16))
+        for index in range(16):
+            sessions.append(opened(bytes([67 + index]) * 16))
         owners = [session._owner for session in sessions]
         assert (
             owners[0].child is not owners[1].child
             and owners[0].child.pid != owners[1].child.pid
         )
+        assert len({owner.child.pid for owner in owners}) == 16
+        assert len({owner.job.handle for owner in owners}) == 16
+        assert len({s._authority.identity.generation for s in sessions}) == 16
         assert owners[0].job.handle != owners[1].job.handle
         assert (
             sessions[0]._authority.identity.generation
             != sessions[1]._authority.identity.generation
         )
         with pytest.raises(LocalDeviceFailure) as caught:
-            opened(b"E" * 16)
+            opened(b"Z" * 16)
         assert caught.value.code == "LOCAL_DEVICE_BUSY" and caught.value.status == 429
         assert sessions[0].close()
         assert (
@@ -306,11 +310,19 @@ def test_two_original_windows_live_sessions_are_isolated_and_third_is_busy(
             current=lambda: True,
         )
         assert frames[0].identity.channel == b"D" * 16
-        sessions.append(opened(b"E" * 16))
-        assert sessions[2]._owner.child is not owners[0].child
+        sessions.append(opened(b"Z" * 16))
+        assert sessions[-1]._owner.child is not owners[0].child
     finally:
-        for session in sessions:
-            assert session.close()
+        # close() may return bounded/unconfirmed while its original reaper is
+        # still settling. Always service every original before asserting final
+        # cleanup; an early assertion would leave the other fifteen live.
+        deadline = time.monotonic() + 10
+        pending = list(sessions)
+        while pending:
+            pending = [session for session in pending if not session.close()]
+            assert not pending or time.monotonic() < deadline
+            if pending:
+                time.sleep(0.01)
         assert all(session._owner not in p.PENDING_OWNERS for session in sessions)
 
 
@@ -506,6 +518,7 @@ def test_private_frame_queue_overflow_discards_all_frames():
         "task": (b"T" * 16).hex(),
         "open_request": (b"O" * 16).hex(),
         "peer_version": 6,
+        "stream": 1,
         "callback_generation": int(fixture.GEN[:15], 16) + 1,
         "raw_index": 3,
         "window_index": 2,
@@ -529,24 +542,20 @@ def test_private_frame_queue_overflow_discards_all_frames():
         b"O" * 16 + b"S" * 16 + b"C" * 16 + b"\x02\0\0\0" + b"T" * 16 + b"\x01\0\0\0"
     )
     try:
-        for index in range(1, 18):
-            parent.worker_connection.send_bytes(
-                b"E"
-                + fixture.live_packet(
+        # Credit pauses between messages; a single adversarial message still
+        # cannot exceed the unchanged parent FIFO count bound during parsing.
+        parent.worker_connection.send_bytes(
+            b"E"
+            + b"".join(
+                fixture.live_packet(
                     65537,
                     routing + fixture.live_media(b"C" * 16, index, key=index == 1),
                 )
+                for index in range(1, 18)
             )
-            accepted = parent.pump(lambda: True)
-            if index <= 16:
-                assert accepted
-                assert parent.queued_bytes > sum(
-                    len(frame.private_bytes()) for frame in parent.frames
-                )
-                parent.worker_connection.recv_bytes()
-            else:
-                assert not accepted and parent.failure == "overflow"
-                assert not parent.frames and parent.queued_bytes == 0
+        )
+        assert not parent.pump(lambda: True) and parent.failure == "overflow"
+        assert not parent.frames and parent.queued_bytes == 0
     finally:
         parent.close()
 
@@ -569,8 +578,13 @@ def test_source_receipt_pins_imported_media_contracts(tmp_path, monkeypatch, rel
         p.verify_review(config)
 
 
+@pytest.mark.parametrize("selected_stream", [1, 2])
 @pytest.mark.parametrize("wrong", ["", "channel", "permission", "selection"])
-def test_original_live_task_current_gate_frame_delivery_and_credential_release(wrong):
+def test_original_live_task_current_gate_frame_delivery_and_credential_release(
+    wrong, selected_stream
+):
+    from dataclasses import replace
+
     ipc, live, worker_module = (
         module("local_live_ipc"),
         module("local_live_provider"),
@@ -578,7 +592,13 @@ def test_original_live_task_current_gate_frame_delivery_and_credential_release(w
     )
     fixture = helpers()
     guid = bytes.fromhex("67452301ab89efcd0123456789abcdef")
-    selection = live.LiveSelection(guid, 4 if wrong == "selection" else 3, 2, 1)
+    selection = live.LiveSelection(
+        guid,
+        4 if wrong == "selection" else 3,
+        2,
+        1,
+        "sub" if selected_stream == 2 else "main",
+    )
     parent = ipc.LiveParentAuthority(time.monotonic() + 3, threading.Event(), selection)
     parent.bind(fixture.GEN)
     remote = ipc.LiveRemoteAuthority(
@@ -591,11 +611,9 @@ def test_original_live_task_current_gate_frame_delivery_and_credential_release(w
             import ctypes as ct
             import struct
 
-            if (
-                name == "send"
-                and struct.unpack_from("<I", ct.string_at(args[1], args[2]), 12)[0]
-                == 1281
-            ):
+            if name == "send" and struct.unpack_from(
+                "<I", ct.string_at(args[1], args[2]), 12
+            )[0] in (1281, 1285):
                 assert dropped == [True]
                 retained_buffers = next(
                     value
@@ -615,7 +633,7 @@ def test_original_live_task_current_gate_frame_delivery_and_credential_release(w
         outcomes.append(
             worker_module.drive(
                 native,
-                fixture.live_request(),
+                replace(fixture.live_request(), stream=selected_stream),
                 fixture.GEN,
                 parent.deadline,
                 lambda *_: None,
@@ -642,8 +660,457 @@ def test_original_live_task_current_gate_frame_delivery_and_credential_release(w
         thread.join(4)
         assert not thread.is_alive()
         assert not parent.frames
-        assert native.commands.count(1281) <= 1
+        assert native.commands.count(1281) + native.commands.count(1285) <= 1
         assert native.commands.count(1282) <= 1
     finally:
         remote.close()
         parent.close()
+
+
+@pytest.mark.parametrize("stream", ["main", "sub"])
+def test_provider_opens_sub_stream_selection(tmp_path, monkeypatch, stream):
+    from wso_core.tvt.local_credentials import LocalDeviceCredentials
+    from wso_core.tvt.local_media_service import LocalMediaChannel
+
+    _, _, _, provider = inert_windows_live_provider(tmp_path, monkeypatch)
+    session = provider.open_session(
+        LocalDeviceCredentials(
+            serial="SYNTHETIC9", country="KR", username="inert", password="inert"
+        ),
+        LocalMediaChannel(b"C" * 16, 3, 2, 1, "camera", stream),
+        deadline_monotonic=time.monotonic() + 3,
+        current=lambda: True,
+        cancel=threading.Event(),
+    )
+    try:
+        assert session.proof.channel_matched and session.proof.codec_supported
+        assert session._authority.setup_data["stream"] == (2 if stream == "sub" else 1)
+    finally:
+        assert session.close()
+
+
+@pytest.mark.parametrize(
+    "reason,code,status",
+    [
+        ("busy", "LOCAL_DEVICE_BUSY", 429),
+        ("denied", "LOCAL_DEVICE_UPSTREAM_REJECTED", 502),
+        ("refused", "LOCAL_DEVICE_UPSTREAM_REJECTED", 502),
+    ],
+)
+def test_provider_maps_device_refusals(reason, code, status):
+    error = module("local_live_provider").failure("device_" + reason)
+    assert (error.code, error.status) == (code, status)
+
+
+def sub_parent_setup():
+    ipc, live = module("local_live_ipc"), module("local_live_provider")
+    parent = ipc.LiveParentAuthority(
+        time.monotonic() + 3,
+        threading.Event(),
+        live.LiveSelection(b"C" * 16, 3, 2, 1, "sub"),
+    )
+    parent.bind(helpers().GEN)
+    setup = {
+        "session": (b"S" * 16).hex(),
+        "channel": (b"C" * 16).hex(),
+        "task": (b"T" * 16).hex(),
+        "open_request": (b"O" * 16).hex(),
+        "peer_version": 6,
+        "stream": 2,
+        "callback_generation": int(helpers().GEN[:15], 16) + 1,
+        "raw_index": 3,
+        "window_index": 2,
+        "ordinal": 1,
+        "live_basis": "explicit_lp",
+        "login_accepted": True,
+        "serial_matched": True,
+    }
+    return parent, setup
+
+
+@pytest.mark.parametrize("stream", [1, True, "2", 0, 3, None])
+def test_setup_stream_mismatch_denied(stream):
+    ipc = module("local_live_ipc")
+    parent, setup = sub_parent_setup()
+    setup["stream"] = stream
+    try:
+        with pytest.raises(ipc.AuthorityError):
+            parent._setup(setup)
+        assert parent.codec is None
+    finally:
+        parent.close()
+
+
+@pytest.mark.parametrize(
+    "code,reason",
+    [(0x20000030, "device_busy"), (0x20000029, "device_denied"), (7, "device_refused")],
+)
+def test_parent_independently_maps_correlated_refusal(code, reason):
+    import struct
+
+    parent, setup = sub_parent_setup()
+    try:
+        parent._authorized = True
+        parent._setup(setup)
+        routing = b"O" * 16 + b"S" * 16 + b"C" * 16 + bytes(4) + b"T" * 16 + bytes(4)
+        parent.worker_connection.send_bytes(
+            b"E" + helpers().live_packet(0x20000505, routing + struct.pack("<i", code))
+        )
+        assert not parent.pump(lambda: True)
+        assert parent.failure == reason and not parent.ready and not parent.frames
+        assert not parent.pump(lambda: True)
+    finally:
+        parent.close()
+
+
+@pytest.mark.parametrize(
+    "code,warning", [(0, False), (0x20000060, True), (0x20000030, False)]
+)
+def test_sub_ack_warning_is_read_only_and_does_not_create_readiness(code, warning):
+    import struct
+
+    parent, setup = sub_parent_setup()
+    try:
+        parent._authorized = True
+        parent._setup(setup)
+        parent.worker_connection.send_bytes(
+            b"E"
+            + helpers().live_packet(0x10000505, bytes(72) + struct.pack("<i", code))
+        )
+        assert parent.pump(lambda: True)
+        assert parent.open_ack and not parent.ready
+        assert parent.sub_stream_adaptation_off is warning
+        with pytest.raises(AttributeError):
+            parent.sub_stream_adaptation_off = False
+    finally:
+        parent.close()
+
+
+@pytest.mark.parametrize("stream", [1, 2])
+@pytest.mark.parametrize(
+    "case,code,reason",
+    [
+        ("valid", 0x20000030, "device_busy"),
+        ("valid", 0x20000029, "device_denied"),
+        ("valid", 9, "device_refused"),
+        ("wrong_command", 0x20000030, ""),
+        ("wrong_task", 0x20000030, ""),
+    ],
+)
+def test_native_refusal_pipe_preserves_reason_and_retires_original(
+    stream, case, code, reason
+):
+    import ctypes as ct
+    import struct
+    from dataclasses import replace
+
+    fixture = helpers()
+    ipc, live, worker = (
+        module("local_live_ipc"),
+        module("local_live_provider"),
+        module("windows_socket_worker"),
+    )
+    guid = bytes.fromhex("67452301ab89efcd0123456789abcdef")
+    parent = ipc.LiveParentAuthority(
+        time.monotonic() + 1,
+        threading.Event(),
+        live.LiveSelection(guid, 3, 2, 1, "sub" if stream == 2 else "main"),
+    )
+    parent.bind(fixture.GEN)
+    remote = ipc.LiveRemoteAuthority(
+        parent.worker_connection, fixture.GEN, parent.deadline
+    )
+    outcomes = []
+
+    class RefusingNative(fixture.LiveNative):
+        def call(self, name, *args):
+            if name == "send":
+                wire = ct.string_at(args[1], args[2])
+                command = struct.unpack_from("<I", wire, 12)[0]
+                if command in (1281, 1285):
+                    self.commands.append(command)
+                    body = bytearray(wire[24:96])
+                    if case == "wrong_task":
+                        body[52:68] = b"X" * 16
+                    if case == "wrong_command":
+                        command = 1281 if command == 1285 else 1285
+                    reply = fixture.live_packet(
+                        0x20000000 | command, bytes(body) + struct.pack("<i", code)
+                    )
+                    fixture.invoke(fixture.active_fix1_callback(), reply)
+                    return len(wire)
+            return super().call(name, *args)
+
+    native = RefusingNative(group="value")
+
+    def child():
+        outcomes.append(
+            worker.drive(
+                native,
+                replace(fixture.live_request(), stream=stream),
+                fixture.GEN,
+                parent.deadline,
+                lambda *_: None,
+                service_authority=remote,
+                discard_credentials=lambda: None,
+            )
+        )
+        remote.close()
+
+    thread = threading.Thread(target=child)
+    thread.start()
+    try:
+        while (
+            thread.is_alive()
+            and not parent.failure
+            and time.monotonic() < parent.deadline
+        ):
+            parent.pump(lambda: True)
+            time.sleep(0.001)
+        assert not parent.ready and not parent.open_ack and not parent.frames
+        if reason:
+            assert parent.failure == reason
+            error = live.failure(parent.failure)
+            assert error.code == (
+                "LOCAL_DEVICE_BUSY"
+                if reason == "device_busy"
+                else "LOCAL_DEVICE_UPSTREAM_REJECTED"
+            )
+        else:
+            assert not thread.is_alive()
+            assert outcomes[0].failure == "codec"
+    finally:
+        parent.close()
+        thread.join(2)
+        remote.close()
+    assert not thread.is_alive()
+    assert [name for name, _ in native.delegate.calls][-3:] == [
+        "stop",
+        "destroy",
+        "quit",
+    ]
+    assert fixture.active_fix1_callback().closed
+
+
+def first_frame_parent(monkeypatch, *, ack=True):
+    import struct
+    from types import SimpleNamespace
+
+    ipc, inventory = module("local_live_ipc"), module("local_inventory_ipc")
+    now = [100.0]
+    clock = SimpleNamespace(monotonic=lambda: now[0])
+    monkeypatch.setattr(ipc, "time", clock)
+    monkeypatch.setattr(inventory, "time", clock)
+    parent, setup = sub_parent_setup()
+    parent.deadline = 120.0
+    parent._authorized = True
+    parent._setup(setup)
+    if ack:
+        parent.worker_connection.send_bytes(
+            b"E" + helpers().live_packet(0x10000505, bytes(72) + struct.pack("<i", 0))
+        )
+        assert parent.tick(lambda: True)
+        assert parent.open_ack and not parent.ready
+    return parent, now
+
+
+def test_ack_without_media_raises_no_signal_at_ten_seconds(monkeypatch):
+    parent, now = first_frame_parent(monkeypatch)
+    try:
+        now[0] = 109.9
+        assert parent.tick(lambda: True) and not parent.ready
+        now[0] = 110.0
+        assert not parent.tick(lambda: True), (
+            "accepted open without media must be bounded"
+        )
+        assert parent.failure == "no_signal" and not parent.frames
+        error = module("local_live_provider").failure(parent.failure)
+        assert (error.code, error.status) == ("LOCAL_DEVICE_NO_SIGNAL", 504)
+        assert not parent.tick(lambda: True)
+    finally:
+        parent.close()
+
+
+def first_keyframe_wire(parent):
+    fixture = helpers()
+    routing = b"O" * 16 + b"S" * 16 + b"C" * 16 + bytes(4) + b"T" * 16 + bytes(4)
+    media = bytearray(fixture.live_media(b"C" * 16, 1, key=True))
+    media[6] = 2
+    return b"E" + fixture.live_packet(65537, routing + bytes(media))
+
+
+@pytest.mark.parametrize("arrival,ready", [(109.9, True), (110.0, False)])
+def test_accepted_ack_first_keyframe_before_or_at_bound(monkeypatch, arrival, ready):
+    parent, now = first_frame_parent(monkeypatch)
+    try:
+        now[0] = arrival
+        parent.worker_connection.send_bytes(first_keyframe_wire(parent))
+        assert parent.tick(lambda: True) is ready
+        assert parent.ready is ready
+        if ready:
+            assert parent.frames and parent.failure == ""
+            now[0] = 111.0
+            assert parent.tick(lambda: True)
+        else:
+            assert parent.failure == "no_signal" and not parent.frames
+    finally:
+        parent.close()
+
+
+@pytest.mark.parametrize(
+    "case,want",
+    [
+        ("no_ack", "deadline"),
+        ("denied", "denied"),
+        ("cancelled", "cancelled"),
+        ("deadline", "deadline"),
+        ("refused", "device_busy"),
+    ],
+)
+def test_no_signal_preserves_other_startup_failure_reasons(monkeypatch, case, want):
+    import struct
+
+    parent, now = first_frame_parent(monkeypatch, ack=case not in ("no_ack", "refused"))
+    try:
+        now[0] = 110.0
+        if case == "no_ack":
+            assert parent.tick(lambda: True) and not parent.failure
+            now[0] = 120.0
+        elif case == "cancelled":
+            parent.cancel.set()
+        elif case == "deadline":
+            parent.deadline = 110.0
+        elif case == "refused":
+            routing = (
+                b"O" * 16 + b"S" * 16 + b"C" * 16 + bytes(4) + b"T" * 16 + bytes(4)
+            )
+            parent.worker_connection.send_bytes(
+                b"E"
+                + helpers().live_packet(
+                    0x20000505, routing + struct.pack("<i", 0x20000030)
+                )
+            )
+        assert not parent.tick(lambda: case != "denied")
+        assert parent.failure == want and not parent.ready and not parent.frames
+    finally:
+        parent.close()
+
+
+def test_duplicate_ack_cannot_extend_first_frame_deadline(monkeypatch):
+    import struct
+
+    parent, now = first_frame_parent(monkeypatch)
+    try:
+        now[0] = 109.9
+        parent.worker_connection.send_bytes(
+            b"E" + helpers().live_packet(0x10000505, bytes(72) + struct.pack("<i", 0))
+        )
+        assert not parent.tick(lambda: True)
+        # The independent codec rejects a duplicate ACK; it never restarts waiting.
+        assert parent.failure == "protocol"
+        now[0] = 110.0
+        assert not parent.tick(lambda: True) and parent.failure == "protocol"
+    finally:
+        parent.close()
+
+
+def test_no_signal_takes_fresh_authority_over_cached_tick_result(monkeypatch):
+    parent, now = first_frame_parent(monkeypatch)
+    calls = []
+    try:
+        now[0] = 109.95
+        assert parent.tick(lambda: True)
+        now[0] = 110.0  # ParentAuthority's 100ms poll cache is still fresh.
+        assert not parent.tick(lambda: calls.append(1) or False)
+        assert calls == [1] and parent.failure == "denied"
+    finally:
+        parent.close()
+
+
+@pytest.mark.parametrize("confirmed", [True, False])
+def test_provider_no_signal_retains_and_retires_exact_original_owner(
+    monkeypatch, confirmed
+):
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    from wso_core.tvt.local_credentials import LocalDeviceCredentials
+    from wso_core.tvt.local_service import LocalDeviceFailure
+
+    live, ipc, inventory = (
+        module("local_live_provider"),
+        module("local_live_ipc"),
+        module("local_inventory_ipc"),
+    )
+    now = [100.0]
+    clock = SimpleNamespace(monotonic=lambda: now[0])
+    for target in (live, ipc, inventory):
+        monkeypatch.setattr(target, "time", clock)
+    original = SimpleNamespace(confirmed=False)
+    finishes = []
+    authority = []
+
+    def finish():
+        finishes.append(original)
+        original.confirmed = confirmed
+        authority[0].close()
+        return confirmed
+
+    original.finish = finish
+
+    class Native:
+        owner = original
+
+        def run(self, config, request, *, service, current):
+            import struct
+
+            authority.append(service)
+            service.bind(helpers().GEN)
+            unused, setup = sub_parent_setup()
+            unused.close()
+            # This setup is derived independently from the public selection.
+            service._authorized = True
+            service._setup(setup)
+            service.worker_connection.send_bytes(
+                b"E"
+                + helpers().live_packet(0x10000505, bytes(72) + struct.pack("<i", 0))
+            )
+            assert service.tick(current)
+            now[0] = 109.9
+            assert service.tick(current) and not service.ready
+            now[0] = 110.0
+            assert not service.tick(current) and service.failure == "no_signal"
+
+    native = Native()
+    monkeypatch.setattr(live, "WindowsSocketProvider", lambda: native)
+    registry = module("windows_socket")
+    registry.register_pending_owner(original)
+    try:
+        provider = live.NativeLocalLiveProvider(
+            module("windows_socket").ProviderConfig(
+                Path("C:/inert"), Path("C:/inert"), Path("C:/inert/review"), 20
+            )
+        )
+        with pytest.raises(LocalDeviceFailure) as failure:
+            provider.open_session(
+                LocalDeviceCredentials(
+                    serial="SYNTHETIC9",
+                    country="KR",
+                    username="inert",
+                    password="inert-secret",
+                ),
+                live.LiveSelection(b"C" * 16, 3, 2, 1, "sub"),
+                deadline_monotonic=120.0,
+                current=lambda: True,
+                cancel=threading.Event(),
+            )
+        assert (failure.value.code, failure.value.status) == (
+            "LOCAL_DEVICE_NO_SIGNAL",
+            504,
+        )
+        assert finishes == [original] and native.owner is original
+        assert (original in registry.pending_owner_snapshot()) is (not confirmed)
+        assert not authority[0].handed_off and not authority[0].ready
+    finally:
+        original.confirmed = True
+        registry.remove_confirmed_owner(original)

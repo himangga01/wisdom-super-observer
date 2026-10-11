@@ -324,3 +324,282 @@ no browser/listener/database, invoked no SDK/decoder/certificate changes, read n
 real CCTV input and made no Git action. Root owns actual playback and canonical
 execution reporting. Final v2 approval is **pending Root**, not supplied by this
 guide. `MATCHED=0`; `release_ready=false`.
+
+## Optional stage-1 observation preparation — 2026-10-05 (R134)
+
+Source baseline: controller review tree `881a18b8776311efabc398e16ab9ac411fa98c9c`,
+with Tasks 1–6 and native registry fixes already present in the uncommitted
+worktree based on `6436748`. This section documents fixture preparation only;
+source review, new c6 approval and actual twelve-tile acceptance remain separate.
+Read this section before reusing the observation helper and update its evidence
+after later changes. The fixture still hosts the synthetic OWNER's normal
+API/RPC/native/decoder/WebRTC/Next pipeline for the two owned recorders.
+
+Set `WSO_TEST_LOCAL_MEDIA_OBSERVE=1` together with the existing explicit media
+activation to collect the bounded private observations. It is absent by default.
+Keep `WSO_TEST_LOCAL_MEDIA_TRACE` absent. `observation.py` and its focused contract
+test are in `MEDIA_SOURCES`, so a new media approval must pin both. No SDK callback,
+wire parser, native owner registry, authority constant, database or frontend
+behavior is changed by this observation preparation.
+
+Python publishes `measurement_owner` at API/worker readiness and in
+`runtime-owner.json` for the runtime. Node adds its owner to `next-bound.json`
+and the coordinator's `ready.json`. Each owner is the closed object
+`{role,pid,creation_filetime}`; creation FILETIME is a decimal **string**, preserving
+all bits through JavaScript JSON. Python reads its current pseudo-handle.
+Node synchronously invokes a trusted existing Python helper while Node is still
+alive, using structured arguments and separate bounded five-second discovery
+and identity calls. Direct base Python bypasses the Windows venv redirector;
+the helper verifies Node is its original parent, opens a read-only query handle,
+checks process identity and STILL_ACTIVE, reads exact FILETIME and closes that
+query handle. No cleanup custody moves to the helper. Failures publish only
+`measurement_owner_error: IDENTITY_UNAVAILABLE`, which cannot satisfy measurement
+admission; default-off readiness schemas remain unchanged.
+
+The controller privately composes `measurement-owner-identities.json` inside
+the exact run's state folder as `{run,owners:[...]}`, matching the run name and
+existing readiness PIDs. Read the five owner objects above; supply Chrome and
+PostgreSQL from Root's retained original handles and verify coordinator identity
+against the original Root child as well. Require exactly the seven roles
+coordinator/runtime/next/api/worker/chrome/postgres, and reject any unavailable
+record or mismatch. Never replace a missing original with a later PID lookup.
+Identity records remain private; reports and measurement stdout contain no
+PID, creation-time or command-line values.
+
+The worker persists `media-observation.json` in its existing private evidence
+run directory, outside the disposable auth-state folder. A separate optional
+writer samples once a second; it has no SDK or transport calls. Data is bounded
+to 256 attempts and peers, with two recorder ordinals and explicit omitted and
+observation-failure counts. Recorder ordinal is assigned by first observed
+credential identity (only its digest is retained privately in memory). Establish
+store correspondence with the planned sequential one-tile-per-store trial;
+do not assume concurrent start order matches the store UI order. Channel ordinal
+is the provider selection ordinal. Attempt numbers distinguish reopen/focus
+cycles. No credential digest or device/session/channel/task identifier is emitted.
+Private generation/session/channel/task binding only correlates the later peer
+to its attempt in memory and is removed on use; failed preparations leave at
+most the bounded attempt roster.
+
+Each successful original provider return projects its already parsed first
+`PrivateLiveFrame`: `source_context[1]` is the actual ep3 media kind, separately
+from `requested_stream`; `summary()` supplies source codec, width and height.
+`sub_stream_adaptation_off` is the original parent's accepted ACK warning.
+`OPEN_RETURNED` establishes neither successful decoding nor browser rendering.
+The exact original session is returned without wrapping its lifetime; original
+proof, first-keyframe and decoder validation remain in their existing paths.
+Open failures retain the original exception and record only `OPEN_FAILED`.
+Metadata failures record a fixed unavailable outcome without throwing away the
+original session. The helper never reads or emits raw payload, SDP or GUIDs.
+
+The fixture peer subclass enables three optional integer counters in `live.py`;
+ordinary peers keep `observation_counts=None`. `permit_lapse_episodes` counts
+observed transitions into stale state after a successful lifetime check, across
+watcher/track/transport observations. It does not count every SQL delay or every
+physical deadline crossing. `withheld_datagrams` counts actual calls at the
+existing `_send_rtp` gate withheld by a false permit, including RTP/RTCP and
+retransmit traffic passed through that gate. `withheld_decoded_frames` counts
+frames actually consumed and withheld by the track's stale branch. No predicate
+is reevaluated for measurement, no bytes are retained, and no transport decision
+changes. Peers expose safe attempt correlation and their separate counters.
+
+Writer errors are swallowed and counted. The observer is a daemon containing
+only metadata; stop waits at most 200 ms for it after normal server retirement,
+so a blocked writer cannot retain API/native/decoder/database resources. Summary schema2 uses `stop_requested` only; this is never a completion claim.
+Completion requires the independent original-custodian terminal and exact
+summary digest described in fix1 below. The existing private writer atomically
+replaces the summary. Missing/stale data or reporting failure invalidates the
+measurement, never establishes acceptance.
+
+Verification on 2026-10-05: causal RED/GREEN covers default-off/schema/actual-kind,
+exact identity bits, current Python and synchronous Node self probes, private
+attempt/peer correlation, original open failure and resource preservation,
+bounded rosters, writer failure/bounded stop, and actual permit withholding.
+No service, SDK, recorder, browser, SQL or listener was launched by this author.
+Focused final counts and static limitations are recorded in the Task7 handoff;
+existing untyped/TRACE formatting debt in `runtime.py` remains outside this
+change. Actual recorder codecs/kinds/warnings, load sizing and browser acceptance
+are open Task7 questions. `MATCHED=0`; `release_ready=false`.
+
+### R134 fix1: durable completion after bounded writer shutdown — 2026-10-05
+
+Independent review I1 reproduced a delayed final snapshot publishing the old
+finished=true/failures0 record after close had timed out and counted a failure.
+That initial completion gate is withdrawn. The correction keeps the 200 ms join
+bound and separates stop request, final publication, and custodial completion.
+
+`media-observation.json` is now schema2, with `stop_requested` replacing
+`observation_finished`. Its writer can publish summaries only. The observer's
+`close()` returns a separate cached terminal decision that the writer cannot
+replace. Timeout/failure remains FAILED even if the outstanding snapshot is
+successfully published later. COMPLETE requires the original writer thread to
+have settled, a final stop-requested snapshot to have been published successfully,
+zero failures and zero omitted attempts/peers. Subsequent close calls return a
+copy of the same decision. A SHA256 binds the terminal to the final summary.
+
+After original server retirement and the bounded observer join, the existing
+original worker writes this terminal as `mediaObservation` in its existing
+private `bridge/worker-close.json`. No new synchronous observation writer is
+added. After settling the original worker, the original runtime reads the
+bounded closed terminal schema and preserves it as `mediaObservation` in its
+existing evidence `resources.json`. This file survives auth-state removal.
+Missing/malformed worker records produce only `{schema_version:1,status:
+"UNAVAILABLE"}` and cannot certify observation. Original cleanup/resource
+proof remains separately required.
+
+Controller final gate: wait for the original fixture custodians to settle;
+read same-run `media-observation.json` and `resources.json.mediaObservation`
+from `.superpowers/verification/local-device-browser-runtime/<run>/`. Require
+`complete_observation(summary, terminal)` from the pinned fixture helper to
+return true. It checks the closed terminal schema, status COMPLETE,
+writer_settled=true, failures/omissions zero, summary schema2 and
+stop_requested=true, and matching canonical SHA256. Canonical encoding is
+Python `json.dumps(summary, sort_keys=True, separators=(",", ":"))` encoded as
+UTF-8. The terminal's exact keys are schema_version, status, writer_settled,
+observation_failures, omitted_attempts, omitted_peers, snapshot_sha256.
+A late summary alone never satisfies this gate. Require the normal whole-run
+resource/source/privacy checks in addition; COMPLETE describes observation,
+not actual video acceptance.
+
+Fix1 validation reproduced a final write blocked beyond close return, then
+allowed that original write to finish. Its late snapshot still has zero failure
+count, while the independently persisted custodial terminal stays FAILED and
+the combined gate rejects it. Other cases cover final writer exception, clean
+final publication/digest binding, missing/extra terminal fields, existing
+writer/startup failures and default-off behavior. The focused fixture/WebRTC
+suite passes76 tests; scoped Ruff/format, helper+live strict mypy and Node syntax
+checks pass. Runtime's existing isolated88 mypy errors remain unchanged. No
+service, recorder, browser or SQL acceptance occurred; independent re-review is
+pending.
+
+### Optional first-failure diagnostics after failed c6 — 2026-10-05
+
+The c6 run's first-start 503 and later heartbeat 404 remain unexplained. This
+addition records the first observed terminal boundary and up to six successful
+milestones per worker source attempt; it does not change admission, validation,
+stream format policy, leases, deadlines, retries or resource ownership. Read
+this section before reuse and update its evidence after source review/execution.
+
+Both existing flags remain required: `WSO_TEST_LOCAL_MEDIA_BROWSER=1` and
+`WSO_TEST_LOCAL_MEDIA_OBSERVE=1`. Without opt-in the worker observation factory
+and source/peer callbacks are absent. The original synchronous worker start
+creates an ordinal before executor startup; the same original thread privately
+correlates the native provider attempt. A failed pre-peer start therefore still
+has a diagnostic record. No lease ID, binding, credential digest, exception
+text, SQL, SDP or media is exported by this addition.
+
+Additive summary schema2 fields:
+
+| Field | Meaning / bound |
+| --- | --- |
+| `source_attempt_count` | Number of observed worker starts. |
+| `omitted_source_attempts` | Starts beyond the existing observation limit (maximum 256 retained). |
+| `source_attempts[]` | At most 256 entries: `source_attempt`, `first_failure`, `milestones`. |
+| `first_failure` | Null until a terminal boundary is observed; then exactly `stage`, `reason`, `elapsed_ms`. First entry is sticky through later cleanup. |
+| `milestones[]` | At most six entries, each exactly `stage`, `elapsed_ms`; each milestone occurs at most once. |
+| `attempts[].source_attempt` | Safe worker ordinal correlating a native provider row, including failures before peer creation. |
+
+Times are integer monotonic milliseconds since the original worker attempt began,
+clamped to 0..2147483647. They do not provide wall-clock timestamps or a common
+cross-attempt origin. Milestone stages are `native_return`, `first_adapter_packet`,
+`first_decoded_frame`, `binding_ready`, `peer_created`, `peer_connected`. The
+decoded milestone means decoder output exists, even if publication authority
+then fails; it does not establish accepted browser delivery.
+
+Failure stages cover executor startup, worker preparation/retirement/proof,
+source creation/start/binding, adapter validation, ingress read/queue, decoder
+creation/decode, publication/renewal authority, source-current, and peer checks,
+renewal deadline/watch/connection/close. `FAILURE_STAGES`, `FAILURE_REASONS` and
+`MILESTONES` in the pinned observation helper are the closed export enum lists.
+Specific adapter reasons include `format_changed`, `identity_changed`,
+`timestamp_invalid`, `scope_invalid`, `metadata_invalid`, `framing_invalid`,
+`header_invalid`, `picture_unsupported`, `initial_picture_unsupported`, and
+`parameter_sets_missing`. The H264 combined original check is conservatively
+reported as `parameter_sets_or_idr_missing`. Actual queue overflow is distinct
+from source stop; peer current-false/error, deadline, stale-permit and connection
+failure/close are distinct. An otherwise unclassified scheduled peer retirement
+records `peer/close_scheduled` before source cleanup. Normal requested cleanup
+may be the first record (`explicit_close`); that is not a diagnosed fault.
+
+Normalized native/core errors retain only their already available fixed class
+such as denied/deadline/protocol-invalid/failure. Decoder failures remain coarse:
+this observation does not distinguish decoder inactivity, binary dimension
+mismatch or packet rejection when that boundary erased the reason. Core sticky
+denial can already combine SQL NULL, database errors and wait timeout; no new SQL
+or core hook is added. First observed boundary is evidence for investigation,
+not proof of the underlying cause or of global event ordering.
+
+The callback performs bounded memory updates only. It does not reevaluate an
+authority predicate, issue SQL, perform writer I/O, or retain original resource
+objects. Observer exceptions are isolated from media decisions and cleanup.
+The existing independent periodic writer, bounded join, sticky terminal and
+canonical snapshot hash remain authoritative. Terminal `omitted_attempts` now
+counts omitted native attempts **plus** omitted source attempts, so either
+truncation prevents COMPLETE. The snapshot retains both separate omission
+counts. No new terminal fields or alternate completion path are introduced.
+
+Controller recipe: freeze and review the changed source closure; obtain the new
+immutable approval before a small recorder/browser run. Keep c6 evidence intact.
+After original custody settles, use the same helper
+`complete_observation(summary, resources.mediaObservation)` gate, then inspect
+each correlated native/source ordinal's first failure and six milestone slots.
+Require zero omissions/failures and the usual cleanup/source/privacy evidence.
+Record the smallest failed boundary before deciding any behavioral correction;
+do not infer decoder dimensions, expired SQL TTL or a format transition from a
+coarse failure. Actual four/twelve-view acceptance remains failed/pending.
+
+Executed offline validation: 166 focused media/worker/WebRTC/observation/runtime
+fixture tests passed; two Node/self-identity process probes were deselected.
+Causal RED runs preceded implementation (9 initial missing-hook failures,
+5 worker/peer hook failures, one missing scheduled-close boundary and one missing
+decoded-before-publication milestone). Seven changed non-runtime files pass
+Ruff check/format; four production/helper files pass strict mypy with silent
+dependency traversal. Runtime's one wiring addition has fixture static/import coverage; no actual
+runtime composition or whole-runtime static success is claimed. No SDK, recorder, browser,
+database, service or dependency operation occurred. Source review and a newly
+approved actual reproduction are still required.
+# R137 transition observations — 2026-10-06
+
+**R138 update (2026-10-06):** source FIFO pressure now waits under the same
+16-frame/4MiB cap with a5s bound and current/stop checks. Optional observation
+accepts the additional fixed first-failure reason `ingress_queue/wait_timeout`;
+`overflow` remains a hard admission violation. No new metadata, identifiers,
+terminal fields or completion gate were added. c8's six overflow observations
+remain immutable historical evidence. A new native-parent credit guard requires
+independent source/native review and a newly pinned approval before actual
+execution. No new device/Chrome/SQL acceptance is implied by inert pressure tests.
+
+Read with the existing R136 observation contract below and the canonical service
+report. The retired c7 run established `adapter/format_changed` as the first
+failure for measured source attempts; older c6 uncertainty below remains dated.
+The current source repair enables bounded same-codec decoder rotation and needs
+independent review/new immutable approval before any actual 1/4/12-tile run.
+
+Both opt-in flags remain required. Each `source_attempts[]` entry now additionally
+contains `transition_counts`, `format_transitions`, and
+`omitted_format_transitions`. Five fixed counter names are `started`,
+`decoder_rotated`, `inter_picture_omitted`, `output_verified`, and
+`late_output_omitted`; each saturates at2147483647. At most sixteen safe format
+records are retained per attempt, each with `old` and `new` objects containing
+only `codec`, `width`, `height`, plus bounded `elapsed_ms`. Codec must be equal
+on both sides and one of `h264`/`hevc`; dimensions obey4096×2160 and16MiB RGB
+caps. Additional format records increment a bounded omission counter; all fixed
+event counters continue. This diagnostic truncation is explicit, distinct from
+omitted whole attempts, and does not change the terminal completion gate.
+
+These nonterminal events never become `first_failure`. Added terminal stages
+are `format_transition` and `decoder_retire`; added fixed reasons are
+`transition_deadline` and `rotation_limit`. Existing `adapter/format_changed`
+still identifies rejected codec changes (and standalone strict adapter use).
+No exception text, identifiers, media, source objects or authority is exported.
+Unknown values fail observation evidence without changing resource ownership.
+
+Controller interpretation: `started` records a fully header-validated dimension
+observation; `decoder_rotated` records successor allocation after actual old
+retirement; `output_verified` records current-format validated RGB publication.
+None establishes browser rendering. `inter_picture_omitted` counts only validated
+waiting-for-configuration pictures; `late_output_omitted` counts old-epoch RGB
+discarded at publication. Review current source hashes and freeze them before
+creating approval; keep c7 evidence immutable and use the original terminal/hash
+and cleanup gates. Offline observation selection passed19 tests. Real decoder
+synthetic and local WebRTC checks are documented in the media/decoder guides;
+no new recorder, Chrome, runtime service or SQL acceptance was performed.

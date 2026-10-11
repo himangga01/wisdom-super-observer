@@ -165,3 +165,73 @@ def test_real_mtls_media_start_offer_stop_transport(tmp_path):
     finally:
         client.close()
         server.close()
+
+
+@pytest.mark.parametrize(
+    "code,status",
+    [
+        ("LOCAL_DEVICE_NO_SIGNAL", 504),
+        ("LOCAL_DEVICE_DEADLINE_EXCEEDED", 504),
+        ("LOCAL_DEVICE_BUSY", 429),
+        ("LOCAL_DEVICE_UPSTREAM_REJECTED", 502),
+    ],
+)
+def test_real_mtls_media_failure_keeps_known_code_and_status(tmp_path, code, status):
+    from wso_tvt_bridge.client import AccountRpcClient, ClientConfig
+    from wso_tvt_bridge.server import AccountRpcServer, ServerConfig
+
+    from tests.tvt_parity.test_bridge_mtls import StrictExecutor, certs
+
+    class Media:
+        def start(self, *args, **kwargs):
+            raise LocalDeviceFailure(code, status)
+
+    certs(tmp_path)
+    server = AccountRpcServer(
+        ServerConfig(
+            "localhost:0",
+            (tmp_path / "ca.pem").read_bytes(),
+            (tmp_path / "server.pem").read_bytes(),
+            (tmp_path / "server.key").read_bytes(),
+            frozenset({"api.test"}),
+            2,
+        ),
+        StrictExecutor(tmp_path),
+        local_media_worker=Media(),
+    )
+    port = server.start()
+    client = AccountRpcClient(
+        ClientConfig(
+            f"localhost:{port}",
+            (tmp_path / "ca.pem").read_bytes(),
+            (tmp_path / "client.pem").read_bytes(),
+            (tmp_path / "client.key").read_bytes(),
+        )
+    )
+    try:
+        with pytest.raises(LocalDeviceFailure) as failure:
+            client.live_start(
+                "a" * 64, deadline_ms=5000, correlation_id="failure-start"
+            )
+        assert (failure.value.code, failure.value.status) == (code, status)
+    finally:
+        client.close()
+        server.close()
+
+
+async def test_api_failure_handler_keeps_no_signal_504_and_code():
+    from starlette.requests import Request
+    from wso_api.main import create_app
+
+    app = create_app()
+    handler = app.exception_handlers[LocalDeviceFailure]
+    request = Request({"type": "http", "state": {"request_id": "synthetic-request"}})
+    response = await handler(request, LocalDeviceFailure("LOCAL_DEVICE_NO_SIGNAL", 504))
+    assert response.status_code == 504
+    assert json.loads(response.body) == {
+        "error": {
+            "code": "LOCAL_DEVICE_NO_SIGNAL",
+            "message": "Local device request failed",
+        },
+        "request_id": "synthetic-request",
+    }

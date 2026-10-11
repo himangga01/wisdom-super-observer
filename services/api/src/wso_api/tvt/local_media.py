@@ -27,23 +27,30 @@ from wso_tvt_bridge.selected import directory_json
 from wso_api.auth import SESSION_COOKIE, token_digest
 from wso_api.stores.router import require_tenant
 from wso_api.tvt.account import Current, _authenticate
+from wso_api.tvt.local_media_diagnostics import MediaDiagnostic, diagnostic
 
 
 class LocalMediaRoute(APIRoute):
     def get_route_handler(self) -> Callable[[Request], Coroutine[Any, Any, Response]]:
         handler = super().get_route_handler()
 
-        async def secured(request: Request) -> Response:
+        async def secured_inner(request: Request) -> Response:
             budget = LocalVerifyBudget(20000)
             request.state.local_media_budget = budget
+            trace = diagnostic(request)
+            trace.phase("auth")
             request.state._tvt_account_authenticated = await run_in_threadpool(
                 _authenticate, request
             )
+            trace.complete()
+            trace.phase("query")
             start = request.url.path == "/api/v1/tvt/live-sessions"
             expected = {"tenant_id", "connection_id"} if start else {"tenant_id"}
             query = request.query_params.multi_items()
             if len(query) != len(expected) or {key for key, _ in query} != expected:
                 raise LocalDeviceFailure("LOCAL_DEVICE_INPUT_INVALID", 422)
+            trace.complete()
+            trace.phase("body")
             if request.method == "POST":
                 if (
                     request.headers.get("content-type", "")
@@ -72,6 +79,8 @@ class LocalMediaRoute(APIRoute):
                         not start
                         and not request.url.path.endswith("/webrtc-offer")
                         and not request.url.path.endswith("/playing")
+                        and not request.url.path.endswith("/focus-reservations")
+                        and not request.url.path.endswith("/settle")
                         and value != {}
                     ):
                         raise ValueError
@@ -84,8 +93,25 @@ class LocalMediaRoute(APIRoute):
                     raise LocalDeviceFailure(
                         "LOCAL_DEVICE_INPUT_INVALID", 422
                     ) from None
+            trace.complete()
+            trace.phase("handler")
             budget.remaining_ms()
-            return await handler(request)
+            response = await handler(request)
+            trace.complete()
+            trace.phase("response")
+            trace.complete()
+            return response
+
+        async def secured(request: Request) -> Response:
+            trace = MediaDiagnostic(request, self.path)
+            request.state.local_media_diagnostic = trace
+            try:
+                response = await secured_inner(request)
+            except BaseException as error:
+                trace.finish(error=error)
+                raise
+            trace.finish(response.status_code)
+            return response
 
         return secured
 
@@ -97,8 +123,13 @@ router = APIRouter(
 )
 
 
-def configure_local_media(app: FastAPI) -> None:
+def configure_local_media(app: FastAPI, *, shared_enabled: bool = False) -> None:
+    if type(shared_enabled) is not bool:
+        raise ValueError("invalid shared media mode")
     app.state.tvt_local_media_worker = None
+    app.state.tvt_local_media_mux_worker = None
+    app.state.tvt_local_media_shared_enabled = shared_enabled
+    app.state.tvt_local_media_diagnostics_sink = None
 
 
 def checked_view(
@@ -129,23 +160,50 @@ def dispatch(
 ) -> LocalLiveResponse | LocalLiveOfferResponse:
     budget = request.state.local_media_budget
     service, principal = current
-    worker = getattr(request.app.state, "tvt_local_media_worker", None)
+    shared = request.app.state.tvt_local_media_shared_enabled
+    trace = diagnostic(request)
+    if action == "start":
+        from .local_media_mux import validate_mode_request
+
+        trace.mode(body)
+        validate_mode_request(shared, body)
+        trace.complete()
+    trace.phase("worker")
+    worker = getattr(
+        request.app.state,
+        "tvt_local_media_mux_worker"
+        if shared and action == "start"
+        else "tvt_local_media_worker",
+        None,
+    )
     if worker is None:
         raise LocalDeviceFailure()
+    trace.complete()
+    trace.phase("tenant")
     digest = token_digest(request.cookies[SESSION_COOKIE])
     with require_tenant(
         "connections:write", tenant_id, service=service, principal=principal
     ) as scope:
+        trace.complete()
+        trace.phase("ticket")
         if (action == "start" and connection_id is None) or (
             action != "start" and lease_id is None
         ):
             raise LocalDeviceFailure("LOCAL_DEVICE_INPUT_INVALID", 422)
-        issuer = LocalMediaTicketIssuer(scope.session, budget.remaining_ms)
-        ticket = (
-            issuer.issue(digest, cast(UUID, connection_id), body)
-            if action == "start"
-            else issuer.issue_control(digest, cast(UUID, lease_id), action)
-        )
+        if shared and action == "start":
+            from .local_media_mux import LocalMuxTicketIssuer
+
+            ticket = LocalMuxTicketIssuer(
+                scope.session, budget.remaining_ms
+            ).issue_shared(digest, cast(UUID, connection_id), body)
+        else:
+            issuer = LocalMediaTicketIssuer(scope.session, budget.remaining_ms)
+            ticket = (
+                issuer.issue(digest, cast(UUID, connection_id), body)
+                if action == "start"
+                else issuer.issue_control(digest, cast(UUID, lease_id), action)
+            )
+    trace.complete()
     budget.remaining_ms()
     kwargs = {
         "deadline_ms": budget.remaining_ms(),
@@ -156,7 +214,12 @@ def dispatch(
         kwargs["offer"] = body
     if action == "playing":
         kwargs["started"] = body
-    value = getattr(worker, "live_" + action)(ticket, **kwargs)
+    trace.phase("rpc")
+    value = getattr(
+        worker, "start_shared" if shared and action == "start" else "live_" + action
+    )(ticket, **kwargs)
+    trace.complete()
+    trace.phase("response")
     budget.remaining_ms()
     result = checked_media_json(
         value.model_dump_json(exclude_none=True).encode(),
@@ -183,8 +246,8 @@ def dispatch(
 
 
 async def call_owned(
-    request: Request, **kwargs: Any
-) -> LocalLiveResponse | LocalLiveOfferResponse:
+    request: Request, *, dispatch_fn: Callable[..., Any] = dispatch, **kwargs: Any
+) -> Any:
     budget = request.state.local_media_budget
 
     async def watch() -> None:
@@ -197,7 +260,7 @@ async def call_owned(
     watcher = asyncio.create_task(watch())
     success = False
     try:
-        value = await run_in_threadpool(dispatch, request, **kwargs)
+        value = await run_in_threadpool(dispatch_fn, request, **kwargs)
         success = True
         return value
     finally:
@@ -249,7 +312,7 @@ async def offer(
 )
 async def stop(
     request: Request, tenant_id: UUID, lease_id: UUID, current: Current
-) -> LocalLiveResponse | LocalLiveOfferResponse:
+) -> Any:
     return await call_owned(
         request, tenant_id=tenant_id, lease_id=lease_id, current=current, action="stop"
     )

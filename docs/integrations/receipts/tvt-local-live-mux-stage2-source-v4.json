@@ -1,0 +1,229 @@
+{
+  "status": "SOURCE_ACCEPTED_WITH_EVIDENCE_QUALIFICATION_UNPUBLISHED",
+  "files": {
+    "packages/core/src/wso_core/tvt/local_live.py": {
+      "bytes": 23215,
+      "sha256": "e38c21e3b54109293add89c5602ab5650c19c77dddf6248c821b0da6045737b3"
+    },
+    "packages/core/src/wso_core/tvt/local_live_mux.py": {
+      "bytes": 28295,
+      "sha256": "07584407d8ec628eb0216a514b9f696ecde8f5af9ede51ce9f165cefd591af2b"
+    },
+    "packages/core/src/wso_core/tvt/local_media_mux_types.py": {
+      "bytes": 15668,
+      "sha256": "3615fb305a21ba985f08b0b0eaa257b18e4aaaab83ed5fe9c0ef42d93b8f7d44"
+    },
+    "packages/core/src/wso_core/tvt/local_media_mux_admission.py": {
+      "bytes": 82786,
+      "sha256": "24d50682aab235ca89212d70ab2275548c48305eee32713a844a20945dcd952a"
+    },
+    "packages/core/src/wso_core/tvt/local_media_mux_service.py": {
+      "bytes": 108064,
+      "sha256": "9d0551019c0ceb8053dfbe89020c6e238379774ccf381693861d35db6d4169dc"
+    },
+    "packages/core/src/wso_core/tvt/local_media_admission.py": {
+      "bytes": 22606,
+      "sha256": "60286cf0edf5b0582df73df52ec5a0e343ed6ddb374c4485da47494a27969284"
+    },
+    "packages/core/src/wso_core/tvt/local_media_service.py": {
+      "bytes": 23137,
+      "sha256": "09c7f98232114f967cb415327198dbb3f24cfa314b63aec5ff5704dbcc57b8bc"
+    },
+    "infra/migrations/versions/0016_tvt_device_media_epochs.py": {
+      "bytes": 78092,
+      "sha256": "64e28f2008e548f33802afb821635e000536d4b9354c4ea931711f979a57aa92"
+    },
+    "tests/tvt_parity/test_local_live.py": {
+      "bytes": 33947,
+      "sha256": "ae6d538612a40b4856556a13afd64dd95300e75fb91ee55989cf92b0f01cd173"
+    },
+    "tests/tvt_parity/test_local_live_mux.py": {
+      "bytes": 27336,
+      "sha256": "ef46da7dd0641a50102a3a59244a838d3b044f9da6bef5bbd7edd821fd86148a"
+    },
+    "tests/tvt_parity/test_local_media_mux_service.py": {
+      "bytes": 79586,
+      "sha256": "96d6b76e08fccee45a144adcceccd4a1ed8befd56bc04cb4abcc8ce2859ccca7"
+    },
+    "tests/integration/test_local_media_mux_admission.py": {
+      "bytes": 98166,
+      "sha256": "a9a0f31109d2125a6f8f50084b3fbd1a27afeb2ccc02c65739a4035098f461fb"
+    },
+    "tests/contract/test_final_mux_handoff_refresh.py": {
+      "bytes": 27874,
+      "sha256": "766c4f70f17a9f37c2970088f1027fc8127eefc76d4f33b855c6eee566fcf373"
+    },
+    "docs/integrations/tvt-local-live-codec.md": {
+      "bytes": 30340,
+      "sha256": "a9a3d691579264564f718c060f8a4e0340f36caa4c28de1c5686b167abeba1ee"
+    },
+    "docs/integrations/tvt-local-live-mux-codec.md": {
+      "bytes": 15886,
+      "sha256": "2eb5e56c09f183a7f011329b1118766ea9ea81ed068448a6696c58bf83306b7e"
+    },
+    "docs/integrations/tvt-local-media-mux-admission.md": {
+      "bytes": 41834,
+      "sha256": "e7b530cde5aa8da223c1871018c6209d0c26798d3593a8456f3330bcda736e0f"
+    },
+    "services/tvt-bridge/src/wso_tvt_bridge/local_live_mux_provider.py": {
+      "bytes": 55234,
+      "sha256": "bbddd3e415900ce19a5a6182c9ce971eda5207b16b5c34f53320a539202e5339"
+    },
+    "tests/contract/test_local_live_mux_provider.py": {
+      "bytes": 57705,
+      "sha256": "a15803b23f3c9b9085bc3bbd42ce348442eb182676fb2b88c078bf9b0fc71a51"
+    },
+    "tests/contract/test_dedicated_main_startup_authority.py": {
+      "bytes": 13651,
+      "sha256": "a6a3d4fceca2529013ee1333ee1ebc5d0e517b212481a80870af62400d4d5682"
+    },
+    "docs/integrations/tvt-local-live-mux-provider.md": {
+      "bytes": 13836,
+      "sha256": "b7f5ee2ceb7edb8e121fd1cc9fb1ca364bab676e41cbecfa4f7fc189ef1a18ab"
+    },
+    "services/tvt-bridge/src/wso_tvt_bridge/local_live_ipc.py": {
+      "bytes": 20491,
+      "sha256": "8571477a55d9b7d8760fddaf8aeb6369cc536179fe9c3fa6323e5afc6eac7910"
+    },
+    "services/tvt-bridge/src/wso_tvt_bridge/local_live_diagnostics.py": {
+      "bytes": 9856,
+      "sha256": "106dde9503a1207640fbb88b7322f404440e3787aabdd645268f0fa772359b47"
+    },
+    "tests/contract/test_native_first_key_debug.py": {
+      "bytes": 12974,
+      "sha256": "bf5c4bcc635215c0afc99deecb319d840c0be0a0b677158bd285a74da9b42ba9"
+    },
+    "scripts/test-local-devices/runtime.py": {
+      "bytes": 78099,
+      "sha256": "2140c0352294f13e9ad387c8482c1d92451b8ad8e636ba3697981ba9f4960008"
+    },
+    "scripts/test-local-devices/core_state_debug.py": {
+      "bytes": 30828,
+      "sha256": "11834469b0ede78c6616aa1a8cdcf1fbcad11c41e32684485c25dd562fcad336"
+    },
+    "tests/contract/test_local_media_core_state_debug.py": {
+      "bytes": 16057,
+      "sha256": "c3bad0c0324658eb16e623ebfc7368f390e815e574755f852fa1f0052176b9dd"
+    },
+    "tests/contract/test_local_media_core_state_runtime.py": {
+      "bytes": 12292,
+      "sha256": "b3da84472497b9f3e01e2f36bd9f8b465d410900c9db67c348822b6cde319030"
+    }
+  },
+  "dependencies": {
+    "packages/core/src/wso_core/tvt/frames.py": {
+      "bytes": 10485,
+      "sha256": "e5cd9dc73c8a0602e83e958ff2f5b36971b894b224c63498f9b6227f94a31b9f"
+    },
+    "packages/contracts/src/wso_contracts/tvt/local_media.py": {
+      "bytes": 1606,
+      "sha256": "624928686f1fa6350433727d8a849aa8bddee8c10608954d461591c602814f4d"
+    },
+    "packages/contracts/src/wso_contracts/tvt/local_media_mux.py": {
+      "bytes": 1253,
+      "sha256": "5ce29c14bd2ff6b09be7b6b7c42e4912ead4f555c39468f60c87c5b128e354d1"
+    },
+    "packages/contracts/src/wso_contracts/tvt/media.py": {
+      "bytes": 3555,
+      "sha256": "0b7f67cfaefadd7b14e0bfdab571801fa5cc54615fb1624eaa2758408f57f4ef"
+    },
+    "docs/analysis/final-combined-source-review-r0.md": {
+      "bytes": 23214,
+      "sha256": "d322c00f11d7bd6bee903e5a8c78628b14d30c779beac3bc4f89bf5d3a9def54"
+    },
+    "docs/analysis/final-combined-fix-report.md": {
+      "bytes": 17625,
+      "sha256": "22849eb4ca21279a3f7b55e1c9320b813d9650fc3cf5696e4a64665bbdde8541"
+    },
+    "docs/analysis/final-combined-source-review-r1.md": {
+      "bytes": 16124,
+      "sha256": "a33bb02ee1e0e6d99ba9c4b0e05b25af301a657420638e5aa499cd05a9a556dd"
+    },
+    "docs/analysis/2026-10-09-dedicated-main-startup-diagnosis.md": {
+      "bytes": 18661,
+      "sha256": "5b078f74f5c089052febf9ca3f3abc09ac1c17a439aa9e2b3f2cd0582aeaaa30"
+    },
+    "docs/analysis/2026-10-09-dedicated-main-startup-fix.md": {
+      "bytes": 11126,
+      "sha256": "de651bd7f6d7465cb11e01e031bfad1c39f5fdaff0b127214ba41c2794918404"
+    },
+    "docs/analysis/2026-10-09-dedicated-main-startup-review.md": {
+      "bytes": 11146,
+      "sha256": "c3102fe63391fc882d2c2521f60bec097cb8df9d053f660a0942120f38e28449"
+    },
+    "docs/analysis/2026-10-09-dedicated-main-startup-review-r1.md": {
+      "bytes": 5820,
+      "sha256": "01c5f1e066bed40d53a4991f2d9b51d0ac158a67ebb82f5662ae284da9e2571c"
+    },
+    "docs/analysis/2026-10-09-native-first-key-debug.md": {
+      "bytes": 14332,
+      "sha256": "30a4b918f03dc07f59b948a937b93c509ba17924f9d635e5b004511bc9479bc6"
+    },
+    "docs/analysis/2026-10-09-core-close-state-debug.md": {
+      "bytes": 19535,
+      "sha256": "470daf455e4f12909f4202f70b7235c2bcf0ea16c3460404410337c9b6a10416"
+    },
+    "docs/analysis/2026-10-09-core-close-state-debug-review.md": {
+      "bytes": 16211,
+      "sha256": "f875e419a0bb01141efcf3f8f65f5701d290d6c61a553c05ce7995bcc618c4de"
+    },
+    "docs/analysis/2026-10-09-native-first-key-debug-review.md": {
+      "bytes": 12723,
+      "sha256": "89822cabd5ea27381a5b126588f36c7f5215ecabf49b4c0bd72ad7a718230391"
+    },
+    "docs/analysis/2026-10-09-core-close-state-debug-review-r1.md": {
+      "bytes": 9725,
+      "sha256": "ed2564222c2c36a5e013be67a307b16dc782e366a8602cb3f2696ad6527f8b98"
+    },
+    "scripts/test-local-devices/core_state_debug.py": {
+      "bytes": 30828,
+      "sha256": "11834469b0ede78c6616aa1a8cdcf1fbcad11c41e32684485c25dd562fcad336"
+    },
+    "tests/contract/test_local_media_heartbeat_debug.py": {
+      "bytes": 12531,
+      "sha256": "063fe339cc97c075f081ff43b484b02a5b9ef03a18d58cd84b3bba731002acd4"
+    },
+    "tests/contract/test_mux_replacement_transport_retirement.py": {
+      "bytes": 6827,
+      "sha256": "b194e2e7e05e90f2ab5e003dab4cca2f13758b2a31bf5e788d8972bb0d710ef4"
+    },
+    "docs/analysis/2026-10-10-heartbeat-inner-debug.md": {
+      "bytes": 9167,
+      "sha256": "d944ebfbf0dcd628a1fa6edb322a8534ce07be0853febc94273d441d738b9767"
+    },
+    "docs/analysis/2026-10-10-heartbeat-inner-debug-review.md": {
+      "bytes": 8014,
+      "sha256": "df0760eaa1a49e95d1f219525f219d98b37bc6fe3b0e4f92eb4bc67aef62a4ef"
+    },
+    "docs/analysis/2026-10-10-replacement-transport-retirement-fix.md": {
+      "bytes": 7067,
+      "sha256": "5c3be869cc509d753576b5a34bcc91fa7dc333e8d19decb31274537fb7ffd831"
+    },
+    "docs/analysis/2026-10-10-replacement-transport-retirement-review.md": {
+      "bytes": 8099,
+      "sha256": "f5d16c5713d5be4315bfdc6525a66608a3631f53284e6f38a53681959a47d2cf"
+    }
+  },
+  "source_baseline": "HEAD6436748 plus independently source-reviewed R196 runtime tracing and R197 exact original transport retirement bookkeeping",
+  "review_report": "docs/analysis/2026-10-10-replacement-transport-retirement-review.md",
+  "review_sha256": "f5d16c5713d5be4315bfdc6525a66608a3631f53284e6f38a53681959a47d2cf",
+  "review_full_read": true,
+  "report_full_read": true,
+  "reviewer_critical": 0,
+  "reviewer_important": 0,
+  "reviewer_minor": 0,
+  "open_blocking_source_findings": 0,
+  "actual_shared_recorder_frames": false,
+  "actual_shared_windows_profile": false,
+  "actual_shared_chrome_acceptance": false,
+  "qualification": "Prior Stage2/R193 source gates and SQL8 retained. R194 native89822cab and runtimeR1ed256422 C0/I0/M0 after acquired-thread custody correction. Diagnostic fields parent-only/non-atomic/bounded; no timer/parser/authority change. Source/runtime reference review still required. Actual R194 first-key/Coreclose cause, MAIN/Chrome,12-camera300s/performance/APK equality are unestablished. Historical artifacts preserved. R196 bounded pre-fence exception measurement and R197 exact original-epoch transport replacement retirement are source accepted only. No repaired heartbeat, parked ingress, shared MAIN duration or original runtime settlement is established by this receipt.",
+  "unsupported": [
+    "unproved startup notifications",
+    "route/task variants outside strict reviewed codec",
+    "encrypted or unsupported media",
+    "unqualified host/profile/recorder/browser capacity",
+    "recovery after original custody loss"
+  ],
+  "supplemental_review_report": "docs/analysis/2026-10-10-heartbeat-inner-debug-review.md",
+  "supplemental_review_sha256": "df0760eaa1a49e95d1f219525f219d98b37bc6fe3b0e4f92eb4bc67aef62a4ef"
+}

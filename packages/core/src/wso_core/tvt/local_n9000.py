@@ -19,13 +19,11 @@ from typing import NoReturn, SupportsIndex
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 
+from .local_n9000_notifications import _STARTUP_BODY_LENGTHS, _is_startup_header
+
 _MAGIC = 825307441
 _MAX_PACKET = 1 << 20
 _ZERO_GUID = bytes(16)
-# 2561 has no APK body parser:92 is the root-observed strict opaque bound.
-# 2562/2563 read exactly40/36 bytes in ml2.a/il2.a. Never generalize the
-# dispatcher default return into admission of arbitrary commands or lengths.
-_STARTUP_BODY_LENGTHS = {2561: 92, 2562: 40, 2563: 36}
 
 
 class CodecError(ValueError):
@@ -172,22 +170,6 @@ class Packet(_Private):
             raise UnsupportedBranch("non_login_command")
         if type(self.body) is not bytes or len(self.body) > _MAX_PACKET - 24:
             raise CodecError("invalid private N9000 packet body")
-
-
-def _is_startup_header(
-    command: int,
-    sequence: int,
-    flags: int,
-    encoding: int,
-    length: int,
-) -> bool:
-    return (
-        command in _STARTUP_BODY_LENGTHS
-        and sequence == 0
-        and flags == 0
-        and encoding == 0
-        and length == _STARTUP_BODY_LENGTHS[command]
-    )
 
 
 def _check_inner_header(

@@ -2,10 +2,11 @@
 name = "wso-tvt-media"
 version = "0.1.0"
 requires-python = ">=3.12,<3.13"
-dependencies = ["wso-core", "aiortc==1.15.0", "av>=14,<18"]
+dependencies = ["wso-core", "wso-tvt-bridge", "aiortc==1.15.0", "av>=14,<18"]
 
 [tool.uv.sources]
 wso-core = { workspace = true }
+wso-tvt-bridge = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]

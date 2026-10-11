@@ -15,7 +15,9 @@ import sys
 import threading
 import time
 import uuid
+from collections import deque
 from collections.abc import Callable, Iterator
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 from xml.dom import minidom
@@ -33,8 +35,17 @@ from wso_core.tvt.local_live import (
     LiveDenied,
     LiveError,
     LiveIdentity,
+    LiveRefused,
     PrivateLiveFrame,
     UnsupportedLive,
+)
+from wso_core.tvt.local_media_mux_types import (
+    MAX_ORDINAL,
+    IngressChunk,
+    IngressCut,
+    IngressSpan,
+    MuxEpochIdentity,
+    MuxSlotIdentity,
 )
 from wso_core.tvt.local_n9000 import (
     CodecError,
@@ -62,7 +73,9 @@ from .windows_socket import (
     file_hash,
     identity,
     json_object,
+    parse_result,
     protect_created_acl,
+    read_original,
     runtime_override,
     select_trusted_nat2,
     validate_bundle,
@@ -292,6 +305,10 @@ class CallbackOwner:
         self.lock = threading.Lock()
         self.used = 0
         self._live_claimed = False
+        self._mux_epoch: MuxEpochIdentity | None = None
+        self._mux_chunks: deque[IngressChunk] = deque()
+        self._mux_ordinal = 0
+        self._mux_cut_sequence = 0
         # CPython3.12 with its GIL: dict.setdefault on this private dict and
         # fixed built-in string key is one indivisible first-terminal claim.
         # Callback contention must latch failure without waiting on queue lock;
@@ -323,10 +340,95 @@ class CallbackOwner:
 
     def claim_first_live(self) -> bool:
         with self.lock:
-            if self.closed or self._live_claimed:
+            if self.closed or self._live_claimed or self._mux_epoch is not None:
                 return False
             self._live_claimed = True
             return True
+
+    def bind_mux_epoch(self, epoch: MuxEpochIdentity) -> None:
+        """Select mux once after this original's validated login has drained.
+
+        The caller must prove same-original login/custody. This RAM binding is
+        not SDK evidence, a registered-slot check or publication authority.
+        Legacy live ownership and shared ownership cannot coexist here.
+        """
+        with self.lock:
+            if (
+                self.closed
+                or self._live_claimed
+                or self._mux_epoch is not None
+                or type(epoch) is not MuxEpochIdentity
+                or epoch.generation != self.generation
+                or self.context.value != self.generation
+                or self.used
+                or not self.chunks.empty()
+            ):
+                self.mark_failed()
+                raise LiveError()
+            self._mux_epoch = epoch
+            self.capacity = 1 << 20
+
+    def cut_mux_ingress(
+        self,
+        *,
+        registration: uuid.UUID,
+        slot: MuxSlotIdentity,
+        control_sequence: int,
+        expires_monotonic: float,
+    ) -> IngressCut:
+        """Local original ingress cut, serialized with pre-copy ordinals.
+
+        Only the private same-generation control reply may export this value.
+        Purpose/current/registered-slot checks belong to that control owner;
+        a slot supplied here can never establish or replace our bound epoch.
+        """
+        with self.lock:
+            try:
+                if (
+                    self.closed
+                    or self._mux_epoch is None
+                    or self.context.value != self.generation
+                    or self._mux_epoch.generation != self.generation
+                    or type(slot) is not MuxSlotIdentity
+                    or slot.epoch != self._mux_epoch
+                ):
+                    raise LiveError()
+                marker = IngressCut(
+                    self._mux_epoch,
+                    slot,
+                    registration,
+                    control_sequence,
+                    self._mux_ordinal,
+                    expires_monotonic,
+                )
+                if (
+                    control_sequence <= self._mux_cut_sequence
+                    or expires_monotonic <= time.monotonic()
+                    or self.closed
+                ):
+                    raise LiveError()
+                self._mux_cut_sequence = control_sequence
+                return marker
+            except LiveError:
+                self.mark_failed()
+                raise
+
+    def take_mux_batch(self) -> tuple[IngressChunk, ...]:
+        """Drain a bounded FIFO snapshot without joining or relabeling bytes."""
+        with self.lock:
+            if self.closed:
+                return ()
+            if (
+                self._mux_epoch is None
+                or self.context.value != self.generation
+                or self._mux_epoch.generation != self.generation
+            ):
+                self.mark_failed()
+                raise LiveError()
+            parts = tuple(self._mux_chunks)
+            self._mux_chunks.clear()
+            self.used -= sum(len(part.data) for part in parts)
+            return parts
 
     def seal_success(
         self,
@@ -410,6 +512,30 @@ class CallbackOwner:
             if self.used + length > self.capacity:
                 self.mark_failed()
                 return 0
+            if self._mux_epoch is not None:
+                if (
+                    self._mux_epoch.generation != self.generation
+                    or len(self._mux_chunks) >= 256
+                    or self._mux_ordinal >= MAX_ORDINAL
+                ):
+                    self.mark_failed()
+                    return 0
+                # Linearize BEFORE touching borrowed bytes. A held copy, queued
+                # batch or later partial assembly can never acquire a new origin.
+                self._mux_ordinal += 1
+                span = IngressSpan(self._mux_ordinal, self._mux_ordinal)
+                copied = ct.string_at(data, length)
+                if (
+                    self.context.value != self.generation
+                    or self._mux_epoch.generation != self.generation
+                ):
+                    self.mark_failed()
+                    return 0
+                if self.closed:
+                    return 0
+                self._mux_chunks.append(IngressChunk(copied, span))
+                self.used += length
+                return length
             self.chunks.put_nowait(ct.string_at(data, length))
             self.used += length
             return length
@@ -421,6 +547,8 @@ class CallbackOwner:
 
     def take(self) -> bytes | None:
         with self.lock:
+            if self._mux_epoch is not None:
+                return None
             try:
                 chunk = self.chunks.get_nowait()
             except queue.Empty:
@@ -438,7 +566,7 @@ class CallbackOwner:
         independent current checks/ACKs in the live parser/parent.
         """
         with self.lock:
-            if self.failed or self.closed:
+            if self.failed or self.closed or self._mux_epoch is not None:
                 return None
             parts = [self.chunks.get_nowait() for _ in range(self.chunks.qsize())]
             self.used -= sum(len(part) for part in parts)
@@ -1046,7 +1174,7 @@ def serve_live(
             identity=identity,
             peer_capability=setup["peer_version"],
             channel_number=setup["raw_index"] & 255,
-            stream=1,
+            stream=setup["stream"],
             exclusive_first_task=True,
             authorize=allowed,
             max_packet=1 << 20,
@@ -1126,12 +1254,20 @@ def serve_live(
                 # Both ends independently use the accepted source codec. The
                 # typed frame is reconstructed from the original envelope in
                 # the parent, never fabricated/pickled from frame attributes.
-                items = codec.feed(raw, generation=identity.generation)
+                try:
+                    items = codec.feed(raw, generation=identity.generation)
+                except LiveRefused:
+                    # Forward the exact correlated envelope: the parent must
+                    # independently derive its denial with its own codec.
+                    if not allowed(identity):
+                        raise LiveDenied() from None
+                    authority.envelope(raw)
+                    raise
                 if not allowed(identity):
                     raise LiveDenied()
                 for item in items:
                     if isinstance(item, LiveAcknowledgement):
-                        result.live_open_ack = item.command == 1281
+                        result.live_open_ack = item.command in (1281, 1285)
                     elif (
                         not isinstance(item, PrivateLiveFrame)
                         or item.identity is not identity
@@ -1169,6 +1305,221 @@ def serve_live(
         mux.buffer.clear()
 
 
+@dataclass(frozen=True, slots=True)
+class _OriginalMuxTerminalPublisher:
+    directory: Path
+    directory_id: tuple[int, int]
+    receipt: Path
+    receipt_id: tuple[int, int]
+    generation: str
+
+    def __call__(self, raw: bytes) -> bool:
+        if type(raw) is not bytes or not 0 < len(raw) <= CAP:
+            fail()
+        result = parse_result(raw, self.generation)
+        if not result.mux_terminal_observed:
+            fail()
+        check_private_acl(self.directory)
+        check_private_acl(self.receipt)
+        if (
+            identity(self.directory, directory=True) != self.directory_id
+            or identity(self.receipt) != self.receipt_id
+        ):
+            fail()
+        with self.receipt.open("r+b") as output:
+            info = os.fstat(output.fileno())
+            if (info.st_dev, info.st_ino) != self.receipt_id:
+                fail()
+            if output.write(raw) != len(raw):
+                fail()
+            output.truncate(len(raw))
+            output.flush()
+        if (
+            identity(self.directory, directory=True) != self.directory_id
+            or read_original(self.receipt, self.receipt_id, CAP) != raw
+        ):
+            fail()
+        return True
+
+
+class NativeMuxWorker(RemoteAuthority):
+    """Original bootstrap authority, then one raw mux dispatcher on the same pipe."""
+
+    def __init__(
+        self,
+        connection: Any,
+        generation: str,
+        deadline: float,
+        *,
+        callback_generation: int,
+    ) -> None:
+        super().__init__(connection, generation, deadline)
+        self.callback_generation = callback_generation
+        self.dispatch: Any = None
+        self._serve_result: SafeResult | None = None
+        self._original_callback: CallbackOwner | None = None
+        self._terminal_publisher: _OriginalMuxTerminalPublisher | None = None
+        self._terminal_published = False
+        self.buffers: list[object] = []
+        RETAINED.append(self.buffers)
+
+    def serve(
+        self,
+        native: Surface,
+        handle: int,
+        callback: CallbackOwner,
+        setup: dict[str, Any],
+        *,
+        result: SafeResult | None = None,
+    ) -> None:
+        from .local_live_mux_ipc import MuxRemoteAuthority
+
+        epoch = callback._mux_epoch
+        if epoch is None:
+            raise AuthorityError()
+
+        def send(wire: bytes) -> int:
+            if (
+                callback.closed
+                or callback.failed
+                or self.dispatch.closed
+                or time.monotonic() >= self.dispatch.deadline
+            ):
+                raise AuthorityError()
+            first, second = ct.create_string_buffer(wire), ct.create_string_buffer(1)
+            self.buffers.extend((first, second))
+            if (
+                callback.closed
+                or callback.failed
+                or time.monotonic() >= self.dispatch.deadline
+            ):
+                raise AuthorityError()
+            sent = int(
+                native.call("send", handle, first, len(wire), second, 0, None, 0)
+            )
+            if (
+                callback.closed
+                or callback.failed
+                or time.monotonic() >= self.dispatch.deadline
+            ):
+                raise AuthorityError()
+            return sent
+
+        channels = {
+            bytes.fromhex(row["guid"]): row["raw_index"] & 255
+            for row in setup["channels"]
+        }
+        keepalive_first, keepalive_second = (
+            ct.create_string_buffer(LIVE_KEEPALIVE),
+            ct.create_string_buffer(1),
+        )
+        self.buffers.extend((keepalive_first, keepalive_second))
+
+        def heartbeat() -> None:
+            if (
+                callback.closed
+                or callback.failed
+                or self.dispatch.closed
+                or time.monotonic() >= self.dispatch.deadline
+            ):
+                raise AuthorityError()
+            sent = int(
+                native.call(
+                    "send",
+                    handle,
+                    keepalive_first,
+                    len(LIVE_KEEPALIVE),
+                    keepalive_second,
+                    0,
+                    None,
+                    0,
+                )
+            )
+            if (
+                sent != len(LIVE_KEEPALIVE)
+                or callback.closed
+                or callback.failed
+                or time.monotonic() >= self.dispatch.deadline
+            ):
+                raise AuthorityError()
+
+        self.dispatch = MuxRemoteAuthority(
+            epoch=epoch,
+            callback=callback,
+            deadline_monotonic=self.deadline,
+            peer_capability=setup["peer_capability"],
+            native_send=send,
+            native_heartbeat=heartbeat,
+            native_slot_allowed=lambda slot, number: (
+                slot.epoch == epoch and channels.get(slot.channel) == number
+            ),
+        )
+        try:
+            while not callback.closed and not callback.failed:
+                if not self.dispatch.serve_once(self.connection):
+                    break
+        finally:
+            terminal_result = result if result is not None else self._serve_result
+            if terminal_result is not None:
+                self.capture_terminal(terminal_result, callback)
+            self.dispatch.close()
+
+    def capture_terminal(self, result: SafeResult, callback: CallbackOwner) -> None:
+        from .local_live_diagnostics import (
+            NativeMuxTerminalRecord,
+            validate_mux_terminal_record,
+        )
+
+        if (
+            result.mux_terminal_observed
+            or result is not self._serve_result
+            or callback is not self._original_callback
+            or result.generation != self.generation
+            or callback.generation != self.callback_generation
+            or callback._mux_epoch is not None
+            and callback._mux_epoch.generation != self.callback_generation
+            or self.dispatch is not None
+            and self.dispatch.epoch is not callback._mux_epoch
+        ):
+            return
+        try:
+            # No new callback lock, native call, wait or borrowed-pointer access.
+            # Fields are a non-atomic sample. A concurrent callback may already
+            # be completing; counters do not prove a particular terminal cause.
+            record = NativeMuxTerminalRecord(
+                callback._mux_epoch is not None,
+                callback.failed,
+                callback.closed,
+                (
+                    len(callback._mux_chunks)
+                    if callback._mux_epoch is not None
+                    else len(callback.chunks.queue)
+                ),
+                callback.used,
+                callback._mux_ordinal,
+                callback.capacity,
+            )
+            validate_mux_terminal_record(record)
+            result.mux_epoch_bound = record.epoch_bound
+            result.mux_callback_failed = record.failed
+            result.mux_callback_closed = record.closed
+            result.mux_queued_chunks = record.queued_chunks
+            result.mux_queued_bytes = record.queued_bytes
+            result.mux_ingress_ordinal = record.ingress_ordinal
+            result.mux_capacity_bytes = record.capacity_bytes
+            result.mux_terminal_observed = True
+            publisher = self._terminal_publisher
+            if type(publisher) is _OriginalMuxTerminalPublisher:
+                self._terminal_published = publisher(result.to_json()) is True
+        except BaseException:  # noqa: BLE001,S110 -- diagnostics cannot alter native outcome
+            pass
+
+    def close(self) -> None:
+        if self.dispatch is not None:
+            self.dispatch.close()
+        super().close()
+
+
 def drive(
     native: Surface,
     request: PrivateRequest,
@@ -1183,7 +1534,11 @@ def drive(
     from .local_live_ipc import LiveRemoteAuthority
 
     live_service = isinstance(service_authority, LiveRemoteAuthority)
+    mux_service = isinstance(service_authority, NativeMuxWorker)
     result = SafeResult(generation, stage="load", loaded=True)
+    if mux_service:
+        assert isinstance(service_authority, NativeMuxWorker)
+        service_authority._serve_result = result
     handle = 0
     initialized = False
     callback: CallbackOwner | None = None
@@ -1197,7 +1552,7 @@ def drive(
     RETAINED.append(buffers)
     try:
         if service_authority is not None:
-            if request.mode != ("live" if live_service else "inventory"):
+            if request.mode != ("live" if live_service or mux_service else "inventory"):
                 raise AuthorityError()
             service_authority.require("connect")
         if request.mode == "load":
@@ -1253,9 +1608,14 @@ def drive(
         capture("greeting.bin", raw)
         callback = CallbackOwner(
             handle,
-            int(generation[:15], 16) + 1,
+            service_authority.callback_generation
+            if isinstance(service_authority, NativeMuxWorker)
+            else int(generation[:15], 16) + 1,
             capacity=(1 << 20) if request.mode == "live" else 65536,
         )
+        if mux_service:
+            assert isinstance(service_authority, NativeMuxWorker)
+            service_authority._original_callback = callback
         owned_generation = callback.generation
         metadata_opt_in = request.metadata_read_opt_in
 
@@ -1478,6 +1838,79 @@ def drive(
                             remaining = bytes(framing.buffer)
                             result.received_bytes -= len(remaining)
                             framing.close()
+                            if mux_service:
+                                assert isinstance(service_authority, NativeMuxWorker)
+                                if (
+                                    remaining
+                                    or callback.used
+                                    or callback.failed
+                                    or inventory._login is not retained_login
+                                    or evidence.generation != owned_generation
+                                    or callback.handle != (handle & 0xFFFFFFFF)
+                                ):
+                                    raise AuthorityError()
+                                channels = []
+                                for mux_channel in evidence.channels:
+                                    try:
+                                        basis = live_basis(
+                                            evidence,
+                                            request,
+                                            mux_channel.guid,
+                                            group_shape,
+                                        )
+                                    except LiveDenied:
+                                        continue
+                                    channels.append(
+                                        {
+                                            "guid": mux_channel.guid.hex(),
+                                            "raw_index": mux_channel.raw_index,
+                                            "window_index": mux_channel.window_index,
+                                            "ordinal": mux_channel.position,
+                                            "kind": mux_channel.kind,
+                                            "basis": basis,
+                                        }
+                                    )
+                                setup = {
+                                    "session": retained_login.session_guid.hex(),
+                                    "callback_generation": owned_generation,
+                                    "peer_capability": retained_login.peer_version,
+                                    "login_accepted": result.reply_accepted,
+                                    "same_original_session": inventory._login
+                                    is retained_login,
+                                    "serial_matched": evidence.serial_matched,
+                                    "inventory_session_matched": inventory._login
+                                    is retained_login
+                                    and evidence.generation == owned_generation,
+                                    "channels": channels,
+                                }
+                                epoch = MuxEpochIdentity(
+                                    owned_generation, retained_login.session_guid
+                                )
+                                callback.bind_mux_epoch(epoch)
+                                service_authority.require("publish")
+                                service_authority.publish(encode(setup))
+                                handshake.close()
+                                handshake = None
+                                inventory.close()
+                                inventory = None
+                                retained_login = accepted = None
+                                del evidence
+                                del request
+                                serial_bytes = wire = chunk = raw_frame = b""
+                                packets = ()
+                                for consumed in buffers:
+                                    if isinstance(consumed, ct.Array):
+                                        ct.memset(
+                                            ct.addressof(consumed),
+                                            0,
+                                            ct.sizeof(consumed),
+                                        )
+                                if discard_credentials is not None:
+                                    discard_credentials()
+                                stream.close()
+                                stream = None
+                                service_authority.serve(native, handle, callback, setup)
+                                return result
                             if live_service:
                                 assert isinstance(
                                     service_authority, LiveRemoteAuthority
@@ -1505,6 +1938,7 @@ def drive(
                                     "raw_index": channel.raw_index,
                                     "window_index": channel.window_index,
                                     "ordinal": channel.position,
+                                    "stream": request.stream,
                                     "live_basis": basis,
                                     "login_accepted": result.reply_accepted,
                                     "serial_matched": evidence.serial_matched,
@@ -1651,6 +2085,9 @@ def drive(
     except BaseException:  # noqa: BLE001 -- private native exception boundary
         result.failure = "runtime"
     finally:
+        if mux_service and callback is not None:
+            assert isinstance(service_authority, NativeMuxWorker)
+            service_authority.capture_terminal(result, callback)
         if callback is not None:
             callback.closed = True
         if handshake is not None:
@@ -1671,6 +2108,44 @@ def drive(
     return result
 
 
+def make_mux_dispatch(
+    raw_input: bytes,
+    *,
+    epoch: MuxEpochIdentity,
+    callback: CallbackOwner,
+    deadline_monotonic: float,
+) -> Any:
+    """Inert mux dispatch after an original's validated login/epoch binding.
+
+    Task 7 owns the native drive branch. This constructor does not load an SDK,
+    claim login proof, or weaken the default exclusive service entry point.
+    """
+    from .local_live_mux_ipc import (
+        MuxIpcError,
+        MuxRemoteAuthority,
+        parse_mux_worker_input,
+    )
+
+    credentials, generation, ttl = parse_mux_worker_input(raw_input)
+    del credentials
+    if (
+        type(epoch) is not MuxEpochIdentity
+        or type(callback) is not CallbackOwner
+        or callback._mux_epoch != epoch
+        or callback.generation != generation
+        or epoch.generation != generation
+        or callback.closed
+        or callback.failed
+        or type(deadline_monotonic) not in (int, float)
+        or not math.isfinite(deadline_monotonic)
+        or not 0 < deadline_monotonic - time.monotonic() <= ttl / 1000
+    ):
+        raise MuxIpcError()
+    return MuxRemoteAuthority(
+        epoch=epoch, callback=callback, deadline_monotonic=deadline_monotonic
+    )
+
+
 def main() -> int:
     result: SafeResult | None = None
     receipt: Path | None = None
@@ -1679,7 +2154,34 @@ def main() -> int:
     try:
         packet = json_object(sys.stdin.buffer.read(CAP + 1))
         live_packet = "live_selection" in packet
-        if set(packet) != {
+        mux_packet = packet.get("mode") == "mux"
+        mux_credentials = None
+        callback_generation = 0
+        if mux_packet:
+            from .local_live_mux_ipc import parse_mux_worker_input
+
+            if (
+                set(packet)
+                != {
+                    "version",
+                    "mode",
+                    "config",
+                    "generation",
+                    "generation_identity",
+                    "receipt_identity",
+                    "job_admitted",
+                    "deadline",
+                    "service_authority_handle",
+                    "mux_input",
+                }
+                or type(packet["version"]) is not int
+                or packet["version"] != 1
+            ):
+                fail()
+            mux_credentials, callback_generation, _ = parse_mux_worker_input(
+                json.dumps(packet["mux_input"], separators=(",", ":")).encode()
+            )
+        elif set(packet) != {
             "config",
             "request",
             "generation",
@@ -1737,16 +2239,52 @@ def main() -> int:
             service = authority_type.from_handle(
                 packet["service_authority_handle"], generation, deadline
             )
+            if mux_packet:
+                service = NativeMuxWorker(
+                    service.connection,
+                    generation,
+                    deadline,
+                    callback_generation=callback_generation,
+                )
             service.require("prepare")
         manifest = verify_review(config)
         overrides = runtime_override(config)
         check_private_acl(config.review_receipt)
-        request: PrivateRequest | None = PrivateRequest(**packet["request"])
+        request: PrivateRequest | None
+        if mux_packet:
+            assert mux_credentials is not None
+            request = PrivateRequest(
+                "live",
+                mux_credentials.country,
+                mux_credentials.serial,
+                mux_credentials.username,
+                mux_credentials.password,
+                metadata_read_opt_in=True,
+                live_read_opt_in=True,
+                store_ref="SERVICE",
+                channel_position=1,
+                stream=2,
+            )
+            mux_credentials = None
+            if service is None:
+                fail()
+        else:
+            request = PrivateRequest(**packet["request"])
         assert request is not None
         if service is not None and request.mode != (
-            "live" if live_packet else "inventory"
+            "live" if live_packet or mux_packet else "inventory"
         ):
             fail()
+        if live_packet:
+            selection = packet["live_selection"]
+            if (
+                type(selection) is not dict
+                or set(selection)
+                != {"channel_guid", "raw_index", "window_index", "ordinal", "stream"}
+                or type(selection["stream"]) is not int
+                or selection["stream"] != request.stream
+            ):
+                fail()
         check_private_acl(config.staging)
         if (
             config.staging.name != generation
@@ -1760,6 +2298,14 @@ def main() -> int:
         if list(receipt_id) != packet["receipt_identity"] or receipt.stat().st_size:
             fail()
         check_private_acl(receipt)
+        if isinstance(service, NativeMuxWorker):
+            service._terminal_publisher = _OriginalMuxTerminalPublisher(
+                config.staging,
+                identity(config.staging, directory=True),
+                receipt,
+                receipt_id,
+                generation,
+            )
         captures: dict[str, tuple[int, int]] = {}
 
         def capture(name: str, raw: bytes) -> None:
@@ -1810,6 +2356,7 @@ def main() -> int:
             nonlocal request
             request = None
             packet.pop("request", None)
+            packet.pop("mux_input", None)
 
         assert request is not None
         result = drive(
@@ -1848,7 +2395,10 @@ def main() -> int:
                 info = os.fstat(output.fileno())
                 if (info.st_dev, info.st_ino) != receipt_id:
                     fail()
-                output.write(result.to_json())
+                raw_result = result.to_json()
+                if len(raw_result) > CAP or output.write(raw_result) != len(raw_result):
+                    fail()
+                output.truncate(len(raw_result))
                 output.flush()
             if identity(receipt) != receipt_id:
                 fail()

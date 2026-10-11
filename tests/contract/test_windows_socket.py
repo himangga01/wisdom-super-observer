@@ -2863,13 +2863,17 @@ class LiveNative(InventoryNative):
             struct.pack_into("<I", header, 4, len(body) + 16)
             struct.pack_into("<I", header, 20, len(body))
             response = bytes(header) + body
-        elif command == 1281:
+        elif command in (1281, 1285):
             self.open_wire = wire
             sequence = struct.unpack_from("<I", wire, 16)[0]
             routing = bytearray(wire[24:96])
             if self.wrong == "task":
                 routing[52:68] = b"T" * 16
-            response = live_packet(0x10000501, b"", sequence) + startup_chain()
+            response = (
+                live_packet(0x10000505, bytes(72) + struct.pack("<i", 0), sequence)
+                if command == 1285
+                else live_packet(0x10000501, b"", sequence)
+            ) + startup_chain()
             for index in range(1, self.pre_key + self.frames + 1):
                 frame = live_packet(
                     65537,
@@ -2881,6 +2885,10 @@ class LiveNative(InventoryNative):
                         wrong=self.wrong == "channel",
                     ),
                 )
+                if command == 1285:
+                    frame = bytearray(frame)
+                    frame[24 + 72 + 6] = 2
+                    frame = bytes(frame)
                 if self.fragmented and index == 1:
                     inner = frame[8:]
                     split = len(inner) // 2
@@ -3149,7 +3157,7 @@ def test_live_integration_qualified_source_gate_and_frames_dependency(
 ) -> None:
     assert (
         p.ACCEPTED_HASHES[p.LIVE_RECEIPT]
-        == "8039ff625abdb21c34214014af129286ee8becc3ed102986920b7289a1ae0b75"
+        == p.file_hash(p.ROOT / p.LIVE_RECEIPT)["sha256"]
     )
     fixture = inert_provider_root(tmp_path, monkeypatch)
     config = p.ProviderConfig(fixture["root"], fixture["root"], fixture["review"])
@@ -3463,6 +3471,7 @@ class KeepaliveAuthority:
     ) -> None:
         self.clock, self.events, self.callback = clock, events, callback
         self.deadline, self.revoke = deadline, revoke
+        self.envelopes: list[bytes] = []
         self.send_grants = 0
         self.denied = False
         self.revoked_at: float | None = None
@@ -3493,7 +3502,7 @@ class KeepaliveAuthority:
             self.callback.context.value += 1
 
     def envelope(self, raw: bytes) -> None:
-        raise AssertionError("inert keepalive runs carry no live envelopes")
+        self.envelopes.append(raw)
 
 
 class KeepaliveNative:
@@ -3515,7 +3524,7 @@ class KeepaliveNative:
         assert ct.sizeof(args[3]) == 1 and args[4:] == (0, None, 0)
         wire = ct.string_at(args[1], args[2])
         command = None if wire == HEARTBEAT else struct.unpack_from("<I", wire, 12)[0]
-        kind = {None: "keepalive", 1281: "open", 1282: "close"}[command]
+        kind = {None: "keepalive", 1281: "open", 1285: "open", 1282: "close"}[command]
         self.events.append(("native", kind))
         self.sends.append(
             {
@@ -3540,6 +3549,9 @@ def serve_keepalive(
     short: int | None = None,
     stall: float | None = None,
     revoke: str = "",
+    selected_stream: int = 1,
+    peer_version: int = 6,
+    initial: bytes = b"",
 ) -> tuple[p.SafeResult, KeepaliveNative, KeepaliveAuthority, list[object]]:
     clock = [1000.0]
     monkeypatch.setattr(time, "monotonic", lambda: clock[0])
@@ -3554,7 +3566,8 @@ def serve_keepalive(
         "channel": (b"C" * 16).hex(),
         "task": (b"T" * 16).hex(),
         "open_request": (b"O" * 16).hex(),
-        "peer_version": 6,
+        "peer_version": peer_version,
+        "stream": selected_stream,
         "raw_index": 3,
     }
     w.serve_live(
@@ -3564,7 +3577,7 @@ def serve_keepalive(
         N9000Stream(),
         result,
         buffers,
-        b"",
+        initial,
         setup,
         authority,
     )
@@ -3678,3 +3691,325 @@ def test_live_keepalive_buffers_are_allocated_and_retained_once(
     assert [send["retained"] for send in beats] == [4, 4, 4]
     assert sum(value is beats[0]["first"] for value in buffers) == 1
     assert sum(value is beats[0]["second"] for value in buffers) == 1
+
+
+@pytest.mark.parametrize(
+    "peer,selected,command", [(6, 2, 1285), (4, 2, 1281), (6, 1, 1281)]
+)
+def test_serve_live_stream_selection_and_ack(
+    monkeypatch: pytest.MonkeyPatch, peer: int, selected: int, command: int
+) -> None:
+    ack = (
+        live_packet(0x10000505, bytes(72) + struct.pack("<i", 0))
+        if command == 1285
+        else live_packet(0x10000501, b"")
+    )
+    result, native, authority, _ = serve_keepalive(
+        monkeypatch, seconds=2, selected_stream=selected, peer_version=peer, initial=ack
+    )
+    wire = native.sends[0]["wire"]
+    assert struct.unpack_from("<I", wire, 12)[0] == command
+    if command == 1285:
+        assert b"<streamType>2</streamType>" in wire
+    else:
+        assert struct.unpack_from("<i", wire, 164)[0] == selected
+    assert result.live_open_ack and authority.envelopes == [ack]
+
+
+@pytest.mark.parametrize("code", [0x20000030, 0x20000029, 17])
+def test_serve_live_forwards_refusal_then_closes(
+    monkeypatch: pytest.MonkeyPatch, code: int
+) -> None:
+    routing = b"O" * 16 + b"S" * 16 + b"C" * 16 + bytes(4) + b"T" * 16 + bytes(4)
+    raw = live_packet(0x20000505, routing + struct.pack("<i", code))
+    result, native, authority, _ = serve_keepalive(
+        monkeypatch, seconds=24, selected_stream=2, initial=raw
+    )
+    assert authority.envelopes == [raw]
+    assert not result.live_open_ack and result.failure != "none"
+    assert len(native.sends) == 1 and not authority.callback.claim_first_live()
+
+
+def test_wrong_refusal_command_fences_sub_open_without_wait(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    raw = live_packet(
+        0x20000501, bytes(52) + b"T" * 16 + bytes(4) + struct.pack("<i", 0x20000030)
+    )
+    result, native, authority, _ = serve_keepalive(
+        monkeypatch, seconds=24, selected_stream=2, initial=raw
+    )
+    assert result.failure == "codec" and not result.live_open_ack
+    assert not authority.envelopes and len(native.sends) == 1
+    assert authority.clock[0] == 1000.0
+
+
+def test_keepalive_unchanged_for_sub_stream(monkeypatch: pytest.MonkeyPatch) -> None:
+    _, native, _, _ = serve_keepalive(monkeypatch, seconds=24, selected_stream=2)
+    assert b"<streamType>2</streamType>" in native.sends[0]["wire"]
+    assert [(send["wire"], send["at"]) for send in native.sends[1:]] == [
+        (HEARTBEAT, 6.0),
+        (HEARTBEAT, 12.0),
+        (HEARTBEAT, 18.0),
+    ]
+
+
+@pytest.mark.parametrize("stream", [True, False, 0, 3, "2", None])
+def test_private_request_rejects_invalid_stream(stream: Any) -> None:
+    from dataclasses import asdict
+
+    values = asdict(live_request())
+    values["stream"] = stream
+    with pytest.raises(p.ProviderError):
+        p.PrivateRequest(**values)
+
+
+@pytest.mark.parametrize("stream", [True, 0, 3, "2", None])
+def test_serve_live_invalid_stream_never_sends(
+    monkeypatch: pytest.MonkeyPatch, stream: Any
+) -> None:
+    result, native, _, _ = serve_keepalive(
+        monkeypatch, seconds=2, selected_stream=stream
+    )
+    assert not native.sends and not result.live_open_ack and result.failure == "codec"
+
+
+@pytest.mark.parametrize("deadline_left, wait_cap", [(0.12, 1.0), (1.0, 0.12)])
+def test_live_attempt_waits_for_lock_then_busy(monkeypatch, deadline_left, wait_cap):
+    monkeypatch.setattr(p, "LIVE_ATTEMPT_WAIT_SECONDS", wait_cap, raising=False)
+    with p.ATTEMPT_LOCK:
+        started = time.monotonic()
+        with (
+            pytest.raises(p.ProviderBusy),
+            p.attempt_scope(blocking=False, deadline=started + deadline_left),
+        ):
+            pytest.fail("lock is already held")
+        elapsed = time.monotonic() - started
+    assert 0.10 <= elapsed < 0.7
+
+
+def test_live_attempt_proceeds_when_original_lock_owner_releases():
+    p.ATTEMPT_LOCK.acquire()
+    timer = threading.Timer(0.06, p.ATTEMPT_LOCK.release)
+    timer.start()
+    try:
+        started = time.monotonic()
+        with p.attempt_scope(blocking=False, deadline=started + 1):
+            assert time.monotonic() - started >= 0.04
+    finally:
+        timer.join()
+    assert not p.ATTEMPT_LOCK.locked()
+
+
+def live_wait_fixture(monkeypatch, *, deadline_left=0.15):
+    from wso_tvt_bridge.local_live_ipc import LiveParentAuthority
+
+    monkeypatch.setattr(p.ProviderConfig, "__post_init__", lambda self: None)
+    config = p.ProviderConfig(Path("C:/inert"), Path("C:/inert"), Path("C:/inert"), 20)
+    request = p.PrivateRequest(
+        "live",
+        "KR",
+        "synthetic9",
+        "inert",
+        "inert",
+        metadata_read_opt_in=True,
+        live_read_opt_in=True,
+        store_ref="SERVICE",
+        channel_position=1,
+    )
+    authority = LiveParentAuthority(time.monotonic() + deadline_left, threading.Event())
+    return config, request, authority
+
+
+def test_uncertain_custody_waits_then_busy_not_error(monkeypatch):
+    config, request, authority = live_wait_fixture(monkeypatch)
+    owner = p.ChildOwner(None, None, (io.BytesIO(), io.BytesIO()))
+    monkeypatch.setattr(p, "PENDING_OWNERS", [owner])
+    try:
+        started = time.monotonic()
+        with pytest.raises(p.ProviderBusy):
+            p.WindowsSocketProvider().run(
+                config, request, service=authority, current=lambda: True
+            )
+        assert 0.12 <= time.monotonic() - started < 0.7
+        assert p.PENDING_OWNERS == [owner] and not owner.confirmed
+    finally:
+        authority.close()
+
+
+def test_uncertain_custody_proceeds_only_after_original_confirms(monkeypatch):
+    config, request, authority = live_wait_fixture(monkeypatch, deadline_left=1)
+    owner = p.ChildOwner(None, None, (io.BytesIO(), io.BytesIO()))
+    monkeypatch.setattr(p, "PENDING_OWNERS", [owner])
+    reached = []
+
+    def review(config):
+        reached.append(owner.confirmed)
+        raise p.ProviderError()
+
+    monkeypatch.setattr(p, "verify_review", review)
+    timer = threading.Timer(0.06, lambda: setattr(owner, "confirmed", True))
+    timer.start()
+    try:
+        p.WindowsSocketProvider().run(
+            config, request, service=authority, current=lambda: True
+        )
+        assert reached == [True]
+    finally:
+        timer.join()
+        authority.close()
+
+
+def test_full_capacity_busy_immediately(monkeypatch):
+    config, request, authority = live_wait_fixture(monkeypatch, deadline_left=2)
+    owners = [p.ChildOwner(None, None, (io.BytesIO(), io.BytesIO())) for _ in range(16)]
+    monkeypatch.setattr(p, "PENDING_OWNERS", owners)
+    try:
+        with p.ATTEMPT_LOCK:
+            started = time.monotonic()
+            with pytest.raises(p.ProviderBusy):
+                p.WindowsSocketProvider().run(
+                    config, request, service=authority, current=lambda: True
+                )
+            assert time.monotonic() - started < 0.1
+        assert all(not owner.confirmed for owner in owners)
+    finally:
+        authority.close()
+
+
+_STAGE2_SOURCE_RECEIPT = (
+    "docs/integrations/receipts/tvt-local-live-mux-stage2-source-v1.json"
+)
+_STAGE2_SOURCE_SHA256 = (
+    "96aa2b0a979fb22f286a72699a5d2eec18cf3544863c216fe5bef94fe2387a02"
+)
+
+
+def inert_stage2_source_gate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> dict[str, Any]:
+    """Use the real closure's names with exclusively invented temporary bytes."""
+    portable_path = p.ROOT / _STAGE2_SOURCE_RECEIPT
+    portable_raw = portable_path.read_bytes()
+    assert hashlib.sha256(portable_raw).hexdigest() == _STAGE2_SOURCE_SHA256
+    portable = json.loads(portable_raw)
+    previous_receipt = p.LIVE_RECEIPT
+    fixture = inert_provider_root(tmp_path, monkeypatch)
+    root = fixture["root"]
+    for section in ("files", "dependencies"):
+        identities = {}
+        for relative in portable[section]:
+            target = root / relative
+            if not target.exists():
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(("INERT STAGE2:" + relative).encode())
+            identities[relative] = p.file_hash(target)
+        portable[section] = identities
+    portable["inertFixture"] = True
+    target = root / _STAGE2_SOURCE_RECEIPT
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps(portable, sort_keys=True))
+    portable_identity = p.file_hash(target)
+    pins = dict(p.ACCEPTED_HASHES)
+    pins[_STAGE2_SOURCE_RECEIPT] = portable_identity["sha256"]
+    monkeypatch.setattr(p, "ACCEPTED_HASHES", pins)
+    native = p.read_json(fixture["review"])
+    native["dependencies"].pop(previous_receipt, None)
+    native["dependencies"].update(portable["dependencies"])
+    native["dependencies"][_STAGE2_SOURCE_RECEIPT] = portable_identity
+    fixture["review"].write_text(json.dumps(native, sort_keys=True))
+    fixture["stage2Files"] = tuple(portable["files"])
+    fixture["stage2Dependencies"] = tuple(portable["dependencies"])
+    return fixture
+
+
+def test_stage2_source_gate_accepts_exact_current_portable_closure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    production_path, production_pins = p.LIVE_RECEIPT, p.ACCEPTED_HASHES
+    fixture = inert_stage2_source_gate(tmp_path, monkeypatch)
+    config = p.ProviderConfig(fixture["root"], fixture["root"], fixture["review"])
+    assert p.verify_review(config) == fixture["manifest"]
+    assert production_path == _STAGE2_SOURCE_RECEIPT
+    assert production_pins[_STAGE2_SOURCE_RECEIPT] == _STAGE2_SOURCE_SHA256
+    assert len(fixture["stage2Files"]) == 16 and len(fixture["stage2Dependencies"]) == 7
+
+
+@pytest.mark.parametrize(
+    "section,index",
+    [("stage2Files", i) for i in range(16)]
+    + [("stage2Dependencies", i) for i in range(7)],
+)
+def test_stage2_source_gate_rejects_drift_in_every_reviewed_entry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, section: str, index: int
+) -> None:
+    fixture = inert_stage2_source_gate(tmp_path, monkeypatch)
+    config = p.ProviderConfig(fixture["root"], fixture["root"], fixture["review"])
+    assert p.verify_review(config) == fixture["manifest"]
+    changed = fixture["root"] / fixture[section][index]
+    changed.write_bytes(b"INERT CHANGED SOURCE OR DEPENDENCY")
+    with pytest.raises(p.ProviderError):
+        p.verify_review(config)
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        "old_reference",
+        "same_name_changed_hash",
+        "private_receipt_hash",
+        "missing_dependency",
+        "extra_dependency",
+        "source_status",
+        "native_status",
+        "critical_bool",
+        "important_one",
+        "minor_one",
+        "owned_missing",
+        "owned_extra",
+    ],
+)
+def test_stage2_source_gate_preserves_exact_native_review_guards(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, change: str
+) -> None:
+    fixture = inert_stage2_source_gate(tmp_path, monkeypatch)
+    config = p.ProviderConfig(fixture["root"], fixture["root"], fixture["review"])
+    assert p.verify_review(config) == fixture["manifest"]
+    native = p.read_json(fixture["review"])
+    portable_path = fixture["root"] / _STAGE2_SOURCE_RECEIPT
+    if change == "old_reference":
+        native["dependencies"][
+            "docs/integrations/receipts/tvt-local-live-substreams-stage1.json"
+        ] = native["dependencies"].pop(_STAGE2_SOURCE_RECEIPT)
+    elif change == "same_name_changed_hash":
+        portable_path.write_bytes(portable_path.read_bytes() + b" ")
+    elif change == "private_receipt_hash":
+        native["dependencies"][_STAGE2_SOURCE_RECEIPT]["sha256"] = "0" * 64
+    elif change == "missing_dependency":
+        native["dependencies"].pop(
+            "packages/contracts/src/wso_contracts/tvt/local_media_mux.py"
+        )
+    elif change == "extra_dependency":
+        native["dependencies"]["inert/extra"] = {"bytes": 0, "sha256": "0" * 64}
+    elif change == "source_status":
+        portable = p.read_json(portable_path)
+        portable["status"] = "SOURCE_ACCEPTED_UNPUBLISHED"
+        portable_path.write_text(json.dumps(portable, sort_keys=True))
+        changed_identity = p.file_hash(portable_path)
+        p.ACCEPTED_HASHES[_STAGE2_SOURCE_RECEIPT] = changed_identity["sha256"]
+        native["dependencies"][_STAGE2_SOURCE_RECEIPT] = changed_identity
+    elif change == "native_status":
+        native["status"] = "AUTHOR_READY"
+    elif change == "critical_bool":
+        native["critical"] = True
+    elif change == "important_one":
+        native["important"] = 1
+    elif change == "minor_one":
+        native["minor"] = 1
+    elif change == "owned_missing":
+        native["files"].pop(next(iter(native["files"])))
+    elif change == "owned_extra":
+        native["files"]["inert/extra"] = {"bytes": 0, "sha256": "0" * 64}
+    fixture["review"].write_text(json.dumps(native, sort_keys=True))
+    with pytest.raises(p.ProviderError):
+        p.verify_review(config)

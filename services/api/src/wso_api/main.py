@@ -38,6 +38,7 @@ from wso_api.tvt.local_devices import configure_local_devices
 from wso_api.tvt.local_devices import router as local_devices_router
 from wso_api.tvt.local_media import configure_local_media
 from wso_api.tvt.local_media import router as local_media_router
+from wso_api.tvt.local_media_mux import router as local_media_mux_router
 from wso_api.tvt.startup import configure_startup
 from wso_api.tvt.startup import router as startup_router
 
@@ -76,6 +77,7 @@ def create_app(
     readiness_checks: Mapping[str, Callable[[], bool]] | None = None,
     *,
     asset_runtime: AssetRuntime | None = None,
+    shared_media_enabled: bool = False,
 ) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -93,6 +95,10 @@ def create_app(
             app.state.tvt_directory_worker = account_client
             app.state.tvt_local_device_worker = account_client
             app.state.tvt_local_media_worker = account_client
+            if shared_media_enabled and account_client is not None:
+                from wso_tvt_bridge.local_media_mux_rpc import LocalMuxRpcClient
+
+                app.state.tvt_local_media_mux_worker = LocalMuxRpcClient(account_client)
             if asset_runtime is None:
                 try:
                     owned = start_asset_runtime(
@@ -108,6 +114,7 @@ def create_app(
             app.state.tvt_directory_worker = None
             app.state.tvt_local_device_worker = None
             app.state.tvt_local_media_worker = None
+            app.state.tvt_local_media_mux_worker = None
             try:
                 if account_client is not None:
                     await _close_account_client(account_client)
@@ -131,7 +138,7 @@ def create_app(
     configure_account_flows(app)
     configure_directory(app)
     configure_local_devices(app)
-    configure_local_media(app)
+    configure_local_media(app, shared_enabled=shared_media_enabled)
     configure_connections(app)
     configure_assets(app, runtime=asset_runtime)
     app.include_router(auth_router)
@@ -145,6 +152,7 @@ def create_app(
     app.include_router(directory_router)
     app.include_router(local_devices_router)
     app.include_router(local_media_router)
+    app.include_router(local_media_mux_router)
 
     @app.middleware("http")
     async def request_context(

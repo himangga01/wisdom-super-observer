@@ -4,9 +4,13 @@ from __future__ import annotations
 
 import json
 import secrets
-from collections.abc import Callable
+import time
+from collections import OrderedDict
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
-from threading import RLock
+from datetime import UTC, datetime
+from threading import BoundedSemaphore, Condition, Lock, RLock, get_ident
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -29,6 +33,16 @@ from .local_media_service import (
 from .local_service import LocalDeviceFailure, LocalVerifyBudget
 
 _SEAL = object()
+# R120 hot-path authority: a cached answer serves a call only while its SQL
+# check began less than this long ago (and before the lease's own expiry).
+AUTHORITY_FRESHNESS_SECONDS = 0.1
+# Longest wait for another thread's in-flight check of the same lease.
+AUTHORITY_WAIT_SECONDS = 5.0
+# Most recently closed lease tokens that are denied without any SQL.
+AUTHORITY_TOMBSTONES = 64
+# R132: leave half the 8+8 pool available to authority and short control work.
+MAX_MEDIA_STARTUP_TRANSACTIONS = 8
+MEDIA_STARTUP_WAIT_SECONDS = 10.0
 
 
 class LocalMediaTicketIssuer:
@@ -130,22 +144,60 @@ class LocalMediaLease:
     _seal: object = field(repr=False)
 
 
+class _Authority:
+    """One lease's hot-path answer; every field is guarded by its condition."""
+
+    __slots__ = ("condition", "denied", "runner", "started", "valid_until", "value")
+
+    def __init__(self) -> None:
+        self.condition = Condition(Lock())
+        self.denied = False
+        self.runner: int | None = None  # Thread running the one in-flight check.
+        self.started = 0.0  # Gate clock just before that published check began.
+        self.valid_until = 0.0
+        self.value: MediaLease | None = None
+
+    def deny(self) -> None:
+        """Permanent; the caller holds the condition."""
+        self.denied = True
+        self.value = None
+        self.condition.notify_all()
+
+
 class LocalMediaAdmission:
-    def __init__(self, worker_url: str, keys: KeyProvider) -> None:
+    def __init__(
+        self,
+        worker_url: str,
+        keys: KeyProvider,
+        *,
+        clock: Callable[[], float] = time.perf_counter,
+    ) -> None:
         if not worker_url.startswith("postgresql+psycopg://"):
             raise LocalDeviceFailure()
         self._cipher = SecretCipher(keys)
         self.worker_epoch = uuid4()
         self._cleanup_lock = RLock()
         self._pending_cleanup: dict[str, LocalMediaLease] = {}
-        # Pooled unlike other admissions: media cadence needs fresh per-check SQL
-        # without connect cost; settings stay transaction-local and role is rechecked.
+        # R120 gate state: one registry lock; each entry has its own condition.
+        # No SQL or callback ever runs while either is held.
+        self._clock = clock
+        self._authority_lock = Lock()
+        # R133: distinct sealed closed tokens re-queried after tombstone eviction
+        # can retain denied entries until shutdown. This registry has no fixed cap;
+        # active sticky denial is never evicted to reclaim it.
+        self._authorities: dict[str, _Authority] = {}
+        self._tombstones: OrderedDict[str, None] = OrderedDict()
+        self._authority_closed = False
+        self._startup_slots = BoundedSemaphore(MAX_MEDIA_STARTUP_TRANSACTIONS)
+        # Pooled unlike other admissions: the hot-path authority check needs
+        # bounded SQL without connect cost; settings stay transaction-local and
+        # the role is rechecked in every transaction.
         self._engine = create_engine(
             worker_url,
             hide_parameters=True,
             poolclass=QueuePool,
-            pool_size=4,
-            max_overflow=4,
+            pool_size=8,
+            max_overflow=8,
             pool_timeout=1,
             pool_pre_ping=True,
             pool_recycle=300,
@@ -211,6 +263,23 @@ class LocalMediaAdmission:
             lease.token, lease.worker_epoch, lease.native_generation, identifier, _SEAL
         )
 
+    @contextmanager
+    def _startup_scope(self, budget: LocalVerifyBudget) -> Iterator[None]:
+        deadline = time.monotonic() + MEDIA_STARTUP_WAIT_SECONDS
+        while True:
+            # Cancellation/deadline keep their existing public failure codes.
+            remaining = min(budget.remaining_ms() / 1000, deadline - time.monotonic())
+            if remaining <= 0:
+                raise LocalDeviceFailure("LOCAL_DEVICE_BUSY", 429)
+            if self._startup_slots.acquire(timeout=min(0.05, remaining)):
+                break
+        try:
+            budget.remaining_ms()
+            yield
+        finally:
+            # The surrounding transaction has settled before this permit returns.
+            self._startup_slots.release()
+
     @_boundary
     def open(
         self,
@@ -227,7 +296,7 @@ class LocalMediaAdmission:
         if JOB_STEP_ACTIVE.get():
             raise LocalDeviceFailure("LOCAL_DEVICE_DENIED", 404)
         given = self._lease(lease)
-        with self._engine.begin() as db:
+        with self._startup_scope(budget), self._engine.begin() as db:
             self._worker(db, budget.remaining_ms)
             row = (
                 db.execute(
@@ -296,7 +365,7 @@ class LocalMediaAdmission:
             args["p"] = json.dumps(asdict(proof), separators=(",", ":"))
             suffix = ",CAST(:p AS jsonb)"
         # Function names are fixed internal callers, never public selectors.
-        if function not in {"activate", "current", "worker_view", "playing"}:
+        if function not in {"activate", "playing", "observe"}:
             raise LocalDeviceFailure()
         with self._engine.begin() as db:
             self._worker(db, remaining)
@@ -320,16 +389,98 @@ class LocalMediaAdmission:
             raise LocalDeviceFailure("LOCAL_DEVICE_PROTOCOL_INVALID", 502)
         return view
 
+    def _authority(self, lease: object) -> MediaLease | None:
+        """R120 hot-path authority: None denies, a view grants.
+
+        A grant returned to a call that began at gate time c always comes from
+        a non-locking observe check that began after c - F. At most one check
+        per lease is in flight; others wait for it. A NULL answer, any error,
+        a waiter timeout, close() or shutdown() deny the lease permanently.
+        A successful in-flight check still answers its eligible callers if SQL
+        latency crosses expiry; ordinary cache reuse and downstream emission
+        permits are expiry-clipped. Slow success does not create sticky denial.
+        """
+        given = self._lease(lease)
+        began = self._clock()
+        with self._authority_lock:
+            if self._authority_closed or given.token in self._tombstones:
+                return None
+            entry = self._authorities.get(given.token)
+            if entry is None:
+                entry = self._authorities[given.token] = _Authority()
+        me = get_ident()
+        waited, deadline = False, 0.0
+        with entry.condition:
+            while True:
+                if entry.denied:
+                    return None
+                if entry.runner is None:
+                    if entry.value is not None and (
+                        self._clock() < entry.valid_until
+                        or (
+                            waited
+                            and entry.started > began - AUTHORITY_FRESHNESS_SECONDS
+                        )
+                    ):
+                        return entry.value
+                    break
+                if entry.runner == me:
+                    return None  # Re-entry would wait on itself: deny this call.
+                # Freshness uses the injected clock; waiter liveness uses real
+                # monotonic time even if an injected test clock stops advancing.
+                now = time.monotonic()
+                if not waited:
+                    waited, deadline = True, now + AUTHORITY_WAIT_SECONDS
+                elif now >= deadline:
+                    entry.deny()
+                    return None
+                entry.condition.wait(deadline - now)
+            entry.runner = me
+        # This thread runs the lease's one check, outside every lock.
+        started, observed_at = self._clock(), datetime.now(UTC)
+        try:
+            value = self._query(given, "observe")
+            view = None if value is None else MediaLease.model_validate(value)
+        except BaseException:
+            with entry.condition:
+                entry.runner = None
+                entry.deny()
+            raise  # Its own caller keeps the fixed failure mapping (503).
+        with entry.condition:
+            entry.runner = None
+            if view is None or entry.denied:
+                entry.deny()
+                return None
+            left = (view.expires_at - observed_at).total_seconds()
+            entry.value, entry.started = view, started
+            entry.valid_until = min(
+                started + AUTHORITY_FRESHNESS_SECONDS, started + left
+            )
+            entry.condition.notify_all()
+            return view
+
+    def _retire_authority(self, token: str) -> None:
+        """Deny and tombstone one lease; any in-flight answer is discarded."""
+        with self._authority_lock:
+            self._tombstones[token] = None
+            self._tombstones.move_to_end(token)
+            while len(self._tombstones) > AUTHORITY_TOMBSTONES:
+                self._tombstones.popitem(last=False)
+            entry = self._authorities.pop(token, None)
+            if entry is not None:
+                with entry.condition:
+                    entry.deny()
+
     @_boundary
     def current(self, lease: object) -> bool:
-        return self._query(lease, "current") is True
+        return self._authority(lease) is not None
 
     @_boundary
     def view(self, lease: object) -> MediaLease:
-        value = self._query(lease, "worker_view")
+        value = self._authority(lease)
         if value is None:
             raise LocalDeviceFailure("LOCAL_DEVICE_DENIED", 404)
-        return MediaLease.model_validate(value)
+        return value.model_copy(deep=True)
 
     @_boundary
     def playing(self, lease: object, proof: LocalLiveProof) -> MediaLease:
@@ -359,6 +510,8 @@ class LocalMediaAdmission:
     @_boundary
     def close(self, lease: object, *, cleanup_confirmed: bool) -> None:
         given = self._lease(lease)
+        # Deny the hot path first: nothing is granted while retirement runs.
+        self._retire_authority(given.token)
         if type(cleanup_confirmed) is not bool:
             raise LocalDeviceFailure("LOCAL_DEVICE_INPUT_INVALID", 422)
         with self._engine.begin() as db:
@@ -387,6 +540,13 @@ class LocalMediaAdmission:
             return not self._pending_cleanup
 
     def shutdown(self) -> bool:
+        with self._authority_lock:
+            self._authority_closed = True
+            entries = tuple(self._authorities.values())
+            self._authorities.clear()
+            for entry in entries:
+                with entry.condition:
+                    entry.deny()
         if not self.retry_cleanup():
             return False
         self._engine.dispose()

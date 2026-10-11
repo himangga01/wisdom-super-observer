@@ -1,3 +1,5 @@
+import type {LivePlayerStartupPhase} from './local-live-player';
+
 /**
  * Pure start/stop scheduling for the multi-camera live wall (통합 관제).
  *
@@ -7,25 +9,32 @@
  * the React layer performs the actual player start/stop through `onStart` and
  * `onStop`, and reports each outcome back with `reportLive`/`reportFailed`.
  *
- * Invariants: at most `capacity` tiles are `starting|live`; at most one tile is
- * `starting` (starts are strictly sequential); every queued id appears once.
+ * Invariants: active tiles plus queued replacement slot reservations never
+ * exceed `capacity`; at most one tile is `starting`; queued ids appear once.
  *
- * Pacing (ruling R118): a native session that fails keeps the device busy while
- * it retires, and the provider then refuses new starts with HTTP 429. After any
- * failed start the scheduler therefore cools down before the next start, with
- * exponential back-off (3 s, 6 s, 12 s, then 15 s) that resets once any tile is
- * live. A `busy` (429) start goes back to its original queue place without
- * spending the tile's single retry; other failures keep the one 2 s retry.
+ * Pacing (R118/R141): generic failed starts hold every new start for
+ * 3 s, 6 s, 12 s, then 15 s, resetting once any tile is live. A `busy` (429)
+ * start parks only that target for its own 3/6/12/15 s backoff, keeping its
+ * original queue ticket and single ordinary retry. Other ready targets can
+ * progress; parked replacements retain their freed slots. A different tile
+ * going live never resets a target's busy backoff. Other failures retry once
+ * after 2 s. The runtime still owns the original Stop settlement barrier.
+ * A no-signal result is terminal until manual play and never starts a cooldown.
  */
 
 /**
- * Current backend limit: the local media worker admits two concurrent live
- * sessions (SQL separately allows at most four non-closed leases per
- * tenant/actor). Raise it here, in one place, when the worker capacity grows.
+ * Stage-1 backend limit: sixteen live sources and sixteen non-closed leases
+ * per tenant/actor. Starts remain sequential even while sixteen tiles play.
  */
-export const LIVE_WALL_CONCURRENCY = 2;
-/** A start that has reported neither live nor failed by then counts as failed. */
-export const LIVE_WALL_START_TIMEOUT_MS = 15_000;
+export const LIVE_WALL_CONCURRENCY = 16;
+/** Original Stop wait: the client's 25 s request bound plus a 1 s delivery margin. */
+export const LIVE_WALL_START_TIMEOUT_MS = 26_000;
+/** Starts when the player's HTTP start request begins, after the original Stop barrier. */
+export const LIVE_WALL_REQUEST_TIMEOUT_MS = 26_000;
+/** Offer creation, ICE (8 s), offer HTTP (25 s), and 2 s scheduling margin. */
+export const LIVE_WALL_NEGOTIATION_TIMEOUT_MS = 35_000;
+/** Combined frame/playing confirmation fallback: nominal 15 s frame allowance plus 25 s HTTP. */
+export const LIVE_WALL_PRESENTATION_TIMEOUT_MS = 40_000;
 /** A failed start is retried once after this delay while it is still requested. */
 export const LIVE_WALL_RETRY_DELAY_MS = 2_000;
 /** First cool-down after a failed start; each further consecutive failure doubles it. */
@@ -33,20 +42,20 @@ export const LIVE_WALL_COOLDOWN_BASE_MS = 3_000;
 /** Upper bound of the cool-down back-off. */
 export const LIVE_WALL_COOLDOWN_MAX_MS = 15_000;
 
-export type LiveTileState = 'idle' | 'queued' | 'starting' | 'live' | 'failed' | 'stopped';
-/** How a start failed: `busy` (HTTP 429, try later) re-queues the tile; `failed` uses its single retry. */
-export type LiveStartFailure = 'failed' | 'busy';
+export type LiveTileState = 'idle' | 'queued' | 'starting' | 'live' | 'failed' | 'nosignal' | 'stopped';
+/** Busy re-queues, failed uses its single retry, and no signal waits for manual play. */
+export type LiveStartFailure = 'failed' | 'busy' | 'nosignal' | 'handoff';
 
 export type LiveWallSnapshot = Readonly<{
   /** Every tile the scheduler has handled; an absent id is `idle`. */
   states: Readonly<Record<string, LiveTileState>>;
-  /** Queued tile ids in start order (the focused tile, when queued, is first). */
+  /** Queued ids in priority order; parked ids wait while eligible ids may start. */
   queue: readonly string[];
   /** Failed tiles whose single automatic retry is still pending. */
   retrying: readonly string[];
   /** Queued tiles whose last start was refused as busy (HTTP 429). */
   busy: readonly string[];
-  /** No new start begins until the post-failure cool-down ends. */
+  /** No new start begins until the generic failed-start cool-down ends. */
   coolingDown: boolean;
   focused: string | null;
   capacity: number;
@@ -62,8 +71,9 @@ export type LiveWallSchedulerOptions = {
   /** Start the tile's player. Throwing counts as a failed start. */
   onStart(id: string): void;
   /** Stop and release the tile's player. Called whenever a tile leaves `starting|live`. */
-  onStop(id: string): void;
+  onStop(id: string, reason: 'queued' | 'failed' | 'nosignal' | 'stopped'): void;
   capacity?: number;
+  /** Initial original-Stop wait only; later phases use their explicit bounded budgets. */
   startTimeoutMs?: number;
   retryDelayMs?: number;
   cooldownBaseMs?: number;
@@ -77,10 +87,12 @@ export type LiveWallScheduler = {
   /** Stop one tile, or several atomically so nothing starts in between. */
   requestStop(ids: string | readonly string[]): void;
   stopAll(): void;
-  /** Give one tile scheduling priority (or clear it with `null`). */
-  focus(id: string | null): void;
+  /** Give one tile priority; atomically stop/requeue requested tiles whose stream changes. */
+  focus(id: string | null, restart?: readonly string[]): void;
   /** The tile's player confirmed its first presented frame. */
   reportLive(id: string): void;
+  /** Forward-only startup transitions; the caller must fence events to the current player. */
+  reportStartupPhase(id: string, phase: LivePlayerStartupPhase): void;
   /** The tile's player failed while starting or playing; `busy` marks a start refused with HTTP 429. */
   reportFailed(id: string, kind?: LiveStartFailure): void;
   getSnapshot(): LiveWallSnapshot;
@@ -116,11 +128,19 @@ export function createLiveWallScheduler(options: LiveWallSchedulerOptions): Live
   /** Tiles whose single automatic retry has been used since the user last asked to play. */
   const retrySpent = new Set<string>();
   const deadlines = new Map<string, unknown>();
+  const startupPhases = new Map<string, number>();
   const retries = new Map<string, {handle: unknown}>();
   /** Queue ticket from each tile's latest play request or re-queue; retried and busy tiles resume in ticket order. */
   const tickets = new Map<string, number>();
+  /** Stream replacements keep their freed slot through busy until live, stopped or failed. */
+  const replacements = new Set<string>();
+  /** Actual freed replacement slots, held only while their owners are queued. */
+  const heldSlots = new Set<string>();
   let ticketSequence = 0;
   const busy = new Set<string>();
+  const parks = new Map<string, {handle: unknown}>();
+  /** Per-target delay persists across starts and other targets becoming live. */
+  const busyDelays = new Map<string, number>();
   let cooldown: {handle: unknown} | null = null;
   /** Consecutive failed starts since a tile was last live; sets the next cool-down. */
   let failedStarts = 0;
@@ -156,11 +176,16 @@ export function createLiveWallScheduler(options: LiveWallSchedulerOptions): Live
     if (id === focused) queue.unshift(id);
     else if (position === 'tail') queue.push(id);
     else {
-      // A retried or busy tile resumes its original place: ahead of every waiting tile queued
-      // after it (and behind a queued focused tile), so re-entries keep their original order.
+      // Focus first, then pending stream replacements, then ordinary ticket order.
+      // A replacement's busy requeue keeps its slot even if an older ordinary
+      // ticket exists; ordinary retries cannot leapfrog pending replacements.
       const ticket = tickets.get(id) ?? 0;
       let index = focused !== null && queue[0] === focused ? 1 : 0;
-      while (index < queue.length && (tickets.get(queue[index]) ?? 0) < ticket) index++;
+      if (replacements.has(id)) {
+        while (index < queue.length && replacements.has(queue[index])) index++;
+      } else {
+        while (index < queue.length && (replacements.has(queue[index]) || (tickets.get(queue[index]) ?? 0) < ticket)) index++;
+      }
       queue.splice(index, 0, id);
     }
     set(id, 'queued');
@@ -180,6 +205,29 @@ export function createLiveWallScheduler(options: LiveWallSchedulerOptions): Live
   }
   function clearBusy(id: string) {
     if (busy.delete(id)) dirty = true;
+  }
+  function cancelPark(id: string) {
+    const pending = parks.get(id);
+    if (!pending) return;
+    parks.delete(id);
+    timer.clear(pending.handle);
+  }
+  function resetBusy(id: string) {
+    cancelPark(id);
+    busyDelays.delete(id);
+    clearBusy(id);
+  }
+  function park(id: string) {
+    cancelPark(id);
+    const delay = Math.min(busyDelays.has(id) ? busyDelays.get(id)! * 2 : cooldownBaseMs, cooldownMaxMs);
+    busyDelays.set(id, delay);
+    const pending = {handle: undefined as unknown};
+    pending.handle = timer.set(() => transact(() => {
+      if (parks.get(id) !== pending) return;
+      parks.delete(id);
+      dirty = true;
+    }), delay);
+    parks.set(id, pending);
   }
   /** Hold every new start for 3 s after a failed start, doubling per consecutive failure up to 15 s. */
   function beginCooldown() {
@@ -202,37 +250,58 @@ export function createLiveWallScheduler(options: LiveWallSchedulerOptions): Live
     dirty = true;
   }
   /** Leave `starting|live` and release the player. */
-  function halt(id: string, next: 'queued' | 'failed' | 'stopped') {
+  function halt(id: string, next: 'queued' | 'failed' | 'nosignal' | 'stopped') {
     clearDeadline(id);
+    startupPhases.delete(id);
     set(id, next);
     effects.push(() => {
-      try { options.onStop(id); } catch { /* The tile is already released here; nothing else to undo. */ }
+      try { options.onStop(id, next); } catch { /* The tile is already released here; nothing else to undo. */ }
     });
   }
   const isCurrentStart = (id: string, attempt: number) => state(id) === 'starting' && startOrder.get(id) === attempt;
+  function armDeadline(id: string, attempt: number, phase: number, ms: number) {
+    clearDeadline(id);
+    startupPhases.set(id, phase);
+    deadlines.set(id, timer.set(() => transact(() => {
+      if (isCurrentStart(id, attempt) && startupPhases.get(id) === phase) fail(id);
+    }), ms));
+  }
   function start(id: string) {
     removeFromQueue(id);
+    heldSlots.delete(id);
     clearBusy(id);
     set(id, 'starting');
     const attempt = ++sequence;
     startOrder.set(id, attempt);
-    deadlines.set(id, timer.set(() => transact(() => { if (isCurrentStart(id, attempt)) fail(id); }), startTimeoutMs));
+    armDeadline(id, attempt, 0, startTimeoutMs);
     effects.push(() => {
       if (!isCurrentStart(id, attempt)) return;
       try { options.onStart(id); } catch { transact(() => { if (isCurrentStart(id, attempt)) fail(id); }); }
     });
   }
   /**
-   * A busy (429) start goes back to its queue place and keeps its single retry. Other failed
-   * starts earn that one retry. Every failed start cools down; a live failure does neither.
+   * A busy (429) start parks at its queue place and keeps its single retry. Other failed
+   * starts earn that one retry. No signal has neither retry nor cooldown; a live failure also does neither.
    */
   function fail(id: string, kind: LiveStartFailure = 'failed') {
+    if (kind !== 'busy') {
+      replacements.delete(id);
+      heldSlots.delete(id);
+      resetBusy(id);
+    }
+    if (kind === 'nosignal' || kind === 'handoff') {
+      cancelRetry(id);
+      clearBusy(id);
+      halt(id, kind === 'nosignal' ? 'nosignal' : 'failed');
+      return;
+    }
     const failedStart = state(id) === 'starting';
     if (failedStart && kind === 'busy') {
+      if (replacements.has(id)) heldSlots.add(id);
       halt(id, 'queued');
       enqueue(id, 'resume');
       busy.add(id);
-      beginCooldown();
+      park(id);
       return;
     }
     halt(id, 'failed');
@@ -252,19 +321,22 @@ export function createLiveWallScheduler(options: LiveWallSchedulerOptions): Live
     beginCooldown();
   }
   function stopOne(id: string) {
+    replacements.delete(id);
+    heldSlots.delete(id);
     cancelRetry(id);
-    clearBusy(id);
+    resetBusy(id);
     const current = state(id);
     if (current === 'queued') { removeFromQueue(id); set(id, 'stopped'); }
     else if (current === 'starting' || current === 'live') halt(id, 'stopped');
-    else if (current === 'failed') set(id, 'stopped');
+    else if (current === 'failed' || current === 'nosignal') set(id, 'stopped');
   }
   /**
    * A queued focused tile may take the slot of the least-recently-started
    * non-focused live tile, which goes back to the tail of the queue.
    */
   function preemptForFocus() {
-    if (focused === null || state(focused) !== 'queued' || activeCount() < capacity) return;
+    if (focused === null || state(focused) !== 'queued' || parks.has(focused) || heldSlots.has(focused)
+      || activeCount() + heldSlots.size < capacity) return;
     let victim: string | null = null;
     for (const [id, value] of states) {
       if (value !== 'live' || id === focused) continue;
@@ -272,6 +344,8 @@ export function createLiveWallScheduler(options: LiveWallSchedulerOptions): Live
     }
     if (victim === null) return;
     halt(victim, 'queued');
+    // Protect the focused owner's slot even if another replacement has priority.
+    heldSlots.add(focused);
     tickets.set(victim, ++ticketSequence);
     queue.push(victim);
     dirty = true;
@@ -279,10 +353,11 @@ export function createLiveWallScheduler(options: LiveWallSchedulerOptions): Live
   function pump() {
     // While cooling down nothing starts, and no live tile is preempted for a start that must wait.
     if (cooldown) return;
-    preemptForFocus();
-    if (queue.length === 0 || activeCount() >= capacity) return;
     for (const value of states.values()) if (value === 'starting') return;
-    start(queue[0]);
+    preemptForFocus();
+    const occupied = activeCount() + heldSlots.size;
+    const next = queue.find(id => !parks.has(id) && (heldSlots.has(id) || occupied < capacity));
+    if (next !== undefined) start(next);
   }
   function build(): LiveWallSnapshot {
     return Object.freeze({
@@ -324,7 +399,9 @@ export function createLiveWallScheduler(options: LiveWallSchedulerOptions): Live
           const current = state(id);
           if (current === 'queued' || current === 'starting' || current === 'live') continue;
           cancelRetry(id);
+          resetBusy(id);
           retrySpent.delete(id);
+          replacements.delete(id);
           enqueue(id, 'tail');
         }
       });
@@ -336,9 +413,21 @@ export function createLiveWallScheduler(options: LiveWallSchedulerOptions): Live
       // Nothing is left to start, so the cool-down timer goes too; the back-off streak is kept.
       transact(() => { for (const id of [...states.keys()]) stopOne(id); endCooldown(); });
     },
-    focus(id) {
+    focus(id, restart = []) {
       transact(() => {
+        const owned = restart.filter(tile => state(tile) === 'starting' || state(tile) === 'live' || heldSlots.has(tile));
+        for (const tile of restart) stopOne(tile);
         if (focused !== id) { focused = id; dirty = true; }
+        for (const tile of restart) {
+          retrySpent.delete(tile);
+          replacements.add(tile);
+          if (owned.includes(tile)) heldSlots.add(tile);
+          enqueue(tile, 'resume');
+          // Stream replacements retain their slot ahead of ordinary waiters,
+          // including returning to sub when focus closes on a full wall.
+          removeFromQueue(tile);
+          queue.unshift(tile);
+        }
         if (id !== null && state(id) === 'queued' && queue[0] !== id) { removeFromQueue(id); queue.unshift(id); dirty = true; }
       });
     },
@@ -346,14 +435,30 @@ export function createLiveWallScheduler(options: LiveWallSchedulerOptions): Live
       transact(() => {
         if (state(id) !== 'starting') return;
         clearDeadline(id);
+        startupPhases.delete(id);
         retrySpent.delete(id);
+        replacements.delete(id);
+        heldSlots.delete(id);
+        resetBusy(id);
         failedStarts = 0;
         set(id, 'live');
+      });
+    },
+    reportStartupPhase(id, phase) {
+      transact(() => {
+        if (state(id) !== 'starting') return;
+        const [next, ms] = phase === 'requesting' ? [1, LIVE_WALL_REQUEST_TIMEOUT_MS]
+          : phase === 'negotiating' ? [2, LIVE_WALL_NEGOTIATION_TIMEOUT_MS]
+          : [3, LIVE_WALL_PRESENTATION_TIMEOUT_MS];
+        // Repeated and regressive events cannot keep a hung start alive.
+        if (next <= (startupPhases.get(id) ?? 0)) return;
+        armDeadline(id, startOrder.get(id)!, next, ms);
       });
     },
     reportFailed(id, kind = 'failed') {
       transact(() => {
         const current = state(id);
+        if (current === 'queued' && kind === 'handoff') {removeFromQueue(id); fail(id, kind); return;}
         if (current === 'starting' || current === 'live') fail(id, kind);
       });
     },

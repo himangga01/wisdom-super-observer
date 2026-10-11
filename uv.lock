@@ -1195,6 +1195,7 @@ dependencies = [
     { name = "aiortc" },
     { name = "av" },
     { name = "wso-core" },
+    { name = "wso-tvt-bridge" },
 ]
 
 [package.metadata]
@@ -1202,6 +1203,7 @@ requires-dist = [
     { name = "aiortc", specifier = "==1.15.0" },
     { name = "av", specifier = ">=14,<18" },
     { name = "wso-core", editable = "packages/core" },
+    { name = "wso-tvt-bridge", editable = "services/tvt-bridge" },
 ]
 
 [[package]]

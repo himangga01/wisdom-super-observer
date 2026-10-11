@@ -83,6 +83,51 @@ class Core:
         return True
 
 
+def test_start_diagnostic_preparation_failure_precedes_cleanup(monkeypatch):
+    events = []
+    core = Core()
+
+    def fail_proof(lease):
+        raise ValueError("private-secret")
+
+    core.proof = fail_proof
+    owner = module.LocalMediaWorker(
+        core,
+        decoder_executable=Path(__file__).resolve(),
+        observation_factory=lambda: (
+            lambda stage, reason: events.append((stage, reason))
+        ),
+    )
+    try:
+        with pytest.raises(LocalDeviceFailure):
+            owner.start("ticket", deadline_ms=1000, correlation_id="test")
+        assert events[0] == ("proof_read", "failure")
+        assert core.closes == 1
+    finally:
+        settle(owner)
+
+
+def test_observer_factory_failure_does_not_change_start_cleanup(monkeypatch):
+    core = Core()
+
+    def broken():
+        raise RuntimeError("private-secret")
+
+    monkeypatch.setattr(module, "NativeDecodedSource", Source)
+    monkeypatch.setattr(module, "LocalWebRtcSession", Peer)
+    owner = module.LocalMediaWorker(
+        core, decoder_executable=Path(__file__).resolve(), observation_factory=broken
+    )
+    try:
+        assert (
+            owner.start("ticket", deadline_ms=1000, correlation_id="test").lease.id
+            == core.id
+        )
+    finally:
+        settle(owner)
+    assert core.closes == 1
+
+
 class Source:
     def __init__(self, *args, proof=None):
         self.closed = False
@@ -395,13 +440,13 @@ def test_prepare_refuses_source_when_entry_changes_while_proof_pending(
 
     caller = threading.Thread(target=start)
     caller.start()
-    others = (uuid4(), uuid4())
+    others = tuple(uuid4() for _ in range(16))
     try:
         assert entered.wait(3)
         if change == "retired":
             owner.stop("ticket", deadline_ms=20000, correlation_id="test")
         else:
-            # Two other sources registered while this start's SQL was pending.
+            # Sixteen other sources registered while this start's SQL was pending.
             on_loop(owner, lambda: owner._sources.update(dict.fromkeys(others)))
         gate.set()
         caller.join(5)
@@ -806,14 +851,14 @@ def test_original_close_failure_quarantines_lease_and_keeps_custody(monkeypatch)
         assert core.id in owner._quarantined
         assert not owner._runtime_closed[core.id].is_set()
         assert core.id in owner._sources and core.id in owner._peers
-        # Retained custody still counts toward the two-source cap.
-        other = uuid4()
-        on_loop(owner, lambda: owner._sources.setdefault(other, Source()))
+        # Retained custody still counts toward the sixteen-source cap.
+        others = tuple(uuid4() for _ in range(15))
+        on_loop(owner, lambda: owner._sources.update({key: Source() for key in others}))
         with pytest.raises(MediaDenied):
             asyncio.run_coroutine_threadsafe(
                 owner._prepare(uuid4()), owner._loop
             ).result(2)
-        on_loop(owner, lambda: owner._sources.pop(other))
+        on_loop(owner, lambda: [owner._sources.pop(key) for key in others])
     finally:
         assert abandon(owner) is False
     assert core.closes == 0 and not owner._thread.is_alive()
@@ -926,4 +971,111 @@ def test_unconfirmed_sql_close_backs_off_to_one_second(monkeypatch):
         assert delays == [0.05, 0.1, 0.2, 0.4, 0.8, 1.0, 1.0]
         assert len(attempts) == 8 and core.closes == 1
     finally:
+        settle(owner)
+
+
+@pytest.mark.parametrize("pending_cleanup", [False, True])
+def test_worker_maps_no_signal_to_504_code_and_releases_source(
+    monkeypatch, pending_cleanup
+):
+    from wso_tvt_media import native_source
+
+    held = threading.Event()
+    entered = threading.Event()
+    originals = []
+    errors = []
+
+    class NoFrames(Source):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            originals.append(self)
+
+        async def binding(self):
+            no_signal = getattr(native_source, "MediaNoSignal", MediaDenied)
+            raise no_signal()
+
+        async def close(self):
+            entered.set()
+            if pending_cleanup:
+                while not held.is_set():
+                    await asyncio.sleep(0.001)
+            await super().close()
+
+    monkeypatch.setattr(module, "NativeDecodedSource", NoFrames)
+    core = Core()
+    owner = module.LocalMediaWorker(core, decoder_executable=Path(__file__).resolve())
+
+    def start():
+        try:
+            owner.start("ticket", deadline_ms=20000, correlation_id="test")
+        except LocalDeviceFailure as failure:
+            errors.append(failure)
+
+    caller = threading.Thread(target=start)
+    try:
+        caller.start()
+        assert entered.wait(2)
+        if pending_cleanup:
+            assert caller.is_alive() and core.closes == 0
+            assert owner._sources[core.id] is originals[0]
+            assert not owner._runtime_closed[core.id].is_set()
+        held.set()
+        caller.join(3)
+        assert not caller.is_alive() and len(errors) == 1
+        assert (errors[0].code, errors[0].status) == ("LOCAL_DEVICE_NO_SIGNAL", 504)
+        assert originals[0].closed and core.closes == 1
+        assert not owner._sources and not owner._peers and not owner._runtime_closed
+        assert core.view.state == "CLOSED"
+    finally:
+        held.set()
+        caller.join(3)
+        settle(owner)
+
+
+@pytest.mark.parametrize(
+    "code,status",
+    [
+        ("LOCAL_DEVICE_BUSY", 429),
+        ("LOCAL_DEVICE_UPSTREAM_REJECTED", 502),
+        ("LOCAL_DEVICE_DENIED", 404),
+        ("LOCAL_DEVICE_DEADLINE_EXCEEDED", 504),
+    ],
+)
+def test_worker_keeps_known_start_refusals_distinct_from_no_signal(
+    monkeypatch, code, status
+):
+    class Refused(Core):
+        def start(self, *args, **kwargs):
+            raise LocalDeviceFailure(code, status)
+
+    owner = module.LocalMediaWorker(
+        Refused(), decoder_executable=Path(__file__).resolve()
+    )
+    try:
+        with pytest.raises(LocalDeviceFailure) as failure:
+            owner.start("ticket", deadline_ms=20000, correlation_id="test")
+        assert (failure.value.code, failure.value.status) == (code, status)
+        assert not owner._sources and not owner._peers
+    finally:
+        settle(owner)
+
+
+@pytest.mark.parametrize("occupied, allowed", [(2, True), (15, True), (16, False)])
+def test_prepare_sixteen_source_capacity(monkeypatch, occupied, allowed):
+    monkeypatch.setattr(module, "NativeDecodedSource", Source)
+    monkeypatch.setattr(module, "LocalWebRtcSession", Peer)
+    core = Core()
+    owner = module.LocalMediaWorker(core, decoder_executable=Path(__file__).resolve())
+    others = tuple(uuid4() for _ in range(occupied))
+    try:
+        on_loop(owner, lambda: owner._sources.update({key: Source() for key in others}))
+        if allowed:
+            owner.start("ticket", deadline_ms=20000, correlation_id="test")
+            assert core.id in owner._sources and core.id in owner._peers
+        else:
+            with pytest.raises(LocalDeviceFailure):
+                owner.start("ticket", deadline_ms=20000, correlation_id="test")
+            assert core.id not in owner._sources
+    finally:
+        on_loop(owner, lambda: [owner._sources.pop(key, None) for key in others])
         settle(owner)

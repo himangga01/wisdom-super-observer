@@ -1,0 +1,114 @@
+{
+  "status": "ACCEPTED_WINDOWS_SOCKET_ABI_ROOT_REVIEW",
+  "generatedUtc": "2026-10-03T07:56:38.072971+00:00",
+  "files": {
+    "docs/integrations/tvt-windows-socket-abi.md": {
+      "bytes": 22701,
+      "sha256": "7ef13e4beaa4c01cca2462d9d5f189b2472b2c30d5bb3d132d65c10e1b1ae828"
+    },
+    "services/tvt-windows-helper/include/tvt_socket_verified.h": {
+      "bytes": 4756,
+      "sha256": "07bfe0a24e716cf42bc66f08e1387863981f00865cf67f70672ea9f604cc2b2d"
+    }
+  },
+  "bundle": [
+    {
+      "name": "libeay32.dll",
+      "path": "C:\\Users\\\uac15\uc9c0\ud61c\\.codex\\worktrees\\superlive-web-service\\wisdom-super-observer\\.superpowers\\verification\\windows-socket-abi\\dependencies\\file-012.bin",
+      "bytes": 1649152,
+      "sha256": "c1d033fd1fc320b72e0f00db21c9d42699dfb0f5229738e558523cec1b6ec3e1"
+    },
+    {
+      "name": "log4cxx.dll",
+      "path": "C:\\Users\\\uac15\uc9c0\ud61c\\.codex\\worktrees\\superlive-web-service\\wisdom-super-observer\\.superpowers\\verification\\windows-socket-abi\\dependencies\\file-016.bin",
+      "bytes": 2125824,
+      "sha256": "4f77581457dcc2b1343a9a277da0cac4907e7ac8814b7a7695fc040de39e7770"
+    },
+    {
+      "name": "msvcr100.dll",
+      "path": "C:\\Users\\\uac15\uc9c0\ud61c\\.codex\\worktrees\\superlive-web-service\\wisdom-super-observer\\.superpowers\\verification\\windows-socket-abi\\dependencies\\file-018.bin",
+      "bytes": 852176,
+      "sha256": "1cb6c6a298e21f5fef57d1b3aa989bbde13f9f215b69464c8e6e895763b90319"
+    },
+    {
+      "name": "ssleay32.dll",
+      "path": "C:\\Users\\\uac15\uc9c0\ud61c\\.codex\\worktrees\\superlive-web-service\\wisdom-super-observer\\.superpowers\\verification\\windows-socket-abi\\dependencies\\file-031.bin",
+      "bytes": 345088,
+      "sha256": "f39697803e53d5eb93a96e9c50689927cf41ea300b033ff75fce1152a7925648"
+    },
+    {
+      "name": "mfc140u.dll",
+      "path": "C:\\Users\\\uac15\uc9c0\ud61c\\.codex\\worktrees\\superlive-web-service\\wisdom-super-observer\\.superpowers\\verification\\windows-socket-abi\\dependencies\\file-095.bin",
+      "bytes": 5617544,
+      "sha256": "22c08b09f1db53506d47b56814bcdd2630d2651253cd7ab897a97b01ba7b38e4"
+    },
+    {
+      "name": "msvcp100.dll",
+      "path": "C:\\Users\\\uac15\uc9c0\ud61c\\.codex\\worktrees\\superlive-web-service\\wisdom-super-observer\\.superpowers\\verification\\windows-socket-abi\\dependencies\\file-099.bin",
+      "bytes": 627568,
+      "sha256": "3e24a0677b0963a8d0a4904d9e8e937cdb559883830db94f7c05dda746f4af1a"
+    },
+    {
+      "name": "msvcp140.dll",
+      "path": "C:\\Users\\\uac15\uc9c0\ud61c\\.codex\\worktrees\\superlive-web-service\\wisdom-super-observer\\.superpowers\\verification\\windows-socket-abi\\dependencies\\file-100.bin",
+      "bytes": 564088,
+      "sha256": "762c1beb041e72149d605f4051695a9634c56e62a517c46d45ff97590f61403c"
+    },
+    {
+      "name": "vcruntime140.dll",
+      "path": "C:\\Users\\\uac15\uc9c0\ud61c\\.codex\\worktrees\\superlive-web-service\\wisdom-super-observer\\.superpowers\\verification\\windows-socket-abi\\dependencies\\file-134.bin",
+      "bytes": 96144,
+      "sha256": "3242739842db5f32021de2ba87b4e5c884fcf47cb97b65fe38a4f8ad28722d98"
+    },
+    {
+      "name": "vcruntime140_1.dll",
+      "path": "C:\\Users\\\uac15\uc9c0\ud61c\\.codex\\worktrees\\superlive-web-service\\wisdom-super-observer\\.superpowers\\verification\\windows-socket-abi\\dependencies\\file-135.bin",
+      "bytes": 36728,
+      "sha256": "721831b56cbc8531802b036044610f7442397d02a58ebe82aa82fc7f9d99b2d8"
+    },
+    {
+      "name": "NatClientSDK.dll",
+      "path": "C:\\Users\\\uac15\uc9c0\ud61c\\.codex\\worktrees\\superlive-web-service\\wisdom-super-observer\\.superpowers\\verification\\nvms-sdk-static\\selected\\file-101.bin",
+      "bytes": 632832,
+      "sha256": "f884bb14a1d8b2bf9bd2e79e05c86636d27332859308665423783b6712754510"
+    },
+    {
+      "name": "Network.dll",
+      "path": "C:\\Users\\\uac15\uc9c0\ud61c\\.codex\\worktrees\\superlive-web-service\\wisdom-super-observer\\.superpowers\\verification\\nvms-sdk-static\\selected\\file-103.bin",
+      "bytes": 14848,
+      "sha256": "ae6bf53a6f40e5cb758d13baee07fc2dc7a2bc3aff8e4745eb1b51ff0265fadb"
+    },
+    {
+      "name": "OpensslSDK.dll",
+      "path": "C:\\Users\\\uac15\uc9c0\ud61c\\.codex\\worktrees\\superlive-web-service\\wisdom-super-observer\\.superpowers\\verification\\nvms-sdk-static\\selected\\file-107.bin",
+      "bytes": 1897984,
+      "sha256": "55371c6bb25bc2dfc024fb8d01973babe3d4ec20c8d172414d7a865f0f84b42d"
+    },
+    {
+      "name": "NetSocket.dll",
+      "path": "C:\\Users\\\uac15\uc9c0\ud61c\\.codex\\worktrees\\superlive-web-service\\wisdom-super-observer\\.superpowers\\verification\\nvms-sdk-static\\additional\\file-020.bin",
+      "bytes": 462848,
+      "sha256": "ebcfcadc7763086418c26490774c5ce36688fc6d4d2187dd6aae264e84f8806d"
+    },
+    {
+      "name": "ShareLib.dll",
+      "path": "C:\\Users\\\uac15\uc9c0\ud61c\\.codex\\worktrees\\superlive-web-service\\wisdom-super-observer\\.superpowers\\verification\\nvms-sdk-static\\additional\\file-030.bin",
+      "bytes": 223232,
+      "sha256": "58ae32acd4a6dd90dbf971cb901a1233bff7a814a42b84d4bc62e57cadd491f6"
+    }
+  ],
+  "report_full_read": true,
+  "review_full_read": true,
+  "review_sha256": "be641cd74ec2d204217895263af7ac47dd239c4755bd694ea0a3ecf0f4d0d440",
+  "critical": 0,
+  "important": 0,
+  "minor": 0,
+  "custody_files": 293,
+  "private_text_files": 232,
+  "private18_and_user_CCTV_exact_values": "PASS",
+  "vendor_DLL_executed": false,
+  "callback_quiescence_proven": false,
+  "authentication_or_frame": false,
+  "MATCHED": 0,
+  "release_ready": false
+}

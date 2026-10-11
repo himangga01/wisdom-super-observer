@@ -1155,6 +1155,16 @@
             "title": "Alias",
             "type": "string"
           },
+          "device": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DeviceSelector"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "kind": {
             "enum": [
               "TVT_ACCOUNT",
@@ -1243,6 +1253,16 @@
               }
             ],
             "title": "Alias"
+          },
+          "device": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DeviceSelector"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "expected_generation": {
             "minimum": 1.0,
@@ -1511,6 +1531,83 @@
           "brand"
         ],
         "title": "DeviceListRequest",
+        "type": "object"
+      },
+      "DeviceRef": {
+        "additionalProperties": false,
+        "description": "A store is mandatory; selectors must later pass server authorization.",
+        "properties": {
+          "channel_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel Id"
+          },
+          "device_id": {
+            "format": "uuid",
+            "title": "Device Id",
+            "type": "string"
+          },
+          "identity": {
+            "$ref": "#/components/schemas/TvtIdentityRef"
+          },
+          "store_id": {
+            "format": "uuid",
+            "title": "Store Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "identity",
+          "store_id",
+          "device_id"
+        ],
+        "title": "DeviceRef",
+        "type": "object"
+      },
+      "DeviceSelector": {
+        "additionalProperties": false,
+        "properties": {
+          "country": {
+            "default": "KR",
+            "maxLength": 2,
+            "minLength": 2,
+            "title": "Country",
+            "type": "string"
+          },
+          "qr_payload": {
+            "anyOf": [
+              {
+                "format": "password",
+                "maxLength": 4096,
+                "type": "string",
+                "writeOnly": true
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Qr Payload"
+          },
+          "serial": {
+            "format": "password",
+            "maxLength": 63,
+            "minLength": 1,
+            "title": "Serial",
+            "type": "string",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "serial"
+        ],
+        "title": "DeviceSelector",
         "type": "object"
       },
       "DirectoryMethod": {
@@ -2014,6 +2111,575 @@
         "type": "object"
       },
       "JsonValue": {},
+      "LocalChannelView": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "pattern": "^Channel [1-9][0-9]{0,2}$",
+            "title": "Label",
+            "type": "string"
+          },
+          "ordinal": {
+            "maximum": 256.0,
+            "minimum": 1.0,
+            "title": "Ordinal",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "ordinal",
+          "label"
+        ],
+        "title": "LocalChannelView",
+        "type": "object"
+      },
+      "LocalDeviceRef": {
+        "additionalProperties": false,
+        "properties": {
+          "actor_user_id": {
+            "format": "uuid",
+            "title": "Actor User Id",
+            "type": "string"
+          },
+          "channel_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel Id"
+          },
+          "connection_id": {
+            "format": "uuid",
+            "title": "Connection Id",
+            "type": "string"
+          },
+          "device_id": {
+            "format": "uuid",
+            "title": "Device Id",
+            "type": "string"
+          },
+          "store_id": {
+            "format": "uuid",
+            "title": "Store Id",
+            "type": "string"
+          },
+          "tenant_id": {
+            "format": "uuid",
+            "title": "Tenant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tenant_id",
+          "actor_user_id",
+          "connection_id",
+          "store_id",
+          "device_id"
+        ],
+        "title": "LocalDeviceRef",
+        "type": "object"
+      },
+      "LocalDeviceView": {
+        "additionalProperties": false,
+        "properties": {
+          "channels": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/LocalChannelView"
+            },
+            "maxItems": 256,
+            "title": "Channels",
+            "type": "array"
+          },
+          "connection_generation": {
+            "maximum": 9007199254740991.0,
+            "minimum": 1.0,
+            "title": "Connection Generation",
+            "type": "integer"
+          },
+          "connection_id": {
+            "format": "uuid",
+            "title": "Connection Id",
+            "type": "string"
+          },
+          "device_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device Id"
+          },
+          "inventory_revision": {
+            "maximum": 9007199254740991.0,
+            "minimum": 0.0,
+            "title": "Inventory Revision",
+            "type": "integer"
+          },
+          "inventory_state": {
+            "enum": [
+              "UNAVAILABLE",
+              "AVAILABLE",
+              "STALE"
+            ],
+            "title": "Inventory State",
+            "type": "string"
+          },
+          "observed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed At"
+          },
+          "request_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_.:-]+$",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "store_id": {
+            "format": "uuid",
+            "title": "Store Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "connection_id",
+          "store_id",
+          "connection_generation",
+          "inventory_revision",
+          "inventory_state",
+          "request_id"
+        ],
+        "title": "LocalDeviceView",
+        "type": "object"
+      },
+      "LocalFocusRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "direction": {
+            "enum": [
+              "FORWARD",
+              "RETURN"
+            ],
+            "title": "Direction",
+            "type": "string"
+          }
+        },
+        "required": [
+          "direction"
+        ],
+        "title": "LocalFocusRequest",
+        "type": "object"
+      },
+      "LocalFocusResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "reference": {
+            "$ref": "#/components/schemas/LocalFocusView"
+          },
+          "request_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_.:-]+$",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reference",
+          "request_id"
+        ],
+        "title": "LocalFocusResponse",
+        "type": "object"
+      },
+      "LocalFocusSettleRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "outcome": {
+            "enum": [
+              "CANCELLED",
+              "FAILED"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          }
+        },
+        "required": [
+          "outcome"
+        ],
+        "title": "LocalFocusSettleRequest",
+        "type": "object"
+      },
+      "LocalFocusView": {
+        "additionalProperties": false,
+        "properties": {
+          "channel_id": {
+            "format": "uuid",
+            "title": "Channel Id",
+            "type": "string"
+          },
+          "connection_id": {
+            "format": "uuid",
+            "title": "Connection Id",
+            "type": "string"
+          },
+          "direction": {
+            "enum": [
+              "FORWARD",
+              "RETURN"
+            ],
+            "title": "Direction",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "lease_id": {
+            "format": "uuid",
+            "title": "Lease Id",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "PENDING",
+              "ACTIVE",
+              "CLOSED"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "wall_id": {
+            "format": "uuid",
+            "title": "Wall Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "wall_id",
+          "lease_id",
+          "connection_id",
+          "channel_id",
+          "direction",
+          "expires_at",
+          "state"
+        ],
+        "title": "LocalFocusView",
+        "type": "object"
+      },
+      "LocalLiveOfferRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "offer_id": {
+            "format": "uuid",
+            "title": "Offer Id",
+            "type": "string"
+          },
+          "sdp": {
+            "maxLength": 131072,
+            "minLength": 1,
+            "title": "Sdp",
+            "type": "string"
+          },
+          "type": {
+            "const": "offer",
+            "default": "offer",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sdp",
+          "offer_id"
+        ],
+        "title": "LocalLiveOfferRequest",
+        "type": "object"
+      },
+      "LocalLiveOfferResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "request_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_.:-]+$",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "sdp": {
+            "maxLength": 131072,
+            "minLength": 1,
+            "title": "Sdp",
+            "type": "string"
+          },
+          "type": {
+            "const": "answer",
+            "default": "answer",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sdp",
+          "request_id"
+        ],
+        "title": "LocalLiveOfferResponse",
+        "type": "object"
+      },
+      "LocalLiveRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "channel_id": {
+            "format": "uuid",
+            "title": "Channel Id",
+            "type": "string"
+          },
+          "device_id": {
+            "format": "uuid",
+            "title": "Device Id",
+            "type": "string"
+          },
+          "expected_generation": {
+            "maximum": 9007199254740991.0,
+            "minimum": 1.0,
+            "title": "Expected Generation",
+            "type": "integer"
+          },
+          "focus_ref_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Focus Ref Id"
+          },
+          "inventory_revision": {
+            "maximum": 9007199254740991.0,
+            "minimum": 1.0,
+            "title": "Inventory Revision",
+            "type": "integer"
+          },
+          "store_id": {
+            "format": "uuid",
+            "title": "Store Id",
+            "type": "string"
+          },
+          "stream": {
+            "default": "main",
+            "enum": [
+              "main",
+              "sub"
+            ],
+            "title": "Stream",
+            "type": "string"
+          },
+          "wall_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wall Id"
+          }
+        },
+        "required": [
+          "store_id",
+          "device_id",
+          "channel_id",
+          "expected_generation",
+          "inventory_revision"
+        ],
+        "title": "LocalLiveRequest",
+        "type": "object"
+      },
+      "LocalLiveResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "lease": {
+            "$ref": "#/components/schemas/MediaLease"
+          },
+          "request_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_.:-]+$",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "lease",
+          "request_id"
+        ],
+        "title": "LocalLiveResponse",
+        "type": "object"
+      },
+      "LocalLiveStartedRequest": {
+        "additionalProperties": false,
+        "description": "Browser observation; neither this counter nor construction grants live.",
+        "properties": {
+          "decoded_frames": {
+            "maximum": 9007199254740991.0,
+            "minimum": 1.0,
+            "title": "Decoded Frames",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "decoded_frames"
+        ],
+        "title": "LocalLiveStartedRequest",
+        "type": "object"
+      },
+      "LocalMediaOwnerRef": {
+        "additionalProperties": false,
+        "properties": {
+          "actor_user_id": {
+            "format": "uuid",
+            "title": "Actor User Id",
+            "type": "string"
+          },
+          "connection_id": {
+            "format": "uuid",
+            "title": "Connection Id",
+            "type": "string"
+          },
+          "store_id": {
+            "format": "uuid",
+            "title": "Store Id",
+            "type": "string"
+          },
+          "tenant_id": {
+            "format": "uuid",
+            "title": "Tenant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tenant_id",
+          "actor_user_id",
+          "connection_id",
+          "store_id"
+        ],
+        "title": "LocalMediaOwnerRef",
+        "type": "object"
+      },
+      "LocalVerifyRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_generation": {
+            "maximum": 9007199254740991.0,
+            "minimum": 1.0,
+            "title": "Expected Generation",
+            "type": "integer"
+          },
+          "store_id": {
+            "format": "uuid",
+            "title": "Store Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "store_id",
+          "expected_generation"
+        ],
+        "title": "LocalVerifyRequest",
+        "type": "object"
+      },
+      "LocalWallResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "request_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_.:-]+$",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "wall": {
+            "$ref": "#/components/schemas/LocalWallView"
+          }
+        },
+        "required": [
+          "wall",
+          "request_id"
+        ],
+        "title": "LocalWallResponse",
+        "type": "object"
+      },
+      "LocalWallView": {
+        "additionalProperties": false,
+        "properties": {
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "ACTIVE",
+              "STOPPING",
+              "CLOSED"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "tenant_id": {
+            "format": "uuid",
+            "title": "Tenant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "tenant_id",
+          "expires_at",
+          "state"
+        ],
+        "title": "LocalWallView",
+        "type": "object"
+      },
       "MeView": {
         "properties": {
           "expires_at": {
@@ -2041,6 +2707,23 @@
         ],
         "title": "MeView",
         "type": "object"
+      },
+      "MediaLease": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "MediaState": {
+        "enum": [
+          "REQUESTED",
+          "NEGOTIATING",
+          "PLAYING",
+          "STALLED",
+          "RECONNECTING",
+          "STOPPING",
+          "CLOSED"
+        ],
+        "title": "MediaState",
+        "type": "string"
       },
       "MembershipView": {
         "properties": {
@@ -3157,6 +3840,39 @@
         ],
         "title": "TokenKind",
         "type": "string"
+      },
+      "TvtIdentityRef": {
+        "additionalProperties": false,
+        "properties": {
+          "actor_user_id": {
+            "format": "uuid",
+            "title": "Actor User Id",
+            "type": "string"
+          },
+          "identity_id": {
+            "format": "uuid",
+            "title": "Identity Id",
+            "type": "string"
+          },
+          "scope_kind": {
+            "const": "TENANT",
+            "default": "TENANT",
+            "title": "Scope Kind",
+            "type": "string"
+          },
+          "tenant_id": {
+            "format": "uuid",
+            "title": "Tenant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tenant_id",
+          "actor_user_id",
+          "identity_id"
+        ],
+        "title": "TvtIdentityRef",
+        "type": "object"
       },
       "UploadSession": {
         "additionalProperties": false,
@@ -7345,6 +8061,1145 @@
         "summary": "Refresh",
         "tags": [
           "tvt-account"
+        ]
+      }
+    },
+    "/api/v1/tvt/live-sessions": {
+      "post": {
+        "operationId": "start_api_v1_tvt_live_sessions_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "connection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Connection Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LocalLiveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalLiveResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start",
+        "tags": [
+          "tvt-local-live"
+        ]
+      }
+    },
+    "/api/v1/tvt/live-sessions/{lease_id}": {
+      "get": {
+        "operationId": "state_api_v1_tvt_live_sessions__lease_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "lease_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Lease Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalLiveResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "State",
+        "tags": [
+          "tvt-local-live"
+        ]
+      }
+    },
+    "/api/v1/tvt/live-sessions/{lease_id}/focus-reservations": {
+      "post": {
+        "operationId": "focus_reserve_api_v1_tvt_live_sessions__lease_id__focus_reservations_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "lease_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Lease Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LocalFocusRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalFocusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Focus Reserve",
+        "tags": [
+          "tvt-local-mux"
+        ]
+      }
+    },
+    "/api/v1/tvt/live-sessions/{lease_id}/heartbeat": {
+      "post": {
+        "operationId": "heartbeat_api_v1_tvt_live_sessions__lease_id__heartbeat_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "lease_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Lease Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalLiveResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Heartbeat",
+        "tags": [
+          "tvt-local-live"
+        ]
+      }
+    },
+    "/api/v1/tvt/live-sessions/{lease_id}/playing": {
+      "post": {
+        "operationId": "playing_api_v1_tvt_live_sessions__lease_id__playing_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "lease_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Lease Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LocalLiveStartedRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalLiveResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Playing",
+        "tags": [
+          "tvt-local-live"
+        ]
+      }
+    },
+    "/api/v1/tvt/live-sessions/{lease_id}/stop": {
+      "post": {
+        "operationId": "stop_api_v1_tvt_live_sessions__lease_id__stop_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "lease_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Lease Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalLiveResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Stop",
+        "tags": [
+          "tvt-local-live"
+        ]
+      }
+    },
+    "/api/v1/tvt/live-sessions/{lease_id}/webrtc-offer": {
+      "post": {
+        "operationId": "offer_api_v1_tvt_live_sessions__lease_id__webrtc_offer_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "lease_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Lease Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LocalLiveOfferRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalLiveOfferResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Offer",
+        "tags": [
+          "tvt-local-live"
+        ]
+      }
+    },
+    "/api/v1/tvt/live-walls": {
+      "post": {
+        "operationId": "wall_issue_api_v1_tvt_live_walls_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalWallResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Wall Issue",
+        "tags": [
+          "tvt-local-mux"
+        ]
+      }
+    },
+    "/api/v1/tvt/live-walls/{wall_id}": {
+      "get": {
+        "operationId": "wall_state_api_v1_tvt_live_walls__wall_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wall_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Wall Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalWallResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Wall State",
+        "tags": [
+          "tvt-local-mux"
+        ]
+      }
+    },
+    "/api/v1/tvt/live-walls/{wall_id}/focus-reservations/{reference_id}/settle": {
+      "post": {
+        "operationId": "focus_settle_api_v1_tvt_live_walls__wall_id__focus_reservations__reference_id__settle_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wall_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Wall Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "reference_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Reference Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LocalFocusSettleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalFocusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Focus Settle",
+        "tags": [
+          "tvt-local-mux"
+        ]
+      }
+    },
+    "/api/v1/tvt/live-walls/{wall_id}/heartbeat": {
+      "post": {
+        "operationId": "wall_heartbeat_api_v1_tvt_live_walls__wall_id__heartbeat_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wall_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Wall Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalWallResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Wall Heartbeat",
+        "tags": [
+          "tvt-local-mux"
+        ]
+      }
+    },
+    "/api/v1/tvt/live-walls/{wall_id}/stop": {
+      "post": {
+        "operationId": "wall_stop_api_v1_tvt_live_walls__wall_id__stop_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wall_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Wall Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalWallResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Wall Stop",
+        "tags": [
+          "tvt-local-mux"
+        ]
+      }
+    },
+    "/api/v1/tvt/local-devices": {
+      "get": {
+        "operationId": "tvtLocalDeviceList",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "store_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Store Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/LocalDeviceView"
+                  },
+                  "title": "Response Tvtlocaldevicelist",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Gateway Timeout"
+          }
+        },
+        "summary": "Device List",
+        "tags": [
+          "tvt-local-devices"
+        ]
+      }
+    },
+    "/api/v1/tvt/local-devices/{connection_id}/channels": {
+      "get": {
+        "operationId": "tvtLocalDeviceChannels",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "connection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Connection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "store_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Store Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalDeviceView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Gateway Timeout"
+          }
+        },
+        "summary": "Channels",
+        "tags": [
+          "tvt-local-devices"
+        ]
+      }
+    },
+    "/api/v1/tvt/local-devices/{connection_id}/verify": {
+      "post": {
+        "operationId": "tvtLocalDeviceVerify",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "connection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Connection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LocalVerifyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalDeviceView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountErrorEnvelope"
+                }
+              }
+            },
+            "description": "Gateway Timeout"
+          }
+        },
+        "summary": "Verify",
+        "tags": [
+          "tvt-local-devices"
         ]
       }
     },

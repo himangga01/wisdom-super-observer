@@ -59,7 +59,7 @@ def media_database(local_database):
         .url.render_as_string(hide_password=False)
         .replace("%", "%%"),
     )
-    command.upgrade(cfg, "0013_tvt_local_media_leases")
+    command.upgrade(cfg, "0015_tvt_local_media_capacity")
     yield local_database
     command.downgrade(cfg, "0012_tvt_local_devices")
 
@@ -79,6 +79,9 @@ def media_case(media_database, local_case):
     yield local_case, inventory, media, executor, native
     executor.shutdown()
     media.shutdown()
+    # This fixture owns its unredeemed tickets as well as its executor. Retire
+    # only those tickets so later global-cap tests start without fixture leaks.
+    close_capacity_requests([(local_case, inventory, media, executor, native)])
 
 
 def issue(case, **changes):
@@ -101,6 +104,42 @@ def issue(case, **changes):
 
 def start(case):
     return case[3].start(issue(case), deadline_ms=20000, correlation_id="live").lease
+
+
+def lapse():
+    """R120: a cached grant answers for at most F after its check began."""
+    from wso_core.tvt.local_media_admission import AUTHORITY_FRESHNESS_SECONDS
+
+    end = time.perf_counter() + AUTHORITY_FRESHNESS_SECONDS
+    while (left := end - time.perf_counter()) > 0:
+        time.sleep(left)
+
+
+def owned_lease(case, view):
+    return case[3]._owned[view.id].lease
+
+
+def worker_sql(case, function, lease, *, timeout_ms=None):
+    """One worker transaction: the function value, its XID and relation locks."""
+    with case[0][0]["WORKER"].begin() as db:
+        if timeout_ms is not None:
+            db.execute(
+                text("SELECT set_config('statement_timeout',:t,true)"),
+                {"t": str(timeout_ms)},
+            )
+        value = db.execute(
+            text(f"SELECT public.wso_tvt_local_media_{function}(:a,:w,:n)"),
+            case[2]._args(lease),
+        ).scalar_one()
+        xid = db.execute(text("SELECT pg_current_xact_id_if_assigned()")).scalar_one()
+        modes = set(
+            db.execute(
+                text(
+                    "SELECT mode FROM pg_locks WHERE pid=pg_backend_pid() AND locktype='relation'"
+                )
+            ).scalars()
+        )
+    return value, xid, modes
 
 
 LIFECYCLE = {
@@ -373,6 +412,7 @@ def test_media_sql_heartbeat_exact_session_and_expiry_cannot_revive(media_case):
         )
     with app_scope(local, "owner") as db, pytest.raises(LocalDeviceFailure):
         LocalMediaReader(db).heartbeat(local[1]["session"], view.id)
+    lapse()
     assert not executor.current(view.id)
     executor.sweep()
     assert media_case[4].closed == 1
@@ -415,6 +455,7 @@ def test_media_sql_lifecycle_tombstones_never_revive(media_case, change):
             {"id": view.id},
         ).one()
         assert row == (True, "STOPPING")
+    lapse()
     assert not executor.current(view.id)
     executor.sweep()
     assert media_case[4].closed == 1
@@ -526,6 +567,7 @@ def test_media_sql_unredeemed_revocation_closes_and_frees_the_channel(
     assert lease_row(media_case, redeemed) == WORKER_STOPPING
     with pytest.raises(LocalDeviceFailure):
         executor.start(ticket, deadline_ms=20000, correlation_id="replay")
+    lapse()
     executor.sweep()
     assert lease_row(media_case, redeemed)[1] == "CLOSED" and native.closed == 1
     retry = restored_issue(media_case, change, inventory)
@@ -556,6 +598,7 @@ def test_media_sql_api_read_closes_unredeemed_lease_but_keeps_worker_stopping(
     with app_scope(local, "owner") as db:
         assert LocalMediaReader(db).get(ids["session"], view.id).state == "STOPPING"
     assert lease_row(media_case, view.id) == WORKER_STOPPING
+    lapse()
     executor.sweep()
     assert lease_row(media_case, view.id)[1] == "CLOSED" and native.closed == 1
 
@@ -585,6 +628,7 @@ def test_media_sql_expiry_sweep_closes_stranded_unredeemed_tombstone(media_case)
     assert lease_row(media_case, stranded) == UNREDEEMED_CLOSED
     # The same sweep hands an expired redeemed lease to its worker unchanged.
     assert lease_row(media_case, owned) == WORKER_STOPPING
+    lapse()
     executor.sweep()
     assert lease_row(media_case, owned)[1] == "CLOSED" and native.closed == 1
 
@@ -716,3 +760,326 @@ def test_media_sql_stop_control_racing_close_cannot_revive_it(media_case):
         )
     assert lease_row(media_case, fresh.id) == WORKER_CLOSED
     assert issue(media_case)
+
+
+# R120/R121: the non-locking hot-path authority read and the cached gate.
+REVOCATIONS = [*LIFECYCLE, "expiry", "stop", "close"]
+
+
+def revoke(case, change, view):
+    if change in LIFECYCLE:
+        change_lifecycle(case, change)
+    elif change == "expiry":
+        expire(case, view.id)
+    elif change == "stop":
+        with app_scope(case[0], "owner") as db:
+            LocalMediaTicketIssuer(db, lambda: 20000).issue_control(
+                case[0][1]["session"], view.id, "stop"
+            )
+    else:
+        assert case[3].close(view.id)
+
+
+def test_media_sql_observe_assigns_no_xid_and_no_row_locks(media_case):
+    view = start(media_case)
+    lease = owned_lease(media_case, view)
+    observed, xid, modes = worker_sql(media_case, "observe", lease)
+    assert observed is not None and observed["id"] == str(view.id)
+    assert xid is None and "RowShareLock" not in modes
+    # Control: the locking check share-locks rows, which assigns an XID.
+    current, xid, modes = worker_sql(media_case, "current", lease)
+    assert current is True and xid is not None and "RowShareLock" in modes
+
+
+@pytest.mark.parametrize("change", REVOCATIONS)
+def test_media_sql_observe_matches_current(media_case, change):
+    from wso_core.tvt.local_service import LocalVerifyBudget
+
+    worker, executor = media_case[2], media_case[3]
+    # Before activation the locking check admits a redeemed lease; observe
+    # does not: the hot path serves NEGOTIATING/PLAYING media leases only.
+    pending = worker.redeem(issue(media_case), budget=LocalVerifyBudget(20000))
+    assert worker_sql(media_case, "current", pending)[0] is True
+    assert worker_sql(media_case, "observe", pending)[0] is None
+    worker.close(pending, cleanup_confirmed=True)
+    view = start(media_case)
+    lease = owned_lease(media_case, view)
+    proof = replace(
+        media_case[4].proof,
+        codec_supported=True,
+        framing_verified=True,
+        timing_verified=True,
+        codec="h264",
+    )
+    for state in ("NEGOTIATING", "PLAYING"):
+        if state == "PLAYING":
+            assert executor.playing(view.id, proof).state == "PLAYING"
+        observed = worker_sql(media_case, "observe", lease)[0]
+        assert observed["state"] == state
+        assert observed == worker_sql(media_case, "worker_view", lease)[0]
+        assert worker_sql(media_case, "current", lease)[0] is True
+    revoke(media_case, change, view)
+    assert worker_sql(media_case, "current", lease)[0] is False
+    assert worker_sql(media_case, "observe", lease)[0] is None
+    assert worker_sql(media_case, "worker_view", lease)[0] is None
+
+
+def test_media_sql_observe_never_waits_on_uncommitted_revoke(media_case):
+    _, ids = media_case[0]
+    view = start(media_case)
+    lease = owned_lease(media_case, view)
+
+    def read(db):
+        return LocalMediaReader(db, lambda: 20000).get(ids["session"], view.id)
+
+    # The held, uncommitted generation bump is a revoke (its trigger rewrote the
+    # lease and grant rows too); the OWNER read parked behind it proves it held.
+    with paused_owner_call(
+        media_case,
+        "UPDATE public.connections SET generation=generation+1 WHERE id=:c",
+        {"c": ids["local"]},
+        read,
+    ) as outcome:
+        began = time.monotonic()
+        observed = worker_sql(media_case, "observe", lease)[0]
+        # R121: no lock wait, and the last committed (pre-revoke) state.
+        assert time.monotonic() - began < 1
+        assert observed is not None and observed["state"] == "NEGOTIATING"
+        # Control: the locking check waits on the same uncommitted revoke.
+        with pytest.raises(DBAPIError) as waited:
+            worker_sql(media_case, "current", lease, timeout_ms=300)
+        assert waited.value.orig.sqlstate == "57014"
+    assert "error" not in outcome and outcome["value"].state == "NEGOTIATING"
+    # Once a revoke commits, the next observe denies.
+    change_lifecycle(media_case, "generation")
+    assert worker_sql(media_case, "observe", lease)[0] is None
+
+
+def test_media_sql_observe_privileges(media_database):
+    observe = "public.wso_tvt_local_media_observe(text,uuid,uuid)"
+    live_read = (
+        "wso_private.wso_tvt_local_media_live_read(wso_private.tvt_local_media_leases)"
+    )
+    runtime = (
+        "wso_app",
+        "wso_identity_bootstrap",
+        "wso_web_session",
+        "wso_connection_worker",
+        "wso_job_worker",
+        "wso_dispatcher",
+        "wso_asset_maintenance",
+    )
+    with media_database["ADMIN"].connect() as db:
+        for signature in (observe, live_read):
+            owner, definer, volatility, config, acl = db.execute(
+                text(
+                    "SELECT pg_get_userbyid(proowner),prosecdef,provolatile,proconfig,proacl::text[] FROM pg_proc WHERE oid=CAST(:f AS regprocedure)"
+                ),
+                {"f": signature},
+            ).one()
+            assert (owner, definer, volatility) == ("wso_tvt_local_owner", True, "v")
+            assert sorted(config) == ["lock_timeout=3s", "search_path=pg_catalog"]
+            # No PUBLIC grant: an ACL entry granted to PUBLIC starts with "=".
+            assert acl and not any(entry.startswith("=") for entry in acl)
+            for role in runtime:
+                allowed = db.execute(
+                    text(
+                        "SELECT has_function_privilege(:r,CAST(:f AS regprocedure),'EXECUTE')"
+                    ),
+                    {"r": role, "f": signature},
+                ).scalar_one()
+                assert allowed is (
+                    signature == observe and role == "wso_connection_worker"
+                )
+    lease = {"a": "0" * 64, "w": uuid4(), "n": uuid4()}
+    call = text("SELECT public.wso_tvt_local_media_observe(:a,:w,:n)")
+    for role in ("APP", "IDENTITY", "SESSION", "DISPATCH", "JOB", "ASSET_MAINTENANCE"):
+        with pytest.raises(DBAPIError) as denied, media_database[role].begin() as db:
+            db.execute(call, lease)
+        assert denied.value.orig.sqlstate == "42501"
+    with media_database["WORKER"].begin() as db:
+        assert db.execute(call, lease).scalar_one() is None
+    with pytest.raises(DBAPIError) as hidden, media_database["WORKER"].begin() as db:
+        db.execute(
+            text(
+                "SELECT wso_private.wso_tvt_local_media_live_read(NULL::wso_private.tvt_local_media_leases)"
+            )
+        )
+    assert hidden.value.orig.sqlstate == "42501"
+
+
+def test_media_sql_gate_end_to_end_revocation(media_case):
+    _, _, media, executor, native = media_case
+    view = start(media_case)
+    lease = owned_lease(media_case, view)
+    calls = []
+    query = media._query
+
+    def counted(given, function, **kwargs):
+        calls.append(function)
+        return query(given, function, **kwargs)
+
+    media._query = counted
+    assert all(executor.current(view.id) for _ in range(1000))
+    assert calls.count("observe") <= 6 and set(calls) <= {"observe"}
+    change_lifecycle(media_case, "session")
+    revoked = time.perf_counter()
+    while executor.current(view.id):
+        assert time.perf_counter() - revoked < 0.15
+    assert time.perf_counter() - revoked < 0.15 and calls[-1] == "observe"
+    settled = len(calls)
+    # Sticky: once the freshness window has passed there is still no SQL.
+    lapse()
+    assert not executor.current(view.id) and not media.current(lease)
+    assert len(calls) == settled
+    executor.sweep()
+    assert native.closed == 1 and lease_row(media_case, view.id)[1] == "CLOSED"
+
+
+def capacity_inventory(case, count):
+    channels = tuple(
+        LocalInventoryChannel(
+            guid=UUID(int=index + 1).bytes_le,
+            raw_index=index,
+            window_index=index,
+            ordinal=index + 1,
+            kind="digital",
+        )
+        for index in range(count)
+    )
+    worker = admission(case[0])
+    try:
+        inventory = LocalVerificationExecutor(
+            worker, InventoryProvider(channels=channels)
+        ).verify(
+            issuer(case[0]), deadline_ms=20000, correlation_id="capacity-inventory"
+        )
+        return (case[0], inventory, *case[2:])
+    finally:
+        worker.shutdown()
+
+
+def capacity_case(database):
+    from tests.integration.test_local_device_admission import local_case
+
+    local = local_case.__wrapped__(database)
+    return capacity_inventory((local, None, None, None, None), 17)
+
+
+def capacity_ticket(case, index):
+    return issue(
+        case, channel=case[1].channels[index].id, revision=case[1].inventory_revision
+    )
+
+
+def close_capacity_requests(cases):
+    for case in cases:
+        with case[0][0]["ADMIN"].begin() as db:
+            db.execute(
+                text(
+                    "UPDATE wso_private.tvt_local_media_leases SET invalidated=true,state='CLOSED',cleanup_confirmed=true WHERE connection_id=:c AND worker_epoch IS NULL"
+                ),
+                {"c": case[0][1]["local"]},
+            )
+
+
+def test_media_sql_actor_cap_16(media_case):
+    case = capacity_inventory(media_case, 17)
+    try:
+        tickets = [capacity_ticket(case, index) for index in range(16)]
+        assert len(set(tickets)) == 16
+        with pytest.raises(LocalDeviceFailure) as caught:
+            capacity_ticket(case, 16)
+        assert (caught.value.code, caught.value.status) == ("LOCAL_DEVICE_BUSY", 429)
+    finally:
+        close_capacity_requests([case])
+
+
+def test_media_sql_global_cap_64(media_database):
+    cases = [capacity_case(media_database) for _ in range(5)]
+    try:
+        # Only this disposable database is inspected; no source data is modified.
+        with media_database["ADMIN"].connect() as db:
+            occupied = db.execute(
+                text(
+                    "SELECT count(*) FROM wso_private.tvt_local_media_leases WHERE state<>'CLOSED' AND expires_at>clock_timestamp()"
+                )
+            ).scalar_one()
+        assert occupied == 0
+        for case in cases[:4]:
+            assert len({capacity_ticket(case, index) for index in range(16)}) == 16
+        with pytest.raises(LocalDeviceFailure) as caught:
+            capacity_ticket(cases[4], 0)
+        assert (caught.value.code, caught.value.status) == ("LOCAL_DEVICE_BUSY", 429)
+    finally:
+        close_capacity_requests(cases)
+
+
+def test_media_sql_pending_startups_do_not_starve_existing_live(
+    media_case, media_database
+):
+    from wso_core.tvt.local_service import LocalVerifyBudget
+
+    case = capacity_inventory(media_case, 17)
+    live = (
+        case[3]
+        .start(capacity_ticket(case, 0), deadline_ms=20000, correlation_id="existing")
+        .lease
+    )
+    existing = owned_lease(case, live)
+    assert case[2].current(existing)
+    other = capacity_case(media_database)
+    admission_owner = case[2]
+    pending = [
+        admission_owner.redeem(
+            capacity_ticket(case, index), budget=LocalVerifyBudget(20000)
+        )
+        for index in range(1, 16)
+    ]
+    pending.append(
+        admission_owner.redeem(
+            capacity_ticket(other, 0), budget=LocalVerifyBudget(20000)
+        )
+    )
+    entered = threading.Condition()
+    count = 0
+    release = threading.Event()
+    failures = []
+
+    def startup(credentials, channel, current):
+        nonlocal count
+        assert current()
+        with entered:
+            count += 1
+            entered.notify_all()
+        assert release.wait(12)
+        return Session()
+
+    def run(lease):
+        try:
+            admission_owner.open(lease, startup, budget=LocalVerifyBudget(20000))
+        except LocalDeviceFailure as error:
+            failures.append(error.code)
+
+    threads = [threading.Thread(target=run, args=(lease,)) for lease in pending]
+    try:
+        for thread in threads:
+            thread.start()
+        with entered:
+            assert entered.wait_for(lambda: count >= 8, timeout=8)
+        # Eight long startup transactions leave eight real pool connections
+        # available while the other eight callers wait before checkout.
+        lapse()
+        with entered:
+            assert count == 8
+        assert admission_owner.current(existing)
+        assert not failures
+    finally:
+        release.set()
+        for thread in threads:
+            thread.join(10)
+            assert not thread.is_alive()
+        for lease in pending:
+            admission_owner.close(lease, cleanup_confirmed=True)
+        close_capacity_requests([other])
+    assert count == 16 and not failures

@@ -1,5 +1,127 @@
 # Local TVT media service authority
 
+## R142 equal derived timestamps — 2026-10-06
+
+Read [the frozen R142 source report](../analysis/c10-duplicate-timestamp-report.md)
+and the canonical service report before changing this boundary. C10 established
+one qualified duplicate derived device timestamp; earlier coarse c9 failures
+remain unclassified. The private codec's strict wire frame-index ordering,
+selected stream and original identity checks remain unchanged.
+
+The adapter now keeps separate last raw and last presentation PTS. Raw missing,
+non-integer, signed-int64 violations and regressions still fail at the existing
+early guard. Equality is a candidate for all original media/scope/identity/codec/
+configuration validation. Only afterward does the adapter map the first PTS
+unchanged and each later PTS to `max(raw, last_mapped + 24)` microseconds. Overflow
+fails closed before clock/ordinal commit, without saturation or reset. This
+state spans decoder dimension epochs. Equal malformed/foreign candidates fail
+their actual later guard; this is the intentional failure-priority change.
+
+Decoder pending/opaque mapping, global output PTS/ordinal, original native/peer
+ownership and confirmed predecessor retirement remain strict. R140 failure deltas
+compare raw timestamps; observation production/schema is unchanged. The 24µs step
+also separates the installed 90kHz conversion across signed zero. Ordinary 100ms
+raw advances pass through unchanged when ahead of the mapped clock. No arbitrary
+encoded drop, raw timestamp rewrite or native ABI/decoder change is introduced.
+
+Author evidence: 163 focused source/transition/pressure/observation cases and 12
+targeted portable decoder cases passed; one real synthetic same-peer VP8/RTP case
+received four equal-raw inputs at distinct RTP PTS 0/2/4/6. These are source/local
+synthetic gates, not repaired recorder acceptance. C10 exceptionally retired with
+one original lease cleanup unconfirmed according to Root; the new source neither
+repairs that historical outcome nor grants twelve-tile acceptance. Independent
+review and a new immutable approval precede actual diagnostic execution.
+
+## R138 bounded ingress pressure — 2026-10-06
+
+Read after the R137 section below. c8 actual execution replaced the former
+format rejection with six measured `ingress_queue/overflow` failures, including
+one initial decoder launch without a dimension change. The approximately
+1.6–1.7s delay is consistent with the sixteen-frame queue filling during lazy
+decoder launch, but c8 did not distinguish count pressure from byte pressure.
+Independent inert Windows HEVC samples measured first-decode costs719.8,
+1712.8 and1847.6ms versus subsequent0.8–5.1ms; all original decoders settled.
+This is a causal timing sample, not a throughput or recorder acceptance claim.
+
+`NativeDecodedSource` now reserves remaining FIFO count/byte credit before
+calling `read_frames`. There is one producer; its only concurrent consumer frees
+credit. Queued plus returned-but-not-yet-queued input therefore remains inside
+the same16-frame/4MiB budget, with no additional drained batch. A full queue
+waits on its condition for at most50ms per check; dequeue and Stop notify it.
+The next upstream frame can be larger than remaining byte credit, so an empty
+bounded read waits for capacity instead of polling repeatedly. Credit released
+during that read is recognized before waiting. A pressure episode lasts at
+most5s, with the unchanged source/transition/decoder/caller/lease bounds able
+to end it earlier. The new fixed diagnostic is `ingress_queue/wait_timeout`.
+Current checks and the independent authority/permit thread continue while
+waiting. Successful admission or complete queue drainage ends pressure.
+
+The native parent also participates: after current/cancel/expiry/permanent-close
+checks, `LiveParentAuthority.pump` leaves the original next IPC message unread
+while parsed frames remain queued. Consumer dequeue restores credit. No sequence
+is advanced or ACK fabricated during the pause; setup/control/media validation
+occurs normally when that same message resumes. Original parent16/4MiB,
+callback256 chunks/1MiB, framing,30s orphan, selected-stream, native identity and
+retirement limits are unchanged. No SQL, decoder protocol, native callback,
+frontend or dependency change is introduced. This native-parent change needs
+scoped independent review and a new protected source receipt before execution.
+
+Inert source→original-session→real parent/remote IPC coverage preserved forty
+ordered frames through a1.8s blocked first decode, with source16/parent1 queued
+and unchanged original decoder. Parent authority/sequence/deferred-invalid
+message cases and existing provider tests passed75 cases. Current source and
+decoder/WebRTC/worker test counts are recorded in the canonical service report.
+No recorder, Chrome, SQL or service run was performed for this repair. The fixed
+callback queue can still overflow if the source stalls beyond its actual byte
+budget; acceptance under1/4/12 live tiles must measure that residual risk.
+
+## R137 source dimension transitions — 2026-10-06
+
+Baseline: `6436748`, active uncommitted stage-1 worktree after the retired c7
+run. This section records a source repair and inert verification; current device
+acceptance remains in the canonical service report. Read this section before
+changing `native_source.py` and update it after source or execution changes.
+
+`NativeDecodedSource` now enables same-codec dimension changes in its original
+adapter. The standalone adapter remains strict by default. Source identity,
+generation/channel/task, proof, timestamp, stream validation and byte/dimension
+limits are preserved. Its lifetime packet ordinal and source PTS never reset.
+Each bounded FIFO entry carries validated random-access status and a format
+epoch. A new dimension observation clears queued RGB and starts a five-second
+deadline. Further changes cannot extend that deadline before valid current-epoch
+RGB is published. The authority stage checks the deadline independently of a
+blocked decoder retirement. Existing startup, ingress, permit and lease bounds
+still apply.
+
+The serial decoder owner retires the exact old decoder with `close()` followed
+by `wait_closed() is True`, retaining it through interruption/retries. Only then
+may it allocate a successor, after a current-authority/stop check and a complete
+same-codec parameter-set/random-access picture. Validated new-format inter
+pictures are omitted only while waiting for that configuration, in FIFO order;
+malformed headers, reserved transition pictures, missing key configuration,
+codec/identity/PTS changes remain terminal. At most sixteen successor allocations
+occur in any rolling sixty seconds; history expires, so no lifetime format cap
+is imposed. Encoded FIFO remains sixteen pictures/four MiB and latest RGB one.
+Decoder protocol, original native session/socket/task and original peer do not
+change. No native reconnect, frontend retry or SQL/TTL change is introduced.
+
+Decoder output must match declared dimensions and original binding. Publication
+rejects late old-epoch outputs under the same lock as the observation boundary
+and maintains global strictly increasing PTS/ordinals. Stop/revoke/overflow can
+fence immediately while old close is pending, but source settlement stays pending
+until that exact owner and all source threads settle. Existing worker retirement
+therefore cannot certify attached cleanup early.
+
+Executed source evidence: causal RED five failures/two passes; initial combined
+source/transition/observation GREEN **92 passed**, then expanded H264/H265
+transition selection **21 passed**. Existing decoder/WebRTC/worker selection
+**138 passed**, including explicitly selected real isolated Windows H264/HEVC
+synthetic codec tests. One additional real local VP8 peer test passed for
+352×240 → 1280×720 → 352×240 with increasing received PTS and unchanged peer.
+Six changed Python files pass Ruff check/format; two production/helper files pass
+strict mypy. No SDK, device, Chrome, service or SQL execution occurred. Review,
+new immutable approval and actual 1/4/12-tile sizing are still required.
+
 Updated: **2026-10-04, Asia/Seoul**. Scope: approved M3 contract, SQL admission
 and original native-session ownership. Read this document with
 [service-analysis.md](../service-analysis.md),
@@ -18,6 +140,12 @@ before current SQL acceptance is claimed.
 admission engine — **15 passed, 0 skipped** (run `d7dc899c84f1434aa69f5c4c86496d4f`),
 owned database removed, source database unchanged. Later 0013 corrections and
 their SQL runs are recorded in the [liveness review](../analysis/2026-10-04-local-media-liveness-review.md).
+
+*Update 2026-10-05 (rulings R120/R121, multi-view stage-1 Task 1):* the worker's
+hot-path `current`/`view` checks are now answered by a bounded per-lease cache
+over a new non-locking SQL read (migration 0014). Statements below that every
+check is fresh SQL are amended by the
+[hot-path authority gate](#hot-path-authority-gate-r120r121--2026-10-05) section.
 
 ## Baseline and verification limits
 
@@ -58,7 +186,8 @@ proof before PLAYING.
    media lease. No streaming read, decoder or browser delivery runs inside the
    credential transaction.
 5. `LocalMediaExecutor` retains only the sealed media authority and credential-free
-   original native owner. Fresh bounded SQL authorizes reads and delivery.
+   original native owner. Bounded SQL authorizes reads and delivery (since
+   2026-10-05 through the R120 hot-path gate, at most 100 ms old).
    A default one-second sweep checks authority and synchronously renews the
    unexpired native owner with a fresh callback; native code must discard that
    callback immediately. Provider renewal does not extend SQL lease expiry.
@@ -112,7 +241,8 @@ Worker ports in `local_media_service.py`:
   It uses the retained original/tombstone and never redeems a second ticket.
   The original `.stop` wrapper preserves its response deadline.
 - `.current(lease_id)`, `.lease(lease_id)` and `.read_frames(lease_id, max_frames,
-  max_bytes, deadline_ms)` use held worker bindings and fresh SQL authority.
+  max_bytes, deadline_ms)` use held worker bindings and gate-bounded SQL
+  authority (R120: an answer comes from a check begun at most 100 ms earlier).
   Reads allow at most 16 frames and 8 MiB; both type and actual compressed byte
   counts are checked after provider return, then authority is checked again.
 - `.playing(lease_id, LocalLiveProof)` requires independent native permission,
@@ -192,6 +322,112 @@ channel. Native process and decoder limits can be lower; production integration
 must enforce the reviewed actual native capacity instead of treating SQL caps as
 measured multiview support.
 
+## Hot-path authority gate (R120/R121) — 2026-10-05
+
+Scope: multi-view stage-1 Task 1 (final review I3). Source baseline: worktree at
+`6436748` on `codex/superlive-web-service` plus the uncommitted Task 1 delta
+(ruling R104: implementers do not commit). Cause, from the Phase 0 measurement
+in the liveness review section 6c: every hot-path check was a pooled
+transaction whose `LIVE` predicate share-locked about ten rows, about 33 checks
+per frame, about 665 SQL transactions/s and 200 KB/s of WAL per stream.
+
+Implemented (source exists; executed evidence below):
+
+- `LocalMediaAdmission.current(lease)` and `.view(lease)` are answered by a
+  per-lease gate (`LocalMediaAdmission(worker_url, keys, *,
+  clock=time.perf_counter)`). A cached answer serves a call only while
+  `clock() < valid_until`, where `valid_until = min(s + F, s + (expires_at − UTC
+  at s))`, `F = AUTHORITY_FRESHNESS_SECONDS = 0.1` and s is the gate clock
+  sampled just before the check's transaction begins. The first call for a lease
+  always runs SQL, and nothing is shared between leases. `view` returns the
+  independently deep-copied `MediaLease` of that check, including nested owner
+  and device scope; callers cannot mutate the cached authority. `current` keeps
+  its internal cached-object fast path.
+- At most one check per lease is in flight. Other callers wait up to
+  `AUTHORITY_WAIT_SECONDS = 5.0` and accept its answer only if it began after
+  their own call time minus F; otherwise they check again. A call re-entering
+  from the checking thread is denied at once instead of waiting on itself.
+  Freshness uses the injected gate clock; the waiter bound uses real monotonic
+  time so a stopped test clock cannot keep a waiter blocked.
+- The approved slow-success contract uses call-entry timing: a successful
+  in-flight observation answers its runner and eligible waiters even if response
+  latency crosses the lease expiry. Clock skew can also produce a successful
+  returned view whose expiry has already passed. Neither case becomes sticky
+  denial solely because the answer is slow. Ordinary cache reuse remains
+  clipped to expiry, and the downstream emission permit is also clipped; this
+  does not promise freshness or an unexpired lease at return time.
+- Denial is sticky per lease: a NULL answer, any error (pool or statement
+  timeout, role mismatch, invalid view), a waiter timeout, `close()` during a
+  check and `shutdown()`. The caller that ran a failing check still receives the
+  fixed 503 mapping. `close()` denies and tombstones before its own SQL; the
+  `AUTHORITY_TOMBSTONES = 64` most recently closed tokens are denied without SQL.
+  R133 explicitly accepts lifetime retention when a distinct sealed closed token
+  is re-queried after eviction from those 64 tombstones: its newly created denied
+  entry stays until explicit retirement or admission shutdown. There is no
+  configured cap on the authority registry. Its size can grow with the number
+  of distinct sealed tokens re-queried during that admission/process lifetime;
+  the 64-entry tombstone cap does not bound this retained denial state. The
+  tradeoff preserves active sticky denial rather than evicting it to save memory.
+  Only already sealed internal leases can reach this path.
+  One registry lock and one lock plus condition per lease; no SQL or callback
+  runs while any of them is held.
+- Migration `0014_tvt_local_media_hot_authority.py` (down revision 0013) adds
+  `wso_private.wso_tvt_local_media_live_read`, 0013's `LIVE` predicate with all
+  ten `FOR SHARE` clauses removed, and
+  `public.wso_tvt_local_media_observe(p_authority text, p_worker uuid, p_native
+  uuid) RETURNS jsonb`, 0013's worker view on `live_read` that additionally
+  requires NEGOTIATING or PLAYING. Both use 0013's function options and owner
+  `wso_tvt_local_owner`, are revoked from every runtime role, and only
+  `observe` is executable, by `wso_connection_worker`. Downgrade drops both. Its
+  revision id is `0014_tvt_local_media_hot_auth` because the file stem is 34
+  characters and `alembic_version.version_num` is `varchar(32)`. 0013 is
+  unchanged: state transitions, startup open, API reads/heartbeats and control
+  tickets keep the locking `LIVE`.
+- `NativeDecodedSource` anchors its emission permit at
+  `time.monotonic() − AUTHORITY_FRESHNESS_SECONDS` (see the
+  [WebRTC guide](tvt-local-webrtc.md)).
+
+Bounds. R120 amends R106(a) ("every check is a fresh SQL transaction"). t_r is
+the commit time of a revoke, stop or expiry:
+
+- No grant to any `current`/`view` call that begins after t_r + 100 ms. This
+  bounds native child grants, the parent queue, decoder input and output, and
+  publication.
+- WebRTC sender: nothing after t_r + 200 ms + one `time.monotonic` tick
+  (15.625 ms on this Python), unchanged, because the permit is anchored at
+  now − F.
+- Overall t_r + 300 ms while check latency stays at or below 200 ms.
+- Cost: at most one `observe` check per lease per F, so at most 10/s per stream
+  (about 20 transactions/s with pool pre-ping) whatever the packet or frame
+  rate. `observe` assigns no transaction ID and takes no row locks.
+- R121: a check that overlaps an uncommitted revoke returns the pre-revoke
+  state; the first check after the commit denies, so the cache window bounds it.
+  Cost if R120 is wrong: native/decoder-side revocation lands up to 100 ms later
+  than with per-call SQL.
+
+Executed in this session (2026-10-05, no device, browser or network):
+
+- Media selection (pool, worker, source, WebRTC, service, contracts, RPC, gate,
+  migrations): **139 passed** (116 before plus 23 new). Browser-fixture contract
+  test: 27 passed.
+- Guarded PostgreSQL 17 suite through the controller's runner: RED run
+  `63f24e7b4a9f4df78afb487b287dc170` (15 new cases errored: revision 0014
+  missing); run `7fd8d1bf289f486cb55ccac7ca27e641` after the migration and before
+  the gate (14 passed; the gate end-to-end case failed with 1,000 locking
+  `current` calls); GREEN run `6795ab93c07443918ae95d5cad37e460`: **44 passed,
+  0 failed, 0 errors, 0 skipped**, owned database removed, source database
+  unchanged, zero known private occurrences.
+- Ruff check and format clean on the authored files; strict mypy clean on the
+  admission module, `native_source.py` and migration 0014.
+
+Not established: device, browser or long-duration playback with the gate, and
+the 12–16-stream sizing (later stage-1 tasks). The native codec owner contract
+says the authority callback "checks the current owner state every time"; it now
+answers from a check at most 100 ms old. No native-owned file changed, and the
+later native review (Task 7) must acknowledge that wording change. Five
+existing guarded SQL cases that asserted a revocation right after a recent check
+now first wait out F, which is the R120 behavior change, not a weaker fence.
+
 ## Verification and priorities
 
 Scoped portable verification command:
@@ -210,7 +446,8 @@ correction. SQL constraints/functions still require actual PostgreSQL execution.
 Root must explicitly activate `WSO_TEST_W08_LOCAL_MEDIA_ACCEPTANCE=1`, the
 existing W08 local flag and W07 directory owned-database settings. The fixture
 uses only its fresh `w07_directory_<uuid>` owned DB, checks identity/comment,
-upgrades to 0013, then downgrades to 0012 before the parent fixture cleanup.
+upgrades to 0013 (to 0014 since 2026-10-05), then downgrades to 0012 before the
+parent fixture cleanup.
 It does not migrate the configured source database. Thirteen SQL cases cover
 scope/replay/table access, permission separation, heartbeat/expiry, eight lifecycle
 tombstones, purpose/replay/stop and independent PLAYING proof.
@@ -297,3 +534,9 @@ parity completion is outside this source slice.
   native/browser acceptance remain Root-owned; no DB/device/Git call occurred here.
 
 - 2026-10-04: a causal attach/shutdown crossing test also failed before correction. Current authority now fences executor shutdown before and after its SQL query; attachment rechecks the exact owned entry and shutdown flag before storing the hook. No SQL runs under the global executor ownership lock; the per-owner attachment lock intentionally serializes its bounded current check against close. This prevents a late registration from enabling resource creation after shutdown begins. Final portable count is 142 passed / 15 gated SQL skipped.
+- 2026-10-05, multi-view stage-1 Task 1 (R120/R121): per-lease hot-path
+  authority gate in `LocalMediaAdmission`, migration 0014 `observe`/`live_read`
+  and permit anchoring at now − F. Media selection 139 passed; guarded SQL run
+  `6795ab93c07443918ae95d5cad37e460`: 44 passed with zero failed, errored or
+  skipped cases. Bounds and limits are in the hot-path authority gate section.
+  No device, browser or Git operation occurred; the change is uncommitted.

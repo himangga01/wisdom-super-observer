@@ -17,6 +17,7 @@ from wso_core.tvt.local_live import (
     LiveAcknowledgement,
     LiveCodec,
     LiveIdentity,
+    LiveRefused,
     PrivateLiveFrame,
 )
 
@@ -27,11 +28,15 @@ from .local_inventory_ipc import (
     decode,
     encode,
 )
+from .local_live_diagnostics import NativeFirstKeyRecord, _FirstKeyDiagnostics
 
 MAX_ENVELOPE = 1 << 20
 MAX_QUEUE_BYTES = 4 << 20
 MAX_QUEUE_FRAMES = 16
 MAX_MEDIA_TTL = 30.0
+# Keep this IPC module importable by the isolated stdlib-only native child.
+# The media facade uses the same bound from core local_service.
+FIRST_FRAME_SECONDS = 10.0
 LIVE_PURPOSES = frozenset(("prepare", "connect", "metadata", "send", "frame", "idle"))
 
 
@@ -98,7 +103,14 @@ class LiveRemoteAuthority(RemoteAuthority):
 
 
 class LiveParentAuthority(ParentAuthority):
-    def __init__(self, deadline: float, cancel: Any, selection: Any = None) -> None:
+    def __init__(
+        self,
+        deadline: float,
+        cancel: Any,
+        selection: Any = None,
+        *,
+        diagnostics: bool = False,
+    ) -> None:
         super().__init__(deadline, cancel)
         self.selection = selection
         self.codec: LiveCodec | None = None
@@ -106,6 +118,8 @@ class LiveParentAuthority(ParentAuthority):
         self.frames: deque[PrivateLiveFrame] = deque()
         self.queued_bytes = 0
         self.open_ack = False
+        self._first_frame_deadline: float | None = None
+        self._sub_stream_adaptation_off = False
         self.setup_data: dict[str, Any] | None = None
         self.ready = False
         self.handed_off = False
@@ -113,6 +127,51 @@ class LiveParentAuthority(ParentAuthority):
         self._live_sequence = 1
         self._retirement: threading.Thread | None = None
         self._transition_lock = threading.RLock()
+        self._diagnostics: _FirstKeyDiagnostics | None = None
+        if diagnostics is True:
+            try:
+                self._diagnostics = _FirstKeyDiagnostics(time.monotonic())
+            except BaseException:  # noqa: BLE001,S110 -- diagnostics cannot alter authority
+                pass
+
+    def _diagnostic_note(self, method: str, *values: Any) -> None:
+        if self._diagnostics is not None:
+            try:
+                getattr(self._diagnostics, method)(*values)
+            except BaseException:  # noqa: BLE001,S110 -- fixed observation only
+                pass
+
+    def first_key_snapshot(self) -> NativeFirstKeyRecord | None:
+        if self._diagnostics is not None:
+            try:
+                with self._transition_lock:
+                    return self._diagnostics.snapshot(
+                        self, self.failure or ("ready" if self.ready else "waiting")
+                    )
+            except BaseException:  # noqa: BLE001,S110 -- no private exception retained
+                pass
+        return None
+
+    def check(self, current: Callable[[], bool]) -> bool:
+        if self._diagnostics is None:
+            return super().check(current)
+        start = end = None
+        try:
+            start = time.monotonic()
+        except BaseException:  # noqa: BLE001,S110 -- original check still runs once
+            pass
+        try:
+            return super().check(current)
+        finally:
+            try:
+                end = time.monotonic()
+            except BaseException:  # noqa: BLE001,S110 -- preserve original result/exception
+                pass
+            self._diagnostic_note("checked", start, end)
+
+    @property
+    def sub_stream_adaptation_off(self) -> bool:
+        return self._sub_stream_adaptation_off
 
     def start_watchdog(self, stop_original: Callable[[], None]) -> None:
         super().start_watchdog(stop_original)
@@ -128,10 +187,9 @@ class LiveParentAuthority(ParentAuthority):
             if watchdog is not None:
                 watchdog.join()
             if owner.finish():
-                from .windows_socket import PENDING_OWNERS
+                from .windows_socket import remove_confirmed_owner
 
-                if owner in PENDING_OWNERS:
-                    PENDING_OWNERS.remove(owner)
+                remove_confirmed_owner(owner)
 
         self._retirement = threading.Thread(
             target=retire, daemon=False, name="local-live-original-retirement"
@@ -181,6 +239,11 @@ class LiveParentAuthority(ParentAuthority):
 
     def deny(self, reason: str) -> bool:
         with self._transition_lock:
+            if self._diagnostics is not None:
+                try:
+                    self._diagnostics.snapshot(self, self.failure or reason)
+                except BaseException:  # noqa: BLE001,S110 -- snapshot precedes state clear
+                    pass
             self.ready = self._authorized = False
             self.frames.clear()
             self.queued_bytes = 0
@@ -205,6 +268,7 @@ class LiveParentAuthority(ParentAuthority):
             "raw_index",
             "window_index",
             "ordinal",
+            "stream",
             "live_basis",
             "login_accepted",
             "serial_matched",
@@ -212,7 +276,10 @@ class LiveParentAuthority(ParentAuthority):
             raise AuthorityError()
         selection = self.selection
         if (
-            data["channel"] != selection.channel_guid.hex()
+            selection.stream not in ("main", "sub")
+            or type(data["stream"]) is not int
+            or data["stream"] != (2 if selection.stream == "sub" else 1)
+            or data["channel"] != selection.channel_guid.hex()
             or data["raw_index"] != selection.raw_index
             or type(data["raw_index"]) is not int
             or data["window_index"] != selection.window_index
@@ -250,7 +317,7 @@ class LiveParentAuthority(ParentAuthority):
             identity=identity,
             peer_capability=data["peer_version"],
             channel_number=selection.raw_index & 255,
-            stream=1,
+            stream=data["stream"],
             exclusive_first_task=True,
             authorize=lambda given: (
                 self._authorized and given is identity and not self.failure
@@ -267,9 +334,24 @@ class LiveParentAuthority(ParentAuthority):
         if self.failure:
             return False
         try:
+            if self._stop.is_set():
+                return self.deny("closed")
+            if not self.check(current):
+                return False
+            # One outstanding IPC envelope is ACKed only after validation. A
+            # retained frame consumes receive credit; leave the next original
+            # message/sequence untouched until the consumer drains the FIFO.
+            # Conservative empty-FIFO credit also covers an unknown next size
+            # or multiple parsed pictures without increasing any byte bound.
+            with self._transition_lock:
+                if self.failure or self._stop.is_set():
+                    return False
+                if self.frames:
+                    return True
             if self.connection is None or not self.connection.poll(0):
                 return True
             raw = self.connection.recv_bytes(MAX_ENVELOPE + 1)
+            self._diagnostic_note("received", len(raw), raw[:1] == b"E")
             if not self.check(current):
                 return False
             self._authorized = True
@@ -287,13 +369,16 @@ class LiveParentAuthority(ParentAuthority):
                         or message["purpose"] not in LIVE_PURPOSES
                     ):
                         raise AuthorityError()
+                    diagnostic_purpose = message["purpose"]
                 elif message.get("type") == "setup":
                     if set(message) != {"type", "data", "generation", "sequence"}:
                         raise AuthorityError()
                     self._setup(message["data"])
+                    diagnostic_purpose = "setup"
                 else:
                     raise AuthorityError()
             elif raw[:1] == b"E":
+                diagnostic_purpose = "envelope"
                 if self.codec is None or self.identity is None:
                     raise AuthorityError()
                 was_ready = self.ready
@@ -301,10 +386,36 @@ class LiveParentAuthority(ParentAuthority):
                     raw[1:], generation=self.identity.generation
                 ):
                     if type(item) is LiveAcknowledgement:
-                        self.open_ack = item.command == 1281
+                        self.open_ack = item.command in (1281, 1285)
+                        if self.open_ack and self._first_frame_deadline is None:
+                            self._first_frame_deadline = (
+                                time.monotonic() + FIRST_FRAME_SECONDS
+                            )
+                        if self.open_ack and self._first_frame_deadline is not None:
+                            self._diagnostic_note(
+                                "acknowledged",
+                                item.command,
+                                self._first_frame_deadline - FIRST_FRAME_SECONDS,
+                            )
+                        if item.warning == "SUB_STREAM_ADAPTATION_OFF":
+                            self._sub_stream_adaptation_off = True
                     elif type(item) is PrivateLiveFrame:
+                        if self._diagnostics is not None:
+                            try:
+                                observed = time.monotonic()
+                                self._diagnostic_note(
+                                    "frame",
+                                    item.key_frame,
+                                    observed,
+                                    self._first_frame_deadline is not None
+                                    and observed >= self._first_frame_deadline,
+                                )
+                            except BaseException:  # noqa: BLE001,S110 -- original frame path
+                                pass
                         if not self.open_ack:
                             raise AuthorityError()
+                        if not self._first_frame_current(current):
+                            return False
                         if not self.ready and not item.key_frame:
                             continue
                         summary = item.summary()
@@ -351,11 +462,30 @@ class LiveParentAuthority(ParentAuthority):
                 )
             )
             self._live_sequence += 1
+            self._diagnostic_note("completed", diagnostic_purpose)
             return True
+        except LiveRefused as refusal:
+            return self.deny("device_" + refusal.reason)
         except Exception:  # noqa: BLE001 -- fixed private IPC boundary
             return self.deny("protocol")
         finally:
             self._authorized = False
+
+    def _first_frame_current(self, current: Callable[[], bool]) -> bool:
+        if (
+            not self.ready
+            and self._first_frame_deadline is not None
+            and time.monotonic() >= self._first_frame_deadline
+        ):
+            # Preserve caller cancellation/deadline and fresh authority denial.
+            if not self.check(current):
+                return False
+            return self.deny("no_signal")
+        return not self.failure
+
+    def tick(self, current: Callable[[], bool]) -> bool:
+        # Process an independently parsed refusal before the no-media outcome.
+        return super().tick(current) and self._first_frame_current(current)
 
     def close(self, timeout: float = 1) -> bool:
         self.deny("closed")

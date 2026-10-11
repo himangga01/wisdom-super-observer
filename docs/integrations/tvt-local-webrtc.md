@@ -1,5 +1,48 @@
 # Local TVT WebRTC media transport
 
+## R142 mapped presentation clock — 2026-10-06
+
+The source adapter now accepts fully validated equal derived device timestamps
+while preserving raw-regression rejection. It keeps raw PTS separate from the
+strict lifetime presentation PTS passed to the existing decoder and peer:
+first mapped PTS is raw, then `max(raw, last_mapped + 24)` microseconds. This
+does not reset on resolution rotation. Original decoder opaque/pending mapping,
+track PTS/ordinal validation, permits and original peer ownership are unchanged.
+
+The 24µs minimum is deliberate: aiortc converts microseconds to 90kHz using
+`int(Fraction)`. The widest equal-value interval is around signed zero and is
+less than 22.23µs; 24µs therefore separates converted timestamps across all signs.
+All mapped values stay signed-int64; overflow rejects without committing state.
+Ordinary source advances pass through when ahead. The original source timestamp
+remains private and unchanged; transport `timestamp_us` is now presentation time.
+
+One focused actual synthetic VP8/SRTP same-peer test passed: equal raw inputs
+mapped to 1,000,000/1,000,024/1,000,048/1,000,072µs and the receiving track returned
+relative RTP PTS 0/2/4/6. It verified unchanged peer identity and peer/source close.
+This is local synthetic media, not Chrome/recorder acceptance or a codec benchmark.
+The complete source gate and limits are in
+[the R142 report](../analysis/c10-duplicate-timestamp-report.md). Read it before
+changing the mapping and update affected source/execution evidence afterward.
+
+## Same-peer dimension transitions — 2026-10-06 (R137)
+
+Source baseline: `6436748` plus the active uncommitted stage-1 worktree.
+`NativeDecodedSource` now rotates isolated same-codec decoders after confirmed
+old-decoder retirement, retaining the exact binding wire identity and original
+WebRTC peer. `DecodeBinding` contains no dimensions. Existing per-frame RGB
+dimension/byte checks and global increasing source PTS/ordinal checks support
+this source change without modifications to `live.py` or `codec.py`.
+
+The new inert source tests cover transitions before the first decoded frame and
+while consuming the original peer's track, in both H264 and HEVC. A separate
+real local aiortc VP8/SRTP receive test passed for **352×240 → 1280×720 →
+352×240**, increasing received PTS and the same server peer. The existing
+decoder/WebRTC/worker suite also passed138 tests. This is local synthetic media
+verification, not Chrome or actual recorder acceptance. Existing transport
+permit, stale grace, lease and shutdown behavior remain unchanged. See
+[R137 source ownership](tvt-local-media-service.md) and the canonical service
+report before subsequent changes or actual device sizing.
+
 Analysis and implementation date: **2026-10-04, Asia/Seoul**. Source baseline:
 `211d1484aa16eb30f5d362758f149f98dec9dfdf`, branch
 `codex/superlive-web-service`. Initial tree already included another agent's
@@ -354,3 +397,53 @@ source database unchanged, no known private values in output.
 
 Not established by this section: continuous Chrome playback, two-store
 operation, stop/reopen or clean retirement on the real runtime.
+
+## Authority gate and permit anchoring (R120) — 2026-10-05
+
+Scope: multi-view stage-1 Task 1 (final review I3). `native_source.py` changes
+one line plus comments; the gate itself lives in `local_media_admission.py`
+and is specified in the media-service guide's
+[hot-path authority gate](tvt-local-media-service.md#hot-path-authority-gate-r120r121--2026-10-05)
+section. Baseline: worktree at `6436748` plus the uncommitted Task 1 delta.
+
+- `executor.current()` and `executor.lease()` are now answered by a per-lease
+  gate: an answer may come from a non-locking SQL check that began up to
+  `AUTHORITY_FRESHNESS_SECONDS = 0.1` before the call, never earlier. This is
+  a call-entry observation bound, not a return-time freshness guarantee.
+  Ordinary reusable cache answers are clipped to lease expiry. Under R133,
+  an eligible successful in-flight observation may answer its runner and
+  waiters even when response latency crosses expiry; the downstream emission
+  permit is independently clipped to expiry. Ingress, decoder `authorize`,
+  publication and the 50 ms authority heartbeat together cost at most one SQL
+  check per 100 ms per stream, instead of about 33 per frame.
+- `_renew` now records `observed = time.monotonic() − AUTHORITY_FRESHNESS_SECONDS`
+  (imported from the admission module). The candidate permit is still
+  `min(observed + PERMIT_SECONDS, now + SQL lease expiry left)`, and R110's
+  keep-the-later rule and stop zeroing are unchanged. So a permit never outlives
+  the backing check's start plus 200 ms, and the sender bound stays
+  t_r + 200 ms + one `time.monotonic` tick (15.625 ms on this Python).
+- Ingress, decoder and publication: no grant to a call that begins after
+  t_r + 100 ms (before R120: a fresh check per call, plus the latency of a check
+  already in flight). Overall t_r + 300 ms while check latency is 200 ms or less.
+- Consequence: one renewal now extends the permit to about its call time plus
+  100 ms (previously plus 200 ms). The 50 ms heartbeat keeps the permit
+  continuous while heartbeat gaps plus check latency stay under 100 ms; a
+  renewal answered later than that renews nothing and is staleness, which stays
+  non-terminal for `STALE_GRACE_SECONDS = 2.0`.
+
+Tests (inert, executed 2026-10-05): `test_permit_anchored_at_earliest_gate_observation`;
+`test_composed_gate_pipeline_stays_live_with_bounded_sql` (real executor and
+gate with stubbed observe SQL at 3 ms, 10 fps, 8 packets per frame: no fence,
+no permit lapse, no withheld datagram, at most elapsed/F + 2 observe checks and
+no `current`/`worker_view` SQL); `test_revocation_with_gate_meets_bounds` (no
+grant to calls beginning after t_r + 116 ms, no datagram after t_r + 216 ms,
+fenced, never revived). `test_older_renewal_never_shortens_newer_permit_or_renews_after_stop`
+was updated to the anchored values (permit 100.15, later finish at 100.08). The
+media selection passed with 139 tests. Not established: device or browser
+playback with the gate.
+
+Update **2026-10-05, final stage-1 review M1**: corrected the absolute
+past-expiry answer claim above to the accepted R133 distinction between
+call-entry observation age, ordinary cache reuse, eligible slow-success
+in-flight results and expiry-clipped emission permits. Documentation only;
+no authority code or new gate execution was changed or claimed.

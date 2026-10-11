@@ -70,6 +70,10 @@ export function LivePill({className = ''}: {className?: string}) {
   </span>;
 }
 
+export function QualityBadge({quality}: {quality: 'main' | 'sub'}) {
+  return <span className="rounded bg-black/75 px-1.5 py-0.5 text-[11px] font-medium text-[var(--lw-text)]">{quality === 'main' ? '고화질' : '저화질'}</span>;
+}
+
 /**
  * Placeholder for every non-live state; the error and its retry stay on the affected tile.
  * `busy` marks a queued tile whose last start the device refused (HTTP 429) for now.
@@ -95,11 +99,11 @@ export function TileStatus({state, queuePosition, retrying, busy = false, label,
     {state === 'queued' ? <>
       <span className="text-sm font-medium">{busy ? '재생 대기 (장치 사용 중)' : '재생 대기'}</span>
       <span className="text-xs text-[var(--lw-muted)]">대기 순서 {queuePosition}</span>
-    </> : state === 'failed' ? <>
-      <span className="flex items-center gap-1.5 text-sm font-semibold text-[var(--lw-danger)]"><span aria-hidden="true">!</span>연결 실패</span>
-      {retrying && <span className="text-xs text-[var(--lw-muted)]">잠시 후 자동으로 다시 연결합니다.</span>}
+    </> : state === 'failed' || state === 'nosignal' ? <>
+      <span className="flex items-center gap-1.5 text-sm font-semibold text-[var(--lw-danger)]"><span aria-hidden="true">!</span>{state === 'nosignal' ? '영상 신호 없음' : '연결 실패'}</span>
+      {state === 'failed' && retrying && <span className="text-xs text-[var(--lw-muted)]">잠시 후 자동으로 다시 연결합니다.</span>}
       <button type="button" onClick={onRetry} aria-label={`${label} 다시 시도`} className={`mt-1 inline-flex min-h-11 items-center rounded-lg border border-[var(--lw-border-strong)] bg-[var(--lw-panel-raised)] px-4 text-sm font-semibold hover:border-[var(--lw-accent)] ${insetFocusRing}`}>다시 시도</button>
-    </> : <span className="text-sm text-[var(--lw-muted)]">정지됨</span>}
+    </> : <span className="text-sm text-[var(--lw-muted)]">{state === 'stopped' ? '영상 재생 중지' : '정지됨'}</span>}
   </div>;
 }
 
@@ -124,6 +128,7 @@ export function LiveTile({tile, state, queuePosition, retrying, busy = false, re
     <LiveVideo stream={stream} label={tile.label} fit="fill" onFrame={onFrame} className="absolute inset-0"/>
     <TileStatus state={state} queuePosition={queuePosition} retrying={retrying} busy={busy} label={tile.label} onRetry={onRetry}/>
     <span className="absolute left-2 top-2 rounded bg-black/75 px-1.5 py-0.5 font-mono text-[11px] font-semibold tracking-wide text-[var(--lw-text)]">{channelBadge(tile.ordinal)}</span>
+    <span className="absolute left-2 top-8"><QualityBadge quality="sub"/></span>
     {live && <LivePill className="absolute right-2 top-2"/>}
     <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-2 bg-linear-to-t from-black/90 via-black/75 to-transparent pl-3 pr-1 pt-2">
       <span className="truncate text-sm font-medium text-[var(--lw-text)]">{tile.ordinal}번 채널</span>

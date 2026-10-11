@@ -1,0 +1,86 @@
+{
+  "status": "ACCEPTED_WINDOWS_NATIVE_PROVIDER_ROOT_REVIEW",
+  "files": {
+    "services/tvt-bridge/src/wso_tvt_bridge/windows_socket.py": {
+      "bytes": 46698,
+      "sha256": "a46d4b6ae238a54543515642db98860c93463ea6bb862ea3b0474141fc361e0a"
+    },
+    "services/tvt-bridge/src/wso_tvt_bridge/windows_socket_worker.py": {
+      "bytes": 63909,
+      "sha256": "02516c9202a5b97a86e69508e3114e147e92d6767f60246263d63c7e983889ca"
+    },
+    "tests/contract/test_windows_socket.py": {
+      "bytes": 126835,
+      "sha256": "066cf31905fd001a3e37702873667b57a342173750028176512950c75b005560"
+    },
+    "docs/integrations/tvt-windows-socket-provider.md": {
+      "bytes": 42760,
+      "sha256": "315f9bd26d96de485c7f6741da384b9ec039c843d3b417f04ef6e6a734633695"
+    },
+    "services/tvt-bridge/src/wso_tvt_bridge/local_inventory_provider.py": {
+      "bytes": 7179,
+      "sha256": "e965cfdc5efb5cb7d2209b9f4026a234043f0b508576d01e3df0ca12af8aebcf"
+    },
+    "services/tvt-bridge/src/wso_tvt_bridge/local_inventory_config.py": {
+      "bytes": 1118,
+      "sha256": "b49471b4aff2e5e4284519bd22e0e88d6fa6d1134feebfa77e52335c58a363df"
+    },
+    "services/tvt-bridge/src/wso_tvt_bridge/local_inventory_ipc.py": {
+      "bytes": 12192,
+      "sha256": "b34626aa9f3cceabf805b9472570445cd617ce0623c321ffb4d1c9f4635efe39"
+    },
+    "tests/contract/test_local_inventory_provider.py": {
+      "bytes": 23826,
+      "sha256": "5b40115ba4712b52dc69791bf365e3fbaa32714ae5be8ba09221eec8b02e82fb"
+    }
+  },
+  "dependencies": {
+    ".superpowers/sdd/2026-09-27-superlive-plus-web-parity-implementation-plan/W04-windows-socket-abi-reviewed-root-receipt.json": {
+      "bytes": 5750,
+      "sha256": "75fc1cc60907375b7306c484562f22d6944f5ea92f5203201a629fb3f5e6abdf"
+    },
+    ".superpowers/sdd/2026-09-27-superlive-plus-web-parity-implementation-plan/W04-local-n9000-login-field-reviewed-root-receipt.json": {
+      "bytes": 1043,
+      "sha256": "03f6adbac6499d8a48bc9342c5a29dadc3ec0fd871eb042559f27c1ffb2d971e"
+    },
+    ".superpowers/sdd/2026-09-27-superlive-plus-web-parity-implementation-plan/W04-local-inventory-xml-Fix3-Fix1-reviewed-root-receipt.json": {
+      "bytes": 1068,
+      "sha256": "2b8b158ef441ec374dc237c21157562c4fe02ce8fdcd76dadfe78cf8df686e9e"
+    },
+    "packages/core/src/wso_core/tvt/frames.py": {
+      "bytes": 10485,
+      "sha256": "e5cd9dc73c8a0602e83e958ff2f5b36971b894b224c63498f9b6227f94a31b9f"
+    },
+    ".superpowers/sdd/2026-09-27-superlive-plus-web-parity-implementation-plan/W08-local-live-taskless-first-qualified-reviewed-root-receipt.json": {
+      "bytes": 2210,
+      "sha256": "8039ff625abdb21c34214014af129286ee8becc3ed102986920b7289a1ae0b75"
+    },
+    "packages/core/src/wso_core/tvt/local_bootstrap.py": {
+      "bytes": 10574,
+      "sha256": "cf4e46cf099457ca547055465463021ecd397f41941617fa4e6fccadf7c23bde"
+    },
+    "packages/core/src/wso_core/tvt/device_qr.py": {
+      "bytes": 4082,
+      "sha256": "0de20fd0092e07f5f2b9a7b2609d6663f16296fa1d5cfa79362418231a838906"
+    },
+    "packages/core/src/wso_core/tvt/local_credentials.py": {
+      "bytes": 4923,
+      "sha256": "88766b617dfcc8d4c8385ff80fb50ab3d3dca0bba0b5ca5be7d8487ad200e371"
+    },
+    "packages/core/src/wso_core/tvt/local_service.py": {
+      "bytes": 8587,
+      "sha256": "6501d0b9a7d70f8c28423dbf4c8d532bd669440437727d92cde2d460e06276cc"
+    },
+    "packages/contracts/src/wso_contracts/tvt/local_device.py": {
+      "bytes": 2260,
+      "sha256": "df2b3d0f7e983d4c5fda577e7ebf5f1d036a213d8d156f0e14fdbb5f0106b583"
+    },
+    ".superpowers/sdd/2026-09-27-superlive-plus-web-parity-implementation-plan/W04-windows-python-crypto-runtime-override-reviewed-root-receipt.json": {
+      "bytes": 1575,
+      "sha256": "77eb86a01a0c53a5e9998417f67b337aa38b96c0e5d62e1ee2ce333309eec45d"
+    }
+  },
+  "critical": 0,
+  "important": 0,
+  "minor": 0
+}

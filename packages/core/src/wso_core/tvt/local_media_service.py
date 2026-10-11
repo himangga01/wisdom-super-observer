@@ -15,6 +15,7 @@ from wso_contracts.tvt.media import MediaLease
 
 from .local_credentials import LocalDeviceCredentials
 from .local_live import PrivateLiveFrame
+from .local_media_mux_types import ViewerCleanupReceipt
 from .local_service import LocalDeviceFailure, LocalVerifyBudget
 
 # Preserve the established fixed public error vocabulary for API/RPC callers.
@@ -115,6 +116,43 @@ class LocalMediaAdmissionPort(Protocol):
         self, ticket: str, purpose: str, *, budget: LocalVerifyBudget
     ) -> UUID: ...
     def retry_cleanup(self) -> bool: ...
+
+
+class LocalViewerReceiptIssuer(Protocol):
+    def issued_receipt(self) -> ViewerCleanupReceipt | None: ...
+
+
+class LocalViewerCleanupAdapter:
+    """Adapt exact typed viewer custody to the legacy local-media barrier.
+
+    This never confirms a native epoch: LocalMediaExecutor still independently
+    closes its original session before reporting its combined cleanup result.
+    """
+
+    def __init__(
+        self,
+        lease_id: UUID,
+        registration: UUID,
+        check: Callable[[], ViewerCleanupReceipt | None],
+        issuer: LocalViewerReceiptIssuer,
+    ) -> None:
+        self._lease_id, self._registration = lease_id, registration
+        self._check, self._issuer = check, issuer
+        self._issued_receipt = issuer.issued_receipt
+
+    def __call__(self) -> bool:
+        if self._issuer.issued_receipt != self._issued_receipt:
+            return False
+        receipt = self._check()
+        if type(receipt) is not ViewerCleanupReceipt:
+            return False
+        actual = self._issued_receipt()
+        return (
+            actual is receipt
+            and self._issuer.issued_receipt == self._issued_receipt
+            and receipt.lease_id == self._lease_id
+            and receipt.registration_id == self._registration
+        )
 
 
 @dataclass(slots=True)
@@ -524,7 +562,8 @@ class LocalMediaExecutor:
                 return self.admission.current(binding)
 
             try:
-                # Renewal checks fresh SQL and only extends an unexpired native
+                # Renewal uses an authority observation at most 100 ms old
+                # and only extends an unexpired native
                 # owner. This callback is independent of the startup transaction.
                 accepted = owned.session.current(
                     deadline_monotonic=self._clock() + 30,

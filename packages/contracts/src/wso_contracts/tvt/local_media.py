@@ -16,6 +16,8 @@ class LocalLiveRequest(WireModel):
     expected_generation: int = Field(strict=True, ge=1, le=2**53 - 1)
     inventory_revision: int = Field(strict=True, ge=1, le=2**53 - 1)
     stream: Literal["main", "sub"] = "main"
+    wall_id: UUID | None = None
+    focus_ref_id: UUID | None = None
 
 
 from wso_contracts.tvt.media import LocalMediaOwnerRef, MediaLease  # noqa: F401

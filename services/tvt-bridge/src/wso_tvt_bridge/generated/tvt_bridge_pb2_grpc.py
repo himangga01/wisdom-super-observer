@@ -1243,3 +1243,247 @@ class LocalMediaBridgeV1:
             timeout,
             metadata,
             _registered_method=True)
+
+
+class LocalMediaMuxBridgeV1Stub:
+    """Missing associated documentation comment in .proto file."""
+
+    def __init__(self, channel):
+        """Constructor.
+
+        Args:
+            channel: A grpc.Channel.
+        """
+        self.StartShared = channel.unary_unary(
+                '/wso.tvt.account.v1.LocalMediaMuxBridgeV1/StartShared',
+                request_serializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.LocalMediaMuxRequest.SerializeToString,
+                response_deserializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.LocalMediaReply.FromString,
+                _registered_method=True)
+        self.WallHeartbeat = channel.unary_unary(
+                '/wso.tvt.account.v1.LocalMediaMuxBridgeV1/WallHeartbeat',
+                request_serializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.LocalMediaMuxRequest.SerializeToString,
+                response_deserializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.LocalMediaReply.FromString,
+                _registered_method=True)
+        self.StopWall = channel.unary_unary(
+                '/wso.tvt.account.v1.LocalMediaMuxBridgeV1/StopWall',
+                request_serializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.LocalMediaMuxRequest.SerializeToString,
+                response_deserializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.LocalMediaReply.FromString,
+                _registered_method=True)
+        self.FocusReserve = channel.unary_unary(
+                '/wso.tvt.account.v1.LocalMediaMuxBridgeV1/FocusReserve',
+                request_serializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.LocalMediaMuxRequest.SerializeToString,
+                response_deserializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.LocalMediaReply.FromString,
+                _registered_method=True)
+        self.FocusSettle = channel.unary_unary(
+                '/wso.tvt.account.v1.LocalMediaMuxBridgeV1/FocusSettle',
+                request_serializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.LocalMediaMuxRequest.SerializeToString,
+                response_deserializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.LocalMediaReply.FromString,
+                _registered_method=True)
+
+
+class LocalMediaMuxBridgeV1Servicer:
+    """Missing associated documentation comment in .proto file."""
+
+    def StartShared(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def WallHeartbeat(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def StopWall(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def FocusReserve(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def FocusSettle(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+
+def add_LocalMediaMuxBridgeV1Servicer_to_server(servicer, server):
+    rpc_method_handlers = {
+            'StartShared': grpc.unary_unary_rpc_method_handler(
+                    servicer.StartShared,
+                    request_deserializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.LocalMediaMuxRequest.FromString,
+                    response_serializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.LocalMediaReply.SerializeToString,
+            ),
+            'WallHeartbeat': grpc.unary_unary_rpc_method_handler(
+                    servicer.WallHeartbeat,
+                    request_deserializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.LocalMediaMuxRequest.FromString,
+                    response_serializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.LocalMediaReply.SerializeToString,
+            ),
+            'StopWall': grpc.unary_unary_rpc_method_handler(
+                    servicer.StopWall,
+                    request_deserializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.LocalMediaMuxRequest.FromString,
+                    response_serializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.LocalMediaReply.SerializeToString,
+            ),
+            'FocusReserve': grpc.unary_unary_rpc_method_handler(
+                    servicer.FocusReserve,
+                    request_deserializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.LocalMediaMuxRequest.FromString,
+                    response_serializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.LocalMediaReply.SerializeToString,
+            ),
+            'FocusSettle': grpc.unary_unary_rpc_method_handler(
+                    servicer.FocusSettle,
+                    request_deserializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.LocalMediaMuxRequest.FromString,
+                    response_serializer=wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.LocalMediaReply.SerializeToString,
+            ),
+    }
+    generic_handler = grpc.method_handlers_generic_handler(
+            'wso.tvt.account.v1.LocalMediaMuxBridgeV1', rpc_method_handlers)
+    server.add_generic_rpc_handlers((generic_handler,))
+    server.add_registered_method_handlers('wso.tvt.account.v1.LocalMediaMuxBridgeV1', rpc_method_handlers)
+
+
+ # This class is part of an EXPERIMENTAL API.
+class LocalMediaMuxBridgeV1:
+    """Missing associated documentation comment in .proto file."""
+
+    @staticmethod
+    def StartShared(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/wso.tvt.account.v1.LocalMediaMuxBridgeV1/StartShared',
+            wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.LocalMediaMuxRequest.SerializeToString,
+            wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.LocalMediaReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def WallHeartbeat(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/wso.tvt.account.v1.LocalMediaMuxBridgeV1/WallHeartbeat',
+            wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.LocalMediaMuxRequest.SerializeToString,
+            wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.LocalMediaReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def StopWall(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/wso.tvt.account.v1.LocalMediaMuxBridgeV1/StopWall',
+            wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.LocalMediaMuxRequest.SerializeToString,
+            wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.LocalMediaReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def FocusReserve(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/wso.tvt.account.v1.LocalMediaMuxBridgeV1/FocusReserve',
+            wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.LocalMediaMuxRequest.SerializeToString,
+            wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.LocalMediaReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def FocusSettle(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/wso.tvt.account.v1.LocalMediaMuxBridgeV1/FocusSettle',
+            wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.LocalMediaMuxRequest.SerializeToString,
+            wso__tvt__bridge_dot_generated_dot_tvt__bridge__pb2.LocalMediaReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)

@@ -87,3 +87,19 @@ service LocalMediaBridgeV1 {
   rpc Stop(LocalMediaStopRequest) returns (LocalMediaReply);
   rpc Playing(LocalMediaPlayingRequest) returns (LocalMediaReply);
 }
+
+// Every operation redeems its own SQL purpose; public selectors stay in SQL.
+message LocalMediaMuxRequest {
+  RpcContext context = 1;
+  reserved 2 to 15;
+  reserved "tenant_id", "actor_id", "session_digest", "wall_id", "focus_ref_id",
+    "connection_id", "channel_id", "direction", "outcome", "authority",
+    "native_generation", "master_id", "task_id", "cleanup_receipt";
+}
+service LocalMediaMuxBridgeV1 {
+  rpc StartShared(LocalMediaMuxRequest) returns (LocalMediaReply);
+  rpc WallHeartbeat(LocalMediaMuxRequest) returns (LocalMediaReply);
+  rpc StopWall(LocalMediaMuxRequest) returns (LocalMediaReply);
+  rpc FocusReserve(LocalMediaMuxRequest) returns (LocalMediaReply);
+  rpc FocusSettle(LocalMediaMuxRequest) returns (LocalMediaReply);
+}

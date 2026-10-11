@@ -20,6 +20,7 @@ afterEach(()=>{vi.useRealTimers();});
 function harness(options:Partial<LiveWallSchedulerOptions>={}){
   const log:string[]=[];const violations:string[]=[];const running=new Set<string>();
   const scheduler=createLiveWallScheduler({
+    capacity:2,
     onStart:id=>{log.push(`start ${id}`);running.add(id);},
     onStop:id=>{log.push(`stop ${id}`);running.delete(id);},
     ...options,
@@ -40,14 +41,198 @@ function harness(options:Partial<LiveWallSchedulerOptions>={}){
 const starts=(log:string[])=>log.filter(entry=>entry.startsWith('start '));
 
 describe('live wall scheduler',()=>{
+  it('treats an expired handoff as terminal without retrying an unreferenced player',()=>{
+    const {scheduler,log,state}=harness();scheduler.requestPlay(['a']);scheduler.reportFailed('a','handoff');
+    expect(state('a')).toBe('failed');expect(scheduler.getSnapshot().retrying).toEqual([]);
+    vi.advanceTimersByTime(60_000);expect(starts(log)).toEqual(['start a']);
+  });
+  it('removes an expired queued handoff while preserving another starting tile',()=>{
+    const {scheduler,log,state}=harness();scheduler.requestPlay(['a','b']);scheduler.reportLive('a');
+    scheduler.focus('a',['a']);expect(state('a')).toBe('queued');scheduler.reportFailed('a','handoff');
+    expect(state('a')).toBe('failed');expect(scheduler.getSnapshot().queue).toEqual([]);
+    scheduler.reportLive('b');vi.advanceTimersByTime(60_000);expect(starts(log)).toEqual(['start a','start b']);
+  });
+  it('parks three busy store-one targets while three ready store-two targets join six live players',()=>{
+    const {scheduler,log,state,violations}=harness({capacity:16});
+    const live=['s1-1','s1-2','s1-3','s1-4','s1-5','s2-1'];
+    scheduler.requestPlay(live);for(const id of live)scheduler.reportLive(id);
+    scheduler.requestPlay(['s1-6','s1-7','s1-8','s2-2','s2-3','s2-4']);
+    for(const id of ['s1-6','s1-7','s1-8'])scheduler.reportFailed(id,'busy');
+    expect(state('s2-2')).toBe('starting');
+    scheduler.reportLive('s2-2');scheduler.reportLive('s2-3');scheduler.reportLive('s2-4');
+    expect(starts(log).slice(6)).toEqual(['start s1-6','start s1-7','start s1-8','start s2-2','start s2-3','start s2-4']);
+    expect(scheduler.getSnapshot().queue).toEqual(['s1-6','s1-7','s1-8']);
+    vi.advanceTimersByTime(3_000);expect(state('s1-6')).toBe('starting');
+    scheduler.reportFailed('s1-6','busy');expect(state('s1-7')).toBe('starting');
+    scheduler.reportFailed('s1-7','busy');expect(state('s1-8')).toBe('starting');
+    scheduler.reportFailed('s1-8','busy');
+    expect(live.every(id=>state(id)==='live')).toBe(true);expect(violations).toEqual([]);
+  });
+
+  it('keeps each busy backoff independent of other successful players and caps all-busy retries',()=>{
+    const {scheduler,log,state,violations}=harness({capacity:4});
+    scheduler.requestPlay(['a','b','healthy']);
+    scheduler.reportFailed('a','busy');scheduler.reportFailed('b','busy');scheduler.reportLive('healthy');
+    for(const delay of [3_000,6_000,12_000,15_000,15_000]){
+      const before=starts(log).length;vi.advanceTimersByTime(delay-1);
+      expect(starts(log)).toHaveLength(before);vi.advanceTimersByTime(1);
+      expect(state('a')).toBe('starting');expect(state('b')).toBe('queued');
+      scheduler.reportFailed('a','busy');expect(state('b')).toBe('starting');scheduler.reportFailed('b','busy');
+      scheduler.requestPlay(['other']);if(state('other')==='starting')scheduler.reportLive('other');
+      expect(scheduler.getSnapshot().coolingDown).toBe(false);
+    }
+    scheduler.stopAll();expect(vi.getTimerCount()).toBe(0);expect(violations).toEqual([]);
+  });
+
+  it('preserves a parked replacement slot while admitting ordinary work only into genuinely free slots',()=>{
+    const {scheduler,log,state,violations}=harness({capacity:16});
+    const ids=Array.from({length:17},(_,i)=>`tile-${i+1}`);
+    scheduler.requestPlay(ids);for(const id of ids.slice(0,16))scheduler.reportLive(id);
+    scheduler.focus('tile-1',['tile-1']);scheduler.reportFailed('tile-1','busy');
+    expect(state('tile-17')).toBe('queued');expect(starts(log).at(-1)).toBe('start tile-1');
+    scheduler.requestStop('tile-2');expect(state('tile-17')).toBe('starting');
+    scheduler.reportLive('tile-17');vi.advanceTimersByTime(3_000);
+    expect(state('tile-1')).toBe('starting');expect(state('tile-3')).toBe('live');
+    scheduler.reportLive('tile-1');expect(Object.values(scheduler.getSnapshot().states).filter(s=>s==='live')).toHaveLength(16);
+    expect(violations).toEqual([]);
+  });
+
+  it('reserves multiple parked replacements without spending a reservation on an unstarted queued replacement',()=>{
+    const {scheduler,state,violations}=harness({capacity:3});
+    scheduler.requestPlay(['a','b','c','d','e']);for(const id of ['a','b','c'])scheduler.reportLive(id);
+    scheduler.focus(null,['a','b']);scheduler.reportFailed('b','busy');scheduler.reportFailed('a','busy');
+    expect(state('d')).toBe('queued');expect(state('e')).toBe('queued');
+    scheduler.requestStop('c');expect(state('d')).toBe('starting');scheduler.reportLive('d');
+    vi.advanceTimersByTime(3_000);scheduler.reportLive('b');scheduler.reportLive('a');
+    expect(state('e')).toBe('queued');scheduler.stopAll();
+    scheduler.requestPlay(['a','b','c']);scheduler.focus(null,['c']);
+    scheduler.reportLive('a');expect(state('c')).toBe('starting');scheduler.reportLive('c');
+    expect(state('b')).toBe('starting');expect(violations).toEqual([]);
+  });
+
+  it('never preempts a healthy player for a parked focus and consumes its own reservation when eligible',()=>{
+    const {scheduler,log,state}=harness({capacity:2});
+    scheduler.requestPlay(['a','b','c']);scheduler.reportLive('a');scheduler.reportLive('b');
+    scheduler.focus('c');scheduler.reportFailed('c','busy');
+    // c is an ordinary focused request here; b remains healthy while a fills the freed slot.
+    scheduler.reportLive('a');expect(state('b')).toBe('live');
+    expect(log.filter(line=>line==='stop b')).toEqual([]);
+    vi.advanceTimersByTime(3_000);expect(log.filter(line=>line==='stop b')).toEqual(['stop b']);
+    scheduler.reportLive('c');scheduler.focus(null,['c']);scheduler.reportFailed('c','busy');
+    const before=log.filter(line=>line.startsWith('stop ')).length;
+    scheduler.focus('c');vi.advanceTimersByTime(3_000);
+    expect(state('c')).toBe('starting');expect(log.filter(line=>line.startsWith('stop '))).toHaveLength(before);
+  });
+
+  it.each(['stop','all','replacement'] as const)('fences dispatched busy timers after %s and a fresh request',operation=>{
+    const pending:{callback:()=>void;cleared:boolean}[]=[];
+    const timer:LiveWallTimer={set:callback=>{const entry={callback,cleared:false};pending.push(entry);return entry;},clear:handle=>{(handle as typeof pending[number]).cleared=true;}};
+    const {scheduler,log,state}=harness({capacity:2,timer});
+    scheduler.requestPlay(['a']);scheduler.reportFailed('a','busy');const stale=pending[1];
+    if(operation==='all')scheduler.stopAll();else if(operation==='stop')scheduler.requestStop('a');else scheduler.focus('a',['a']);
+    if(operation!=='replacement')scheduler.requestPlay(['a']);
+    scheduler.reportFailed('a','busy');const before=log.length;
+    stale.callback();expect(log).toHaveLength(before);expect(state('a')).toBe('queued');expect(stale.cleared).toBe(true);
+    scheduler.stopAll();for(const entry of pending)entry.callback();expect(log).toHaveLength(before);
+  });
+
+  it('does not reset a busy target delay with duplicate play or allow an expired park to interrupt a current start',()=>{
+    const {scheduler,log,state}=harness({capacity:3});
+    scheduler.requestPlay(['a','b','c']);scheduler.reportFailed('a','busy');
+    scheduler.requestPlay(['a']);vi.advanceTimersByTime(3_000);
+    expect(state('b')).toBe('starting');expect(starts(log)).toEqual(['start a','start b']);
+    scheduler.reportLive('b');expect(state('a')).toBe('starting');scheduler.reportFailed('a','busy');
+    expect(state('c')).toBe('starting');scheduler.reportLive('c');vi.advanceTimersByTime(5_999);
+    expect(state('a')).toBe('queued');vi.advanceTimersByTime(1);expect(state('a')).toBe('starting');
+  });
+
+  it('paces an entirely busy queue without spinning even when refusals are synchronous',()=>{
+    const log:string[]=[];
+    const scheduler:LiveWallScheduler=createLiveWallScheduler({capacity:16,onStart:id=>{log.push(id);scheduler.reportFailed(id,'busy');},onStop(){}});
+    scheduler.requestPlay(['a','b','c']);expect(log).toEqual(['a','b','c']);
+    for(const delay of [3_000,6_000,12_000,15_000]){
+      const count=log.length;vi.advanceTimersByTime(delay-1);expect(log).toHaveLength(count);
+      vi.advanceTimersByTime(1);expect(log.slice(-3)).toEqual(['a','b','c']);expect(log).toHaveLength(count+3);
+      expect(vi.getTimerCount()).toBe(3);
+    }
+    scheduler.stopAll();expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it.each(['failed','nosignal','stop'] as const)('releases a parked replacement reservation on %s without stranding an ordinary waiter',kind=>{
+    const {scheduler,state}=harness({capacity:2});
+    scheduler.requestPlay(['a','b','c']);scheduler.reportLive('a');scheduler.reportLive('b');
+    scheduler.focus(null,['a']);scheduler.reportFailed('a','busy');expect(state('c')).toBe('queued');
+    if(kind==='stop')scheduler.requestStop('a');else{
+      vi.advanceTimersByTime(3_000);scheduler.reportFailed('a',kind);
+      if(kind==='failed'){vi.advanceTimersByTime(3_000);scheduler.reportFailed('a');vi.advanceTimersByTime(6_000);}
+    }
+    expect(state('c')).toBe('starting');
+  });
+
   it('documents the current backend limit as the default capacity',()=>{
-    expect(LIVE_WALL_CONCURRENCY).toBe(2);
-    expect(LIVE_WALL_START_TIMEOUT_MS).toBe(15_000);
+    expect(LIVE_WALL_CONCURRENCY).toBe(16);
     expect(LIVE_WALL_RETRY_DELAY_MS).toBe(2_000);
     expect(LIVE_WALL_COOLDOWN_BASE_MS).toBe(3_000);
     expect(LIVE_WALL_COOLDOWN_MAX_MS).toBe(15_000);
-    const {scheduler}=harness();
+    const {scheduler}=harness({capacity:undefined});
     expect(scheduler.getSnapshot().capacity).toBe(LIVE_WALL_CONCURRENCY);
+  });
+
+  it('fills sixteen default slots and leaves the seventeenth queued until a slot closes',()=>{
+    const {scheduler,log,violations}=harness({capacity:undefined});
+    const ids=Array.from({length:17},(_,i)=>`tile-${i}`);
+    scheduler.requestPlay(ids);
+    for(const id of ids.slice(0,16))scheduler.reportLive(id);
+    expect(starts(log)).toHaveLength(16);
+    expect(scheduler.getSnapshot().queue).toEqual(['tile-16']);
+    scheduler.requestStop('tile-0');
+    expect(log.slice(-2)).toEqual(['stop tile-0','start tile-16']);
+    expect(violations).toEqual([]);
+  });
+
+  it('keeps a busy returning eighteenth replacement ahead of an older waiter and preserves ordinary order',()=>{
+    const {scheduler,log,state,violations}=harness({capacity:undefined});
+    const ids=Array.from({length:18},(_,i)=>`tile-${i+1}`);
+    scheduler.requestPlay(ids);
+    for(const id of ids.slice(0,16))scheduler.reportLive(id);
+    expect(scheduler.getSnapshot().queue).toEqual(['tile-17','tile-18']);
+    scheduler.focus('tile-18',['tile-18']);
+    expect(log.slice(-2)).toEqual(['stop tile-1','start tile-18']);
+    scheduler.reportLive('tile-18');
+    scheduler.focus(null,['tile-18']);
+    expect(log.slice(-2)).toEqual(['stop tile-18','start tile-18']);
+    for(const cooldown of [3_000,6_000]){
+      scheduler.reportFailed('tile-18','busy');
+      expect(scheduler.getSnapshot().queue).toEqual(['tile-18','tile-17','tile-1']);
+      vi.advanceTimersByTime(cooldown);
+      expect(state('tile-18')).toBe('starting');
+      expect(log.at(-1)).toBe('start tile-18');
+      expect(scheduler.getSnapshot().queue).toEqual(['tile-17','tile-1']);
+    }
+    expect(log.filter(entry=>entry.startsWith('stop '))).toEqual(['stop tile-1','stop tile-18','stop tile-18','stop tile-18']);
+    scheduler.reportLive('tile-18');
+    scheduler.requestStop('tile-2');
+    expect(log.at(-1)).toBe('start tile-17');
+    scheduler.reportLive('tile-17');scheduler.requestStop('tile-3');
+    expect(log.at(-1)).toBe('start tile-1');
+    expect(violations).toEqual([]);
+  });
+
+  it('makes no signal terminal, releases its slot without a retry or cooldown, and permits manual play',()=>{
+    const {scheduler,log,state}=harness({capacity:1});
+    scheduler.requestPlay(['empty','healthy']);
+    scheduler.reportFailed('empty','nosignal');
+    expect(state('empty')).toBe('nosignal');
+    expect(log).toEqual(['start empty','stop empty','start healthy']);
+    expect(scheduler.getSnapshot().retrying).toEqual([]);
+    expect(scheduler.getSnapshot().coolingDown).toBe(false);
+    scheduler.reportLive('healthy');
+    vi.advanceTimersByTime(60_000);
+    expect(starts(log)).toEqual(['start empty','start healthy']);
+    scheduler.requestStop('healthy');scheduler.requestPlay(['empty']);
+    expect(log.at(-1)).toBe('start empty');
+    scheduler.reportFailed('empty','nosignal');scheduler.stopAll();
+    expect(state('empty')).toBe('stopped');
   });
 
   it('rejects a capacity that is not a positive integer',()=>{
@@ -240,10 +425,10 @@ describe('live wall scheduler',()=>{
     expect(starts(log)).toHaveLength(4);
   });
 
-  it('counts a start that does not settle within 15 s as failed and ignores its late report',()=>{
+  it('bounds the original Stop wait at 26 s and ignores a late live report',()=>{
     const {scheduler,log,state}=harness();
     scheduler.requestPlay(['a','b']);
-    vi.advanceTimersByTime(14_999);
+    vi.advanceTimersByTime(25_999);
     expect(state('a')).toBe('starting');
     vi.advanceTimersByTime(1);
     expect(state('a')).toBe('failed');
@@ -258,6 +443,30 @@ describe('live wall scheduler',()=>{
     expect(log.slice(-1)).toEqual(['start a']);
   });
 
+  it('cannot extend a request or presentation deadline with duplicate or regressive phase reports',()=>{
+    const {scheduler,state}=harness();scheduler.requestPlay(['a']);
+    vi.advanceTimersByTime(24_000);scheduler.reportStartupPhase('a','requesting');
+    vi.advanceTimersByTime(24_000);scheduler.reportStartupPhase('a','requesting');
+    vi.advanceTimersByTime(1_999);expect(state('a')).toBe('starting');
+    vi.advanceTimersByTime(1);expect(state('a')).toBe('failed');
+    vi.advanceTimersByTime(3_000);scheduler.reportStartupPhase('a','requesting');
+    scheduler.reportStartupPhase('a','negotiating');scheduler.reportStartupPhase('a','presenting');
+    vi.advanceTimersByTime(39_999);
+    scheduler.reportStartupPhase('a','presenting');scheduler.reportStartupPhase('a','negotiating');scheduler.reportStartupPhase('a','requesting');
+    expect(state('a')).toBe('starting');vi.advanceTimersByTime(1);expect(state('a')).toBe('failed');
+    expect(scheduler.getSnapshot().retrying).toEqual([]);
+  });
+
+  it('fences an already dispatched old phase deadline after the player advances',()=>{
+    const callbacks:(()=>void)[]=[];
+    const {scheduler,state}=harness({timer:{set:callback=>{callbacks.push(callback);return callbacks.length;},clear:()=>undefined}});
+    scheduler.requestPlay(['a']);scheduler.reportStartupPhase('a','requesting');
+    callbacks[0]();expect(state('a')).toBe('starting');
+    scheduler.reportStartupPhase('a','negotiating');callbacks[1]();expect(state('a')).toBe('starting');
+    scheduler.reportStartupPhase('a','presenting');callbacks[2]();expect(state('a')).toBe('starting');
+    callbacks[3]();expect(state('a')).toBe('failed');
+  });
+
   it('cancels a pending retry when the user stops the tile',()=>{
     const {scheduler,log,state}=harness();
     scheduler.requestPlay(['a']);scheduler.reportFailed('a');
@@ -270,41 +479,41 @@ describe('live wall scheduler',()=>{
 
   it('cools down 3, 6, 12 and then 15 s after consecutive failed starts and resets once a tile is live',()=>{
     const {scheduler,log,violations}=harness();
-    scheduler.requestPlay(['a','b']);
+    scheduler.requestPlay(['a','b','c','d']);
     let count=1;
-    for(const delay of [3_000,6_000,12_000,15_000,15_000]){
+    for(const [id,delay] of [['a',3_000],['a',6_000],['b',12_000],['b',15_000],['c',15_000]] as const){
       expect(starts(log)).toHaveLength(count);
-      scheduler.reportFailed('a','busy');
+      scheduler.reportFailed(id);
       expect(scheduler.getSnapshot().coolingDown).toBe(true);
       vi.advanceTimersByTime(delay-1);
       expect(starts(log)).toHaveLength(count);
       vi.advanceTimersByTime(1);
       count++;
       expect(starts(log)).toHaveLength(count);
-      expect(log.at(-1)).toBe('start a');
       expect(scheduler.getSnapshot().coolingDown).toBe(false);
     }
-    scheduler.reportLive('a');
-    expect(log.at(-1)).toBe('start b');
-    scheduler.reportFailed('b','busy');
+    scheduler.reportLive('c');
+    expect(log.at(-1)).toBe('start d');
+    scheduler.reportFailed('d');
     vi.advanceTimersByTime(LIVE_WALL_COOLDOWN_BASE_MS-1);
-    expect(log.at(-1)).toBe('stop b');
+    expect(log.at(-1)).toBe('stop d');
     vi.advanceTimersByTime(1);
-    expect(log.at(-1)).toBe('start b');
+    expect(log.at(-1)).toBe('start d');
     expect(violations).toEqual([]);
   });
 
   it('re-queues a busy (HTTP 429) start at its place without spending its single retry',()=>{
-    const {scheduler,log,state}=harness();
+    const {scheduler,log,state}=harness({capacity:3});
     scheduler.requestPlay(['a','b','c']);
     scheduler.reportLive('a');
     scheduler.reportFailed('b','busy');
     expect(state('b')).toBe('queued');
-    expect(scheduler.getSnapshot().queue).toEqual(['b','c']);
+    expect(scheduler.getSnapshot().queue).toEqual(['b']);
     expect(scheduler.getSnapshot().busy).toEqual(['b']);
     expect(scheduler.getSnapshot().retrying).toEqual([]);
-    expect(log.slice(-1)).toEqual(['stop b']);
+    expect(log.slice(-2)).toEqual(['stop b','start c']);
     vi.advanceTimersByTime(LIVE_WALL_COOLDOWN_BASE_MS);
+    scheduler.reportLive('c');
     expect(log.slice(-1)).toEqual(['start b']);
     expect(scheduler.getSnapshot().busy).toEqual([]);
     scheduler.reportFailed('b');
@@ -324,8 +533,10 @@ describe('live wall scheduler',()=>{
     expect(starts(log)).toEqual(['start a','start a']);
     scheduler.reportFailed('a','busy');
     expect(state('a')).toBe('queued');
+    expect(log.at(-1)).toBe('start b');
+    scheduler.reportFailed('b');
     vi.advanceTimersByTime(6_000);
-    expect(starts(log)).toEqual(['start a','start a','start a']);
+    expect(starts(log)).toEqual(['start a','start a','start b','start a']);
     scheduler.reportFailed('a');
     expect(state('a')).toBe('failed');
     expect(scheduler.getSnapshot().retrying).toEqual([]);
@@ -334,7 +545,8 @@ describe('live wall scheduler',()=>{
     scheduler.reportLive('b');
     expect(log.at(-1)).toBe('start c');
     scheduler.reportFailed('c','busy');
-    expect(scheduler.getSnapshot().queue).toEqual(['c','d']);
+    expect(scheduler.getSnapshot().queue).toEqual(['c']);
+    expect(state('d')).toBe('starting');scheduler.reportFailed('d','nosignal');
     vi.advanceTimersByTime(LIVE_WALL_COOLDOWN_BASE_MS);
     expect(log.at(-1)).toBe('start c');
     expect(state('a')).toBe('failed');
@@ -345,14 +557,15 @@ describe('live wall scheduler',()=>{
     const {scheduler,log,violations}=harness({capacity:3});
     scheduler.requestPlay(['a','b','c','d']);
     scheduler.reportFailed('a','busy');
-    expect(scheduler.getSnapshot().queue).toEqual(['a','b','c','d']);
+    expect(scheduler.getSnapshot().queue).toEqual(['a','c','d']);
     vi.advanceTimersByTime(LIVE_WALL_COOLDOWN_BASE_MS);
+    scheduler.reportLive('b');
     expect(log.at(-1)).toBe('start a');
     scheduler.reportLive('a');
-    expect(log.at(-1)).toBe('start b');
-    scheduler.reportFailed('b');
+    expect(log.at(-1)).toBe('start c');
+    scheduler.reportFailed('c');
     vi.advanceTimersByTime(LIVE_WALL_RETRY_DELAY_MS);
-    expect(scheduler.getSnapshot().queue).toEqual(['b','c','d']);
+    expect(scheduler.getSnapshot().queue).toEqual(['c','d']);
     expect(violations).toEqual([]);
   });
 
@@ -362,7 +575,8 @@ describe('live wall scheduler',()=>{
     scheduler.focus('c');
     expect(scheduler.getSnapshot().queue).toEqual(['c','b']);
     scheduler.reportFailed('a','busy');
-    expect(scheduler.getSnapshot().queue).toEqual(['c','a','b']);
+    expect(scheduler.getSnapshot().queue).toEqual(['a','b']);
+    expect(scheduler.getSnapshot().states.c).toBe('starting');
   });
 
   it('uses the injected timer for start deadlines, retries and the cool-down',()=>{
@@ -395,7 +609,7 @@ describe('live wall scheduler',()=>{
 
   it('stays sequential when a player reports synchronously from the start callback',()=>{
     const log:string[]=[];const peaks:number[]=[];
-    const scheduler:LiveWallScheduler=createLiveWallScheduler({onStart:id=>{log.push(`start ${id}`);scheduler.reportLive(id);},onStop:id=>log.push(`stop ${id}`)});
+    const scheduler:LiveWallScheduler=createLiveWallScheduler({capacity:2,onStart:id=>{log.push(`start ${id}`);scheduler.reportLive(id);},onStop:id=>log.push(`stop ${id}`)});
     scheduler.subscribe(snapshot=>peaks.push(Object.values(snapshot.states).filter(s=>s==='starting'||s==='live').length));
     scheduler.requestPlay(['a','b','c']);
     expect(log).toEqual(['start a','start b']);
