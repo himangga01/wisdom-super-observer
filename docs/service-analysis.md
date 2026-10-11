@@ -8,8 +8,9 @@ Primary-only research and historical instructions were preserved. Read
 publication. Main frontend600, related Python210 and TypeScript checks passed;
 fresh checkout preserved174 hash-qualified paths and nine required metadata
 anchors. Private/runtime artifacts remain ignored. These are Git/test gates,
-not new hardware or full-service acceptance. Remote publication is pending at
-this documentation checkpoint; earlier worktree-only/no-commit pointers are
+not new hardware or full-service acceptance. Main and feature publication were
+verified by remote/local SHA equality; the Git record retains exact commits.
+Earlier worktree-only/no-commit pointers are
 dated history. R210 runtime evidence and remaining product/test limits below
 remain unchanged.
 

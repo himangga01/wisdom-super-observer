@@ -6,6 +6,9 @@
   commit `7f94c79`. Read `docs/analysis/2026-10-11-git-integration.md` and the
   canonical service report before later integration; update after source/ref/
   publication checks. Older exclusive-worktree/no-commit pointers are history.
+- Main/feature were atomically pushed and remotely verified. The integration
+  report records actual commits and tests; future work may use either synchronized
+  checkout after confirming its current HEAD and any local changes.
 - Nine immutable, nonsecret source-qualification JSON files are explicitly
   tracked under `.superpowers`. All other generated runtime/private/evidence
   files remain ignored. Preserve `.gitattributes` exact-byte rules for approved
