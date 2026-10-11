@@ -1,0 +1,11 @@
+*
+!.gitignore
+!/2026-09-27-superlive-plus-web-parity-implementation-plan/
+/2026-09-27-superlive-plus-web-parity-implementation-plan/*
+!/2026-09-27-superlive-plus-web-parity-implementation-plan/M1-native-inventory-postpublication-source-root-receipt.json
+!/2026-09-27-superlive-plus-web-parity-implementation-plan/W04-local-inventory-xml-Fix3-Fix1-reviewed-root-receipt.json
+!/2026-09-27-superlive-plus-web-parity-implementation-plan/W04-local-n9000-login-field-reviewed-root-receipt.json
+!/2026-09-27-superlive-plus-web-parity-implementation-plan/W04-windows-python-crypto-runtime-override-reviewed-root-receipt.json
+!/2026-09-27-superlive-plus-web-parity-implementation-plan/W04-windows-socket-abi-reviewed-root-receipt.json
+!/2026-09-27-superlive-plus-web-parity-implementation-plan/W08-local-live-taskless-first-qualified-reviewed-root-receipt.json
+!/2026-09-27-superlive-plus-web-parity-implementation-plan/W08-local-service-integration-Fix2-reviewed-root-receipt.json

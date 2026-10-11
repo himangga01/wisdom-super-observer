@@ -52,6 +52,7 @@ def portable_contract_runtime(request, monkeypatch):
     # Native acceptance is an explicit fixture admission, never mocked here.
     if (
         "synthetic" in request.fixturenames
+        or "continuous_synthetic" in request.fixturenames
         or request.node.name == "test_bad_bitstream_is_sanitized_fenced_and_reaped"
     ):
         require_native()
@@ -302,6 +303,218 @@ def test_actual_windows_reordered_continuous_stream_and_original_reap(synthetic)
         assert "bytes" not in repr(frame)
         with pytest.raises(TypeError):
             pickle.dumps(frame)
+
+
+@pytest.fixture(scope="module", params=["h264", "hevc"])
+def continuous_synthetic(request, tmp_path_factory):
+    require_native()
+    out = tmp_path_factory.mktemp("inert-continuous") / "fixture.bin"
+    script = """
+import av, struct, sys
+from fractions import Fraction
+c=av.CodecContext.create({'h264':'libx264','hevc':'libx265'}[sys.argv[1]],'w')
+c.width=640; c.height=544; c.pix_fmt='yuv420p'; c.time_base=Fraction(1,1000000)
+c.framerate=Fraction(25,1); c.thread_count=1
+c.options={'preset':'ultrafast','tune':'zerolatency','bf':'0','g':'20'}
+if sys.argv[1]=='hevc':
+ c.options['x265-params']='pools=none:frame-threads=1:log-level=error:bframes=0:rc-lookahead=0'
+with open(sys.argv[2],'wb') as output:
+ for i in range(260):
+  f=av.VideoFrame(640,544,'rgb24'); f.planes[0].update(bytes((255,0,0))*640*544)
+  f=f.reformat(format='yuv420p'); f.pts=1000000+i*40000; f.time_base=c.time_base
+  for p in c.encode(f):
+   b=bytes(p); output.write(struct.pack('!qI',p.pts,len(b))+b)
+ for p in c.encode(None):
+  b=bytes(p); output.write(struct.pack('!qI',p.pts,len(b))+b)
+print(av.__version__)
+"""
+    result = subprocess.run(
+        [str(MEDIA), "-I", "-c", script, request.param, str(out)],
+        cwd=ROOT,
+        capture_output=True,
+        timeout=30,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr.decode(errors="replace")
+    assert result.stdout.strip() == b"19.0.1"
+    data = out.read_bytes()
+    packets = []
+    offset = 0
+    while offset < len(data):
+        ts, size = struct.unpack_from("!qI", data, offset)
+        offset += 12
+        packets.append(
+            packet(
+                data[offset : offset + size],
+                codec=request.param,
+                width=640,
+                height=544,
+                timestamp_us=ts,
+                ordinal=len(packets),
+            )
+        )
+        offset += size
+    assert len(packets) == 260
+    assert [item.timestamp_us for item in packets] == [
+        1_000_000 + i * 40_000 for i in range(260)
+    ]
+    return request.param, packets
+
+
+def test_continuous_native_exceeds_diagnostic_totals_without_restarting(
+    continuous_synthetic,
+):
+    _, packets = continuous_synthetic
+    limits = DecodeLimits(
+        continuous=True,
+        inactivity_seconds=5.0,
+        deadline_seconds=0.2,
+        max_packets=4,
+        max_frames=1,
+        max_response_frames=1,
+        max_input_bytes=max(len(item._data) for item in packets),
+        max_output_bytes=640 * 544 * 3,
+    )
+    count = byte_count = 0
+    started = time.monotonic()
+    original = None
+    with decoder(limits=limits) as d:
+        for item in packets:
+            try:
+                returned = d.decode(item)
+            except DecodeError:
+                pytest.fail(
+                    f"inert decode ordinal {item.ordinal}; elapsed {time.monotonic() - started:.3f}s"
+                )
+            original = original or d.process
+            assert d.process is original
+            for frame in returned:
+                assert frame.timestamp_us == 1_000_000 + frame.ordinal * 40_000
+                assert len(frame.private_rgb()) == 1_044_480
+                assert frame.private_rgb()[0] > 240
+                count += 1
+                byte_count += len(frame.private_rgb())
+            if item.ordinal % 65 == 0:
+                time.sleep(0.06)
+        count += len(d.finish())
+        assert original.poll() == 0
+        assert d.wait_closed(0) is True
+        assert d._pending == {}
+    assert count == 260
+    assert byte_count > 256 * 1024 * 1024
+    assert time.monotonic() - started > 0.2
+
+
+def test_continuous_native_idle_expiry_and_authority_revoke_do_not_revive(
+    continuous_synthetic,
+):
+    _, packets = continuous_synthetic
+    current = [True]
+    d = decoder(
+        limits=DecodeLimits(continuous=True, inactivity_seconds=5.0),
+        authorize=lambda context: current[0],
+    )
+    try:
+        d.decode(packets[0])
+        original = d.process
+        time.sleep(5.3)
+        assert original.poll() is not None
+        with pytest.raises(DecodeError):
+            d.decode(packets[1])
+        assert d.process is original
+    finally:
+        d.close()
+    d = decoder(
+        limits=DecodeLimits(continuous=True, inactivity_seconds=5.0),
+        authorize=lambda context: current[0],
+    )
+    try:
+        d.decode(packets[0])
+        original = d.process
+        current[0] = False
+        with pytest.raises(DecodeDenied):
+            d.decode(packets[1])
+        current[0] = True
+        with pytest.raises(DecodeError):
+            d.decode(packets[1])
+        assert d.process is original and original.poll() is not None
+    finally:
+        d.close()
+
+
+@pytest.mark.parametrize("timestamp", [1_000_000, 999_999])
+def test_continuous_native_requires_strictly_increasing_source_pts(
+    continuous_synthetic, timestamp
+):
+    _, packets = continuous_synthetic
+    with decoder(limits=DecodeLimits(continuous=True)) as d:
+        d.decode(packets[0])
+        original = d.process
+        item = packets[1]
+        with pytest.raises(DecodeError):
+            d.decode(
+                packet(
+                    item._data,
+                    codec=item.codec,
+                    width=640,
+                    height=544,
+                    timestamp_us=timestamp,
+                    ordinal=item.ordinal,
+                )
+            )
+        assert original.poll() is not None
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"continuous": 1},
+        {"inactivity_seconds": 5.1},
+        {"inactivity_seconds": float("nan")},
+    ],
+)
+def test_continuous_configuration_rejects_unbounded_or_ambiguous_mode(changes):
+    with pytest.raises(DecodeError):
+        decoder(limits=DecodeLimits(**changes))
+
+
+def test_continuous_pending_mapping_saturates_and_reaps_original(monkeypatch):
+    original_popen = subprocess.Popen
+    code = """
+import struct,sys
+def read(size):
+ data=sys.stdin.buffer.read(size)
+ if len(data)!=size: raise EOFError()
+ return data
+read(struct.calcsize('!4s9Id'))
+while True:
+ fields=struct.unpack('!4sBBQ56sIIqII',read(struct.calcsize('!4sBBQ56sIIqII')))
+ read(fields[-1])
+ sys.stdout.buffer.write(struct.pack('!4sBQ56sI',b'WDR1',0,fields[3],fields[4],0))
+ sys.stdout.buffer.flush()
+"""
+
+    def stalled_decode(args, **kw):
+        return original_popen([args[0], "-I", "-c", code], **kw)
+
+    monkeypatch.setattr(subprocess, "Popen", stalled_decode)
+    with decoder(limits=DecodeLimits(continuous=True, max_packets=2)) as d:
+        assert d.decode(packet(ordinal=0, timestamp_us=1_000_000)) == ()
+        original = d.process
+        assert d.decode(packet(ordinal=1, timestamp_us=1_040_000)) == ()
+        with pytest.raises(DecodeError):
+            d.decode(packet(ordinal=2, timestamp_us=1_080_000))
+        assert original.poll() is not None
+        assert d._pending == {}
+
+
+def test_continuous_bad_input_cannot_renew_or_change_original_binding():
+    with decoder(limits=DecodeLimits(continuous=True)) as d:
+        with pytest.raises(DecodeError):
+            d.decode(packet(generation=6))
+        assert d.process is None
+        with pytest.raises(DecodeError):
+            d.decode(packet())
 
 
 def test_revoked_immediately_before_publication_discards_and_reaps(synthetic):
@@ -713,6 +926,43 @@ def test_retirement_retains_started_io_until_done_even_after_job_fault(monkeypat
     assert not child.is_alive()
     assert d._retirement_threads == (child,)
     assert d._retire_done.is_set()
+
+
+def test_wait_closed_requires_initiated_close_and_reports_original_settlement():
+    d = decoder()
+    with pytest.raises(DecodeError):
+        d.wait_closed(0)
+    d.close()
+    assert d.wait_closed(0) is True
+
+
+def test_wait_closed_oversized_integer_timeout_is_fixed_error():
+    d = decoder()
+    d.close()
+    with pytest.raises(DecodeError):
+        d.wait_closed(10**400)
+    assert d.wait_closed(0) is True
+    assert d.wait_closed(None) is True
+
+
+def test_wait_closed_never_claims_unreleased_original_job(monkeypatch):
+    original = InertOwnedProcess()
+    release = threading.Event()
+    d = decoder()
+    d._process = original
+    d._job_handle = 77
+    inert_kernel(monkeypatch, lambda handle: release.is_set())
+    try:
+        d.close()  # Bounded close returns while original-job retirement retries.
+        assert d.wait_closed(0.01) is False
+        assert d.process is original
+        assert original.poll() is not None
+        release.set()
+        assert d.wait_closed(1) is True
+        assert original.stdin.closed and original.stdout.closed
+    finally:
+        release.set()
+        d.close()
 
 
 from wso_core.tvt.windows_decode import _job as REAL_JOB

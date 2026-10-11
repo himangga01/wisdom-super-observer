@@ -1,0 +1,44 @@
+{
+  "status": "SOURCE_ACCEPTED_UNPUBLISHED",
+  "sources": {
+    "apps/web/src/lib/tvt/local-device-api.ts": {
+      "bytes": 4403,
+      "sha256": "50cb1e4288494834dd072595016c2b189316beb39e1c5852abfb2694164d328a"
+    },
+    "apps/web/src/lib/tvt/local-device-proxy.ts": {
+      "bytes": 5624,
+      "sha256": "dc126494b12b671012ed5a52885c55c465b337227bdd6b291cea89e44778d934"
+    },
+    "apps/web/src/features/connections/local-device-inventory.tsx": {
+      "bytes": 4719,
+      "sha256": "aa43c8322ee015c03b70dbe7e9b12d35f920708c4d087ddb5455789b82325b24"
+    },
+    "apps/web/src/features/connections/connections-view.tsx": {
+      "bytes": 11329,
+      "sha256": "c54644228d11f72613a1f8832c87ecd2597ede70a8335cb723246c3ccabca2d8"
+    },
+    "apps/web/src/app/api/local-devices/[[...segments]]/route.ts": {
+      "bytes": 463,
+      "sha256": "f31e0f0c542ae829fe742e71221102e024012306774d2c892d39e07a6ab43f0b"
+    },
+    "apps/web/tests/local-device-inventory.test.tsx": {
+      "bytes": 4504,
+      "sha256": "ab2ca25811270973bfd3d582999196ae5e374bd6a5683207fa7b8be60016769e"
+    },
+    "apps/web/tests/local-device-proxy.test.ts": {
+      "bytes": 6431,
+      "sha256": "6db31ec56d0c2624eebf97da7a038cde1bbdebe80b55317c4e6caf4839cc0c8e"
+    }
+  },
+  "review": {
+    "path": ".superpowers\\verification\\local-device-web\\review.md",
+    "sha256": "d41a8d3824766a69cd51fb511a7bdf30d904817fcdf91fcd9b3f62e84be8d059",
+    "critical": 0,
+    "important": 0,
+    "minor": 0
+  },
+  "known_private18": "PASS",
+  "actual_OWNER_native_browser_integration": "PENDING",
+  "MATCHED": 0,
+  "release_ready": false
+}

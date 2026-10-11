@@ -746,9 +746,9 @@ def test_taskless_first_option_requires_literal_bool(value):
         codec(stream=1, exclusive_first_task=value)
 
 
-def test_taskless_first_cannot_select_stream2_or_route1():
-    with pytest.raises(api().UnsupportedLive):
-        codec(stream=2, exclusive_first_task=True)
+def test_taskless_first_cannot_select_route1():
+    # Stream2 with the exclusive first task is admitted since R123; see the
+    # sub-stream lifecycle tests below. Route1 stays unsupported.
     c = codec(stream=1, exclusive_first_task=True)
     taskless_open_ack(c)
     with pytest.raises(api().UnsupportedLive):
@@ -786,3 +786,240 @@ def test_taskless_first_wrong_ack_cannot_enable_media():
         c.feed(packet(0x10000501, b"", flags=0, sequence=5, declared=0), generation=7)
     with pytest.raises(api().LiveError):
         c.feed(taskless_source_packet(), generation=7)
+
+
+# R123 sub-stream open lifecycle. All GUIDs and bytes are synthetic.
+SUB_ACK = 0x10000505
+
+
+def oz(code=0):
+    # oz0: LE int code, GUID16, LE short text length, 246 text bytes (=268).
+    return struct.pack("<i16sh", code, b"g" * 16, 0) + bytes(246)
+
+
+def sub_reply(code=0, sequence=9, body=None):
+    return packet(SUB_ACK, yz() + oz(code) if body is None else body, sequence=sequence)
+
+
+def sub_codec(capability=6, **changes):
+    return codec(
+        peer_capability=capability, stream=2, exclusive_first_task=True, **changes
+    )
+
+
+def route0(kind=2, index=1):
+    data = media(kind=kind, index=index)
+    return packet(65537, data, flags=0, sequence=0, declared=len(data))
+
+
+def refusal(command, code, task=TASK, tail=None):
+    body = yz(task=task) + (oz(code) if tail is None else tail)
+    return packet(0x20000000 | command, body)
+
+
+@pytest.mark.parametrize(
+    "capability,command", [(6, 1285), (4, 1281)], ids=["cap6", "cap4"]
+)
+def test_exclusive_first_task_accepts_stream_two(capability, command):
+    c = sub_codec(capability)
+    raw = c.open(request_guid=REQUEST, sequence=9).private_bytes()
+    assert struct.unpack_from("<I", raw, 12)[0] == command
+    assert raw[24:96] == yz()
+    if command == 1281:
+        assert raw[96:] == CHANNEL + bytes(52) + struct.pack("<iBBBB", 2, 3, 0, 0, 0)
+    else:
+        assert b"<chNo>3</chNo><audio>0</audio><streamType>2</streamType>" in raw[96:]
+
+
+def test_sub_1285_ack_admits_route0_kind2_media():
+    c = sub_codec()
+    c.open(request_guid=REQUEST, sequence=9)
+    reply = sub_reply()
+    assert len(reply) - 24 == 340
+    (ack,) = c.feed(reply, generation=7)
+    assert ack == api().LiveAcknowledgement(1285)
+    assert ack.warning == ""
+    raw = route0()
+    (frame,) = c.feed(raw, generation=7)
+    assert isinstance(frame, api().PrivateLiveFrame)
+    assert frame.private_bytes() == b"\0\0\0\1\x65inert"
+    assert frame.source_header.private_bytes() == raw[8:24]
+    assert frame.source_context[1] == 2
+    assert frame.identity.task == TASK
+
+
+def test_sub_1285_adaptation_off_is_warning_only():
+    c = sub_codec()
+    c.open(request_guid=REQUEST, sequence=9)
+    (ack,) = c.feed(sub_reply(0x20000060), generation=7)
+    assert ack == api().LiveAcknowledgement(1285, "SUB_STREAM_ADAPTATION_OFF")
+    (frame,) = c.feed(route0(), generation=7)
+    assert frame.private_bytes() == b"\0\0\0\1\x65inert"
+
+
+@pytest.mark.parametrize(
+    "code", [0x20000030, 0x20000029, -1, 0x7FFFFFFF, 0x2000005F, 0x20000061]
+)
+def test_sub_1285_ack_unknown_code_is_not_failure(code):
+    c = sub_codec()
+    c.open(request_guid=REQUEST, sequence=9)
+    (ack,) = c.feed(sub_reply(code), generation=7)
+    assert ack == api().LiveAcknowledgement(1285, "")
+    assert len(c.feed(route0(), generation=7)) == 1
+
+
+@pytest.mark.parametrize(
+    "variant",
+    [
+        "wrong_sequence",
+        "duplicate",
+        "before_open",
+        "closing",
+        "short_payload",
+        "wrong_generation",
+        "legacy_pending",
+    ],
+)
+def test_sub_1285_reply_rejected(variant):
+    c = sub_codec(4 if variant == "legacy_pending" else 6)
+    reply, generation = sub_reply(), 7
+    if variant != "before_open":
+        c.open(request_guid=REQUEST, sequence=9)
+    if variant == "wrong_sequence":
+        reply = sub_reply(sequence=10)
+    if variant == "duplicate":
+        c.feed(reply, generation=7)
+    if variant == "closing":
+        c.close_request(request_guid=REQUEST, sequence=10)
+        reply = sub_reply(sequence=10)
+    if variant == "short_payload":
+        reply = sub_reply(body=yz() + oz()[:3])
+    if variant == "wrong_generation":
+        generation = 8
+    with pytest.raises(api().LiveError) as caught:
+        c.feed(reply, generation=generation)
+    assert not isinstance(caught.value, api().LiveRefused)
+    if variant != "before_open":
+        with pytest.raises(api().LiveError):
+            c.feed(route0(), generation=7)
+
+
+def test_route0_media_before_1285_ack_fences():
+    c = sub_codec()
+    c.open(request_guid=REQUEST, sequence=9)
+    with pytest.raises(api().UnsupportedLive):
+        c.feed(route0(), generation=7)
+    with pytest.raises(api().LiveError):
+        c.feed(sub_reply(), generation=7)
+
+
+def test_route0_kind1_on_sub_codec_fences():
+    c = sub_codec()
+    c.open(request_guid=REQUEST, sequence=9)
+    c.feed(sub_reply(), generation=7)
+    with pytest.raises(api().UnsupportedLive):
+        c.feed(route0(kind=1), generation=7)
+    with pytest.raises(api().LiveError):
+        c.feed(route0(index=2), generation=7)
+
+
+@pytest.mark.parametrize(
+    "capability,command", [(4, 1281), (6, 1285)], ids=["1281", "1285"]
+)
+@pytest.mark.parametrize(
+    "code,reason",
+    [(0x20000030, "busy"), (0x20000029, "denied"), (0x20000031, "refused")],
+    ids=["0x20000030-busy", "0x20000029-denied", "0x20000031-refused"],
+)
+def test_open_refusal_reasons(capability, command, code, reason):
+    c = sub_codec(capability)
+    c.open(request_guid=REQUEST, sequence=9)
+    with pytest.raises(api().LiveRefused) as caught:
+        c.feed(refusal(command, code), generation=7)
+    error = caught.value
+    assert isinstance(error, api().UnsupportedLive)
+    assert error.reason == reason
+    assert str(error) == "local live open refused"
+    assert pickle.loads(pickle.dumps(error)).reason == reason
+    assert error.__cause__ is None
+    with pytest.raises(AttributeError):
+        error.reason = "busy"
+    with pytest.raises(api().LiveError):
+        c.feed(route0(), generation=7)
+    with pytest.raises(api().LiveError):
+        c.close_request(request_guid=REQUEST, sequence=10)
+
+
+@pytest.mark.parametrize(
+    "variant",
+    [
+        "mismatch",
+        "closing",
+        "acked",
+        "other_command",
+        "short_payload",
+        "code_in_command",
+    ],
+)
+def test_refusal_requires_task_match_and_pending_open(variant):
+    c = sub_codec()
+    c.open(request_guid=REQUEST, sequence=9)
+    raw = refusal(1285, 0x20000030)
+    if variant == "mismatch":
+        raw = refusal(1285, 0x20000030, task=b"t" * 16)
+    if variant == "closing":
+        c.close_request(request_guid=REQUEST, sequence=10)
+    if variant == "acked":
+        c.feed(sub_reply(), generation=7)
+    if variant == "other_command":
+        raw = refusal(1282, 0x20000030)
+    if variant == "short_payload":
+        raw = refusal(1285, 0x20000030, tail=b"\x30\0\0")
+    if variant == "code_in_command":
+        # A class-3 header with the codes placed where wz0's command is: the
+        # error code is oz0.a, never the wz0 command (cw3.m8), so this fences.
+        raw = packet(0x20000030, yz() + oz(0x20000030))
+    with pytest.raises(api().UnsupportedLive) as caught:
+        c.feed(raw, generation=7)
+    assert type(caught.value) is api().UnsupportedLive
+    with pytest.raises(api().LiveError):
+        c.feed(b"", generation=7)
+
+
+def test_legacy_sub_1281_stream2_ack_admits_route0_kind2():
+    c = sub_codec(4)
+    raw = c.open(request_guid=REQUEST, sequence=9).private_bytes()
+    assert struct.unpack_from("<I", raw, 12)[0] == 1281
+    assert c.feed(packet(0x10000501, b"", declared=0), generation=7) == (
+        api().LiveAcknowledgement(1281),
+    )
+    (frame,) = c.feed(route0(), generation=7)
+    assert frame.source_context[1] == 2
+
+
+def test_sub_close_uses_1282_ll2_stream2():
+    c = sub_codec()
+    c.open(request_guid=REQUEST, sequence=9)
+    c.feed(sub_reply(), generation=7)
+    close = c.close_request(request_guid=REQUEST, sequence=10).private_bytes()
+    assert struct.unpack_from("<IiHBBIII", close) == (
+        825307441,
+        len(close) - 8,
+        3,
+        2,
+        1,
+        1282,
+        10,
+        76,
+    )
+    assert close[24:96] == yz(action=2)
+    assert close[96:] == CHANNEL + bytes(52) + struct.pack("<iBBBB", 2, 3, 0, 0, 0)
+    with pytest.raises(api().LiveError):
+        c.feed(route0(), generation=7)
+    c = sub_codec()
+    c.open(request_guid=REQUEST, sequence=9)
+    c.feed(sub_reply(), generation=7)
+    c.close_request(request_guid=REQUEST, sequence=10)
+    assert c.feed(packet(0x10000502, yz(action=2), sequence=10), generation=7) == (
+        api().LiveAcknowledgement(1282),
+    )

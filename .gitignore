@@ -17,7 +17,28 @@ out/
 coverage/
 playwright-report/
 test-results/
-.superpowers/
+# Only immutable, audited source qualification metadata is tracked here.
+/.superpowers/*
+!/.superpowers/sdd/
+/.superpowers/sdd/*
+!/.superpowers/sdd/.gitignore
+!/.superpowers/verification/
+/.superpowers/verification/*
+!/.superpowers/sdd/2026-09-27-superlive-plus-web-parity-implementation-plan/
+/.superpowers/sdd/2026-09-27-superlive-plus-web-parity-implementation-plan/*
+!/.superpowers/verification/local-device-api/
+/.superpowers/verification/local-device-api/*
+!/.superpowers/verification/local-device-web/
+/.superpowers/verification/local-device-web/*
+!/.superpowers/sdd/2026-09-27-superlive-plus-web-parity-implementation-plan/M1-native-inventory-postpublication-source-root-receipt.json
+!/.superpowers/sdd/2026-09-27-superlive-plus-web-parity-implementation-plan/W04-local-inventory-xml-Fix3-Fix1-reviewed-root-receipt.json
+!/.superpowers/sdd/2026-09-27-superlive-plus-web-parity-implementation-plan/W04-local-n9000-login-field-reviewed-root-receipt.json
+!/.superpowers/sdd/2026-09-27-superlive-plus-web-parity-implementation-plan/W04-windows-python-crypto-runtime-override-reviewed-root-receipt.json
+!/.superpowers/sdd/2026-09-27-superlive-plus-web-parity-implementation-plan/W04-windows-socket-abi-reviewed-root-receipt.json
+!/.superpowers/sdd/2026-09-27-superlive-plus-web-parity-implementation-plan/W08-local-live-taskless-first-qualified-reviewed-root-receipt.json
+!/.superpowers/sdd/2026-09-27-superlive-plus-web-parity-implementation-plan/W08-local-service-integration-Fix2-reviewed-root-receipt.json
+!/.superpowers/verification/local-device-api/root-receipt.json
+!/.superpowers/verification/local-device-web/root-receipt.json
 
 # Next.js regenerates this declaration during dev/build/type generation.
 /apps/web/next-env.d.ts

@@ -11,6 +11,7 @@ import { publicConnection } from "../../lib/connections";
 import { ServiceShell } from "../../components/service-shell";
 import { SessionRefresh } from "../../components/session-refresh";
 import { ConnectionsView } from "../../features/connections/connections-view";
+import { ownedSharedMode } from "../../lib/tvt/owned-shared-mode";
 export const dynamic = "force-dynamic";
 export default async function ConnectionsPage({
   searchParams,
@@ -95,6 +96,7 @@ export default async function ConnectionsPage({
         initial={items}
         stores={stores}
         csrf={csrf}
+        sharedMode={ownedSharedMode()}
       />
     </ServiceShell>
   );

@@ -2,7 +2,7 @@
 name = "wso-workspace"
 version = "0.1.0"
 requires-python = ">=3.12,<3.13"
-dependencies = ["wso-api", "wso-contracts", "wso-core", "wso-tvt-bridge"]
+dependencies = ["wso-api", "wso-contracts", "wso-core", "wso-tvt-bridge", "wso-tvt-media"]
 
 [dependency-groups]
 dev = [
@@ -18,13 +18,14 @@ dev = [
 ]
 
 [tool.uv.workspace]
-members = ["services/tvt-bridge", "services/api", "packages/contracts", "packages/core"]
+members = ["services/tvt-bridge", "services/tvt-media", "services/api", "packages/contracts", "packages/core"]
 
 [tool.uv.sources]
 wso-tvt-bridge = { workspace = true }
 wso-api = { workspace = true }
 wso-contracts = { workspace = true }
 wso-core = { workspace = true }
+wso-tvt-media = { workspace = true }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

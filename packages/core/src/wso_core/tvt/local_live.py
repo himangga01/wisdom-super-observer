@@ -11,7 +11,7 @@ import struct
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import NoReturn, SupportsIndex
+from typing import Literal, NoReturn, SupportsIndex
 
 from .frames import FrameTimestamp
 
@@ -29,6 +29,28 @@ class UnsupportedLive(LiveError):
 class LiveDenied(LiveError):
     def __init__(self) -> None:
         ValueError.__init__(self, "local live authority denied")
+
+
+RefusalReason = Literal["busy", "denied", "refused"]
+AckWarning = Literal["", "SUB_STREAM_ADAPTATION_OFF"]
+_REFUSAL_REASONS: dict[int, RefusalReason] = {0x20000030: "busy", 0x20000029: "denied"}
+
+
+class LiveRefused(UnsupportedLive):
+    """A task-correlated class-3 reply ended the pending open; codec is closed."""
+
+    def __init__(self, reason: RefusalReason) -> None:
+        if reason not in ("busy", "denied", "refused"):
+            raise LiveError()
+        ValueError.__init__(self, "local live open refused")
+        self._reason: RefusalReason = reason
+
+    @property
+    def reason(self) -> RefusalReason:
+        return self._reason
+
+    def __reduce__(self) -> tuple[type[LiveRefused], tuple[RefusalReason]]:
+        return (LiveRefused, (self._reason,))
 
 
 class _Private:
@@ -110,6 +132,8 @@ class PrivateLiveBytes(_Immutable):
 @dataclass(frozen=True, slots=True)
 class LiveAcknowledgement:
     command: int
+    # Advisory 1285 oz0 code only; it never creates or removes success.
+    warning: AckWarning = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -212,8 +236,6 @@ class LiveCodec(_Private):
         _integer(peer_capability, 1, 32767)
         _integer(channel_number, 0, 255)
         _integer(stream, 1, 2)
-        if exclusive_first_task and stream != 1:
-            raise UnsupportedLive()
         _integer(max_packet, 172, 32 << 20)
         _integer(max_session_bytes, 1, 1 << 40)
         _integer(max_packets, 1, 1 << 20)
@@ -224,7 +246,7 @@ class LiveCodec(_Private):
         self._stream = stream
         self._authorize = authorize
         # Caller assertion, not parser proof: fresh original socket/generation,
-        # first and only task, no replacement/reuse, stream1. Default stays strict.
+        # first and only task, no replacement/reuse, stream1 or 2. Default strict.
         self._exclusive_first_task = exclusive_first_task
         self._max_packet = max_packet
         self._max_session = max_session_bytes
@@ -433,7 +455,7 @@ class LiveCodec(_Private):
             raise LiveError()
         _, route, _, command, sequence, _ = struct.unpack_from("<HBBIII", raw)
         # ServerNVMSHeader.a(command)==2 is the0x1 prefix;0x2 is error.
-        if command in (0x10000501, 0x10000502):
+        if command in (0x10000501, 0x10000502, 0x10000505):
             base = command & 0x0FFFFFFF
             # Z9's1281/1282 cases consume no body/header fields. Command supplies
             # the acknowledged action; one pending original-owner sequence and
@@ -445,11 +467,21 @@ class LiveCodec(_Private):
                 or self._state != ("closing" if base == 1282 else "open")
             ):
                 raise LiveError()
+            warning: AckWarning = ""
+            if base == 1285:
+                # Z9's1285 case reads yz0 then oz0 at body+72 (P2) and only acts
+                # on code0x20000060. The code is advisory; the class-2 header and
+                # command, not the body, decide success.
+                if len(raw) < 16 + 72 + 4:
+                    raise LiveError()
+                if struct.unpack_from("<i", raw, 16 + 72)[0] == 0x20000060:
+                    warning = "SUB_STREAM_ADAPTATION_OFF"
             self._acked = True
             if base == 1282:
                 self.close()
-            return LiveAcknowledgement(base)
-        # Z9's1285 response has oz0 error semantics; intentionally not a success ack.
+            return LiveAcknowledgement(base, warning)
+        if 0x20000000 <= command < 0x30000000:
+            self._refusal(raw, command & 0x0FFFFFFF)
         if command != 65537:
             raise UnsupportedLive()
         # Z9 initializes the X7 offset to0, changing it only for routes1/2.
@@ -459,7 +491,7 @@ class LiveCodec(_Private):
             if not (
                 self._exclusive_first_task
                 and self._acked
-                and self._command == 1281
+                and self._command in (1281, 1285)
                 and self._state == "open"
             ):
                 raise UnsupportedLive()
@@ -476,6 +508,25 @@ class LiveCodec(_Private):
         # echoes, action, reserved bytes, wz0 version/encoding/declared length.
         # The original owner/generation binds the session; ep3.e binds channel.
         return self._media(raw[88:], raw[:88], outer_headers)
+
+    def _refusal(self, raw: bytes, base: int) -> NoReturn:
+        # ServerNVMSHeader.a: class3 goes to m8. m8 dispatches on the wz0
+        # command's low28 bits (the failed request) and its shared1281/1285
+        # branch reads yz0 at body+0 and the error code as oz0.a at body+72,
+        # matching the task against the yz0 task GUID. The wz0 command is not
+        # the error code. Anything uncorrelated stays a fenced unsupported reply.
+        if not (
+            self._state == "open"
+            and not self._acked
+            and self._command in (1281, 1285)
+            and base == self._command
+            and len(raw) >= 16 + 72 + 4
+            and raw[16 + 52 : 16 + 68] == self._identity.task
+        ):
+            raise UnsupportedLive()
+        code = struct.unpack_from("<i", raw, 16 + 72)[0]
+        self.close()
+        raise LiveRefused(_REFUSAL_REASONS.get(code, "refused"))
 
     def _media(
         self, data: bytes, header: bytes, outer_headers: bytes

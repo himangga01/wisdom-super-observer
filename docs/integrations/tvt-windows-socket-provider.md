@@ -1,5 +1,48 @@
 # Private Windows NetSocket provider
 
+## R139 exact original login-BUSY outcome — 2026-10-06
+
+Baseline: retired c9 approval127-source closure on the stage-1 worktree at
+HEAD6436748. The read-only
+[c9 diagnosis](../analysis/2026-10-06-c9-channel-open-diagnosis.md) found eight
+same-generation child handshake/rejected/0x20000030 results while their parent
+owner summaries had already become validated/denied/code0/reaped. The child
+closes its service pipe before writing result.json; parent pump failure could
+win the race and bypass that result. APK login handling identifies this code
+as busy. Exact recorder capacity remains unmeasured.
+
+For a failed, unhanded-off local-live owner, the supervisor now recovers only
+that exact login-BUSY result after `finish()` and original-owner `confirmed`
+both establish retirement. Recovery is restricted to original protocol/closed
+parent failure and denied/rejected outcome; explicit authority/cancel/deadline
+and custody failures do not enter it. It retains the original result Path,
+file identity, generation-directory identity and expected generation. The
+existing bounded `read_original` and `parse_result` perform file/fstat/schema/
+generation checks, with directory identity checked before and after the read.
+Missing, truncated, foreign, substituted or unknown results do not alter the
+prior outcome. There is no result discovery, replacement owner or extra login.
+
+`is_login_busy` recognizes only SafeResult handshake/rejected/code0x20000030
+without login acceptance, inventory query or live-open attempt. Recovery records
+the original confirmed reap in that passive failure result; it grants no live
+authority. The live facade separately checks original generation and custody,
+caller cancel/deadline before and after its current predicate, and then maps
+the exact result to BUSY429. See the dated live-session guide section.
+
+The public LIVE source manifest is now referenced at
+`docs/integrations/receipts/tvt-local-live-substreams-stage1.json`, preserving
+Root's approved manifest bytes/hash. Root owns its public placement and narrow
+line-ending attributes so clone checkout preserves the pinned source bytes.
+The separate native SDK/source approval remains in protected private storage.
+
+Focused inert-child tests execute real original Windows process/Job/pipe/file
+retirement, including close-pipe→write-result→parent-EOF ordering. They cover
+exact BUSY, malformed/foreign/substituted/missing/unknown/no-authority outcomes,
+unsettled originals, directory identity and caller-authority precedence.
+Current executed counts are recorded in the canonical service report and author
+handoff. No SDK/device/browser/SQL run occurred for this repair. Independent
+native review, a new protected receipt and immutable approval remain required.
+
 Date: 2026-10-03 Asia/Seoul. Executable baseline
 `756946ca73cff31d7ebb23141873088b470a96b4`; documentation HEAD
 `36fc954e4754d69721596e190c35f9cf14de3e4c`. This implements an isolated private

@@ -62,10 +62,11 @@ def main() -> int:
             max_output,
             max_response,
         )
+        continuous = magic == b"WDC2"
         if (
-            magic != b"WDC1"
+            magic not in (b"WDC1", b"WDC2")
             or any(not 1 <= v <= c for v, c in zip(limits, caps, strict=True))
-            or not 0.05 <= seconds <= 60
+            or not 0.05 <= seconds <= (5 if continuous else 60)
         ):
             raise ValueError()
         deadline = time.monotonic() + seconds
@@ -84,10 +85,11 @@ def main() -> int:
         codec = None
         codec_id = 0
         dimensions = None
-        pending = {}
+        pending: dict[int, int] = {}
         seen_timestamps = set()
         packets = total_input = frames_total = output_total = 0
         last_ordinal = -1
+        last_timestamp = None
         while True:
             (
                 magic,
@@ -137,20 +139,34 @@ def main() -> int:
             if operation == 1:
                 if (
                     not 1 <= length <= max_packet
-                    or packets >= max_packets
-                    or total_input + length > max_input
-                    or ts in seen_timestamps
+                    or (len(pending) if continuous else packets) >= max_packets
+                    or (0 if continuous else total_input) + length > max_input
+                    or (ts in pending if continuous else ts in seen_timestamps)
+                    or (
+                        continuous
+                        and last_timestamp is not None
+                        and ts <= last_timestamp
+                    )
                     or ordinal <= last_ordinal
                 ):
                     raise ValueError()
                 payload = read(length)
                 if not payload.startswith((b"\x00\x00\x01", b"\x00\x00\x00\x01")):
                     raise ValueError()
-                seen_timestamps.add(ts)
+                if time.monotonic() >= deadline:
+                    raise ValueError()
+                if continuous:
+                    # Only the admitted parent sends packets; complete bounded
+                    # input renews orphan time without changing identity/codec.
+                    deadline = time.monotonic() + seconds
+                else:
+                    seen_timestamps.add(ts)
                 pending[ts] = ordinal
                 last_ordinal = ordinal
-                packets += 1
-                total_input += length
+                last_timestamp = ts
+                if not continuous:
+                    packets += 1
+                    total_input += length
                 packet = av.Packet(payload)
                 packet.pts = ts
                 packet.time_base = Fraction(1, 1000000)
@@ -160,9 +176,14 @@ def main() -> int:
                 if length or ts or ordinal:
                     raise ValueError()
                 decoded = codec.decode(None)
-            if len(decoded) > max_response or frames_total + len(decoded) > max_frames:
+            if (
+                len(decoded) > max_response
+                or (len(decoded) if continuous else frames_total + len(decoded))
+                > max_frames
+            ):
                 raise ValueError()
             result = bytearray()
+            response_output = 0
             for frame in decoded:
                 if (frame.width, frame.height) != dimensions or frame.pts is None:
                     raise ValueError()
@@ -186,7 +207,11 @@ def main() -> int:
                 timestamp = context[0]
                 source_ordinal = pending.pop(timestamp)
                 size = width * height * 3
-                if size > max_rgb or output_total + size > max_output:
+                if (
+                    size > max_rgb
+                    or (response_output if continuous else output_total) + size
+                    > max_output
+                ):
                     raise ValueError()
                 rgb = frame.reformat(format="rgb24", threads=1)
                 plane = rgb.planes[0]
@@ -198,12 +223,15 @@ def main() -> int:
                 )
                 if len(pixels) != size:
                     raise ValueError()
-                output_total += size
+                response_output += size
+                if not continuous:
+                    output_total += size
                 result.extend(
                     FRAME.pack(width, height, timestamp, source_ordinal, size)
                 )
                 result.extend(pixels)
-            frames_total += len(decoded)
+            if not continuous:
+                frames_total += len(decoded)
             if time.monotonic() >= deadline or (operation == 2 and pending):
                 raise ValueError()
             sys.stdout.buffer.write(

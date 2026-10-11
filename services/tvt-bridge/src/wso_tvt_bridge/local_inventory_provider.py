@@ -17,10 +17,10 @@ from wso_core.tvt.local_service import (
 
 from .local_inventory_ipc import ParentAuthority, decode
 from .windows_socket import (
-    PENDING_OWNERS,
     ProviderBusy,
     ProviderConfig,
     WindowsSocketProvider,
+    remove_confirmed_owner,
 )
 
 
@@ -178,8 +178,7 @@ class NativeLocalInventoryProvider:
                 and native.owner.confirmed
             ):
                 owner = native.owner
-                if owner in PENDING_OWNERS:
-                    PENDING_OWNERS.remove(owner)
+                remove_confirmed_owner(owner)
                 native.owner = None
             request = None
             del credentials

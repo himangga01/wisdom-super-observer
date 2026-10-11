@@ -17,13 +17,40 @@ const pause = ms => new Promise(done => setTimeout(done, ms));
 const running = child => Boolean(child && child.exitCode === null && child.signalCode == null);
 const cleanEnvironment = () => Object.fromEntries(Object.entries(process.env).filter(([key]) => !/^(WSO_|PG|DATABASE|NODE_)/.test(key) && !["SSL_CERT_FILE", "SSL_CERT_DIR"].includes(key)));
 
+export function measurementIdentity(role, { enabled = process.env.WSO_TEST_LOCAL_MEDIA_OBSERVE === "1", run = spawnSync } = {}) {
+  if (!enabled) return {};
+  try {
+    if (!["coordinator", "next"].includes(role)) throw new Error("Identity refused");
+    const python = resolve(root, ".venv/Scripts/python.exe");
+    // Bypass the Windows venv redirector so os.getppid() is this Node caller.
+    const info = run(python, ["-I", "-S", "-c", "import json,sys;print(json.dumps(sys._base_executable))"], { shell: false, windowsHide: true, encoding: "utf8", timeout: 5000, maxBuffer: 2048 });
+    if (info.status !== 0) throw new Error("Identity refused");
+    const base = JSON.parse(info.stdout);
+    if (typeof base !== "string" || !statSync(base).isFile()) throw new Error("Identity refused");
+    // Synchronous current-self publication: this Node caller remains alive.
+    const result = run(base, ["-I", "-S", resolve(root, "scripts/test-local-devices/observation.py"), "--caller", String(process.pid), role], { shell: false, windowsHide: true, encoding: "utf8", timeout: 5000, maxBuffer: 2048 });
+    if (result.status !== 0) throw new Error("Identity refused");
+    const owner = JSON.parse(result.stdout);
+    if (Object.keys(owner).sort().join(",") !== "creation_filetime,pid,role" || owner.role !== role || owner.pid !== process.pid || typeof owner.creation_filetime !== "string" || !/^[1-9][0-9]{0,18}$/.test(owner.creation_filetime) || BigInt(owner.creation_filetime) >= 2n ** 63n) throw new Error("Identity refused");
+    return { measurement_owner: owner };
+  } catch { return { measurement_owner_error: "IDENTITY_UNAVAILABLE" }; }
+}
+
 export function validateStateFile(value) {
   if (typeof value !== "string" || resolve(value) !== value.replaceAll("/", process.platform === "win32" ? "\\" : "/") || basename(value) !== "context.json" || dirname(dirname(value)) !== resolve(root, "auth-state") || !/^local-devices-[0-9a-f]{32}$/.test(basename(dirname(value)))) throw new Error("Explicit owned local state required");
   return value;
 }
 export function localAuthEnvironment(context) {
   if (context.proofKind !== "owned-local-device-native-pipeline" || context.schemaVersion !== 1 || context.role !== "OWNER" || context.baseURL !== "https://localhost:3543") throw new Error("Owned local state refused");
+  sharedMediaEnvironment(context);
   return directoryAuthEnvironment({ directoryMode: true, nextAuth: context.nextAuth }, { WSO_TEST_DIRECTORY_BROWSER: "1" });
+}
+export function sharedMediaEnvironment(context) {
+  if (context.sharedMedia === undefined) return {};
+  const value = context.sharedMedia;
+  const profile = { base_originals: 2, main_originals: 1, viewers: 12, physical_slots: 16, worker_process_bytes: 2147483648, native_process_bytes: 536870912, decoder_process_bytes: 536870912, retained_host_bytes: 1073741824 };
+  if (!value || Object.keys(value).sort().join(",") !== "enabled,profile,schemaVersion" || value.schemaVersion !== 1 || value.enabled !== true || !value.profile || Object.keys(value.profile).sort().join(",") !== Object.keys(profile).sort().join(",") || Object.entries(profile).some(([key, expected]) => value.profile[key] !== expected)) throw new Error("Owned shared media profile refused");
+  return { WSO_TEST_LOCAL_MEDIA_SHARED: "1" };
 }
 function state(file) {
   if (!existsSync(file) || statSync(file).size > 65536) throw new Error("Private local state unavailable");
@@ -62,6 +89,8 @@ export async function closeNextOwned(app, server) {
 }
 async function nextProcess(file) {
   const context = state(file);
+  const mode = sharedMediaEnvironment(context).WSO_TEST_LOCAL_MEDIA_SHARED;
+  if (process.env.WSO_TEST_LOCAL_MEDIA_SHARED !== mode) throw new Error("Owned shared media mode mismatch");
   const { default: next } = await import(pathToFileURL(resolve(root, "apps/web/node_modules/next/dist/server/next.js")).href);
   const app = next({ dev: true, dir: resolve(root, "apps/web"), hostname: "localhost", port: 3543 });
   await app.prepare();
@@ -69,7 +98,7 @@ async function nextProcess(file) {
   const server = createServer({ key: readFileSync(context.keyFile), cert: readFileSync(context.certificateFile) }, (req, res) => handler(req, res));
   server.on("error", () => { process.exitCode = 1; void app.close(); });
   await new Promise((done, reject) => { server.once("error", reject); server.listen(3543, "localhost", done); });
-  writeFileSync(resolve(dirname(file), "next-bound.json"), JSON.stringify({ pid: process.pid, port: 3543 }), { mode: 0o600 });
+  writeFileSync(resolve(dirname(file), "next-bound.json"), JSON.stringify({ pid: process.pid, port: 3543, ...measurementIdentity("next") }), { mode: 0o600 });
   let stopping = false;
   const close = async () => { if (stopping) return; stopping = true; await closeNextOwned(app, server); };
   process.stdin.once("data", () => { void close(); });
@@ -106,18 +135,20 @@ export async function coordinator() {
   process.once("SIGINT", () => { void shutdown().catch(() => { process.exitCode = 1; }); });
   process.once("SIGTERM", () => { void shutdown().catch(() => { process.exitCode = 1; }); });
   const checkStop = installDurableStop(resolve(dirname(file), "shutdown.json"), shutdown);
+  const measurementOwner = measurementIdentity("coordinator", { enabled: process.env.WSO_TEST_LOCAL_MEDIA_BROWSER === "1" && process.env.WSO_TEST_LOCAL_MEDIA_OBSERVE === "1" });
   try {
     runtime = spawn(base, ["-c", launch], { cwd: root, env: process.env, windowsHide: true, stdio: ["pipe", "ignore", "ignore"] });
     const deadline = performance.now() + 90000;
     while (!existsSync(file)) { if (!running(runtime) || performance.now() >= deadline) throw new Error("Owned local runtime readiness failed"); await checkStop(); if (stopping) return await stopping; await pause(100); }
     const context = state(file);
-    const env = { ...cleanEnvironment(), ...localAuthEnvironment(context), NODE_EXTRA_CA_CERTS: context.caFile, NEXT_TELEMETRY_DISABLED: "1", WSO_PUBLIC_ORIGIN: context.baseURL, API_INTERNAL_ORIGIN: context.apiOrigin, WSO_TEST_LOCAL_DEVICE_BROWSER_STATE_FILE: file };
+    const env = { ...cleanEnvironment(), ...localAuthEnvironment(context), ...sharedMediaEnvironment(context), NODE_EXTRA_CA_CERTS: context.caFile, NEXT_TELEMETRY_DISABLED: "1", WSO_PUBLIC_ORIGIN: context.baseURL, API_INTERNAL_ORIGIN: context.apiOrigin, WSO_TEST_LOCAL_DEVICE_BROWSER_STATE_FILE: file };
+    if (process.env.WSO_TEST_LOCAL_MEDIA_BROWSER === "1" && process.env.WSO_TEST_LOCAL_MEDIA_OBSERVE === "1") env.WSO_TEST_LOCAL_MEDIA_OBSERVE = "1";
     web = spawn(process.execPath, [fileURLToPath(import.meta.url), "--next"], { cwd: root, env, windowsHide: true, stdio: ["pipe", "ignore", "ignore"] });
     const bound = resolve(dirname(file), "next-bound.json");
     while (!existsSync(bound)) { if (!running(web) || !running(runtime) || performance.now() >= deadline) throw new Error("Owned Next bind failed"); await checkStop(); if (stopping) return await stopping; await pause(100); }
     if (JSON.parse(readFileSync(bound)).pid !== web.pid) throw new Error("Next ownership refused");
     while (!(await health(context.baseURL + "/", readFileSync(context.caFile)))) { if (!running(web) || !running(runtime) || performance.now() >= deadline) throw new Error("Owned local HTTPS readiness failed"); await checkStop(); if (stopping) return await stopping; await pause(100); }
-    writeFileSync(resolve(dirname(file), "ready.json"), JSON.stringify({ ready: true, publicURL: context.baseURL + "/api/auth/login", runtimePid: runtime.pid, nextPid: web.pid, nativeVerificationExecuted: false }), { mode: 0o600 });
+    writeFileSync(resolve(dirname(file), "ready.json"), JSON.stringify({ ready: true, publicURL: context.baseURL + "/api/auth/login", runtimePid: runtime.pid, nextPid: web.pid, nativeVerificationExecuted: false, ...measurementOwner }), { mode: 0o600 });
     while (!stopping) { if (!running(web) || !running(runtime)) throw new Error("Owned local service exited"); await checkStop(); await pause(100); }
     await stopping;
   } finally { await shutdown(); }

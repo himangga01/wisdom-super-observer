@@ -5,6 +5,7 @@ from __future__ import annotations
 import ctypes as ct
 import hashlib
 import json
+import math
 import os
 import re
 import stat
@@ -21,6 +22,8 @@ from typing import TYPE_CHECKING, Any, BinaryIO, Literal, NoReturn, cast
 
 if TYPE_CHECKING:
     from .local_inventory_ipc import ParentAuthority
+    from .local_live_diagnostics import NativeMuxTerminalRecord
+    from .local_live_mux_ownership import MuxOriginalCustodian
 
 ROOT = Path(__file__).resolve().parents[4]
 SDD = ".superpowers/sdd/2026-09-27-superlive-plus-web-parity-implementation-plan/"
@@ -33,20 +36,33 @@ OWNED = (
     "services/tvt-bridge/src/wso_tvt_bridge/local_inventory_config.py",
     "services/tvt-bridge/src/wso_tvt_bridge/local_inventory_ipc.py",
     "tests/contract/test_local_inventory_provider.py",
+    "services/tvt-bridge/src/wso_tvt_bridge/local_live_provider.py",
+    "services/tvt-bridge/src/wso_tvt_bridge/local_live_ipc.py",
+    "tests/contract/test_local_live_provider.py",
+    "docs/integrations/tvt-windows-live-session.md",
+    "services/tvt-bridge/src/wso_tvt_bridge/local_live_mux_provider.py",
+    "services/tvt-bridge/src/wso_tvt_bridge/local_live_mux_ipc.py",
+    "services/tvt-bridge/src/wso_tvt_bridge/local_live_mux_ownership.py",
+    "packages/core/src/wso_core/tvt/local_live_mux.py",
+    "packages/core/src/wso_core/tvt/local_media_mux_types.py",
+    "tests/contract/test_local_live_mux_provider.py",
+    "tests/contract/test_local_live_mux_pressure.py",
+    "tests/contract/test_local_live_mux_ipc.py",
+    "tests/contract/test_local_mux_callback.py",
+    "tests/contract/test_local_mux_ownership.py",
+    "docs/integrations/tvt-local-live-mux-provider.md",
 )
 ABI_RECEIPT = SDD + "W04-windows-socket-abi-reviewed-root-receipt.json"
-CODEC_RECEIPT = SDD + "W04-local-n9000-login-field-reviewed-root-receipt.json"
+CODEC_RECEIPT = "docs/integrations/receipts/tvt-local-n9000-notification-source-r203-v1.json"
 INVENTORY_RECEIPT = SDD + "W04-local-inventory-xml-Fix3-Fix1-reviewed-root-receipt.json"
-LIVE_RECEIPT = (
-    SDD + "W08-local-live-taskless-first-qualified-reviewed-root-receipt.json"
-)
+LIVE_RECEIPT = "docs/integrations/receipts/tvt-local-live-mux-stage2-source-v15.json"
 RUNTIME_RECEIPT = (
     SDD + "W04-windows-python-crypto-runtime-override-reviewed-root-receipt.json"
 )
 ACCEPTED_HASHES = {
-    LIVE_RECEIPT: "8039ff625abdb21c34214014af129286ee8becc3ed102986920b7289a1ae0b75",
+    LIVE_RECEIPT: "7e2f52e0d36693e9e0250b0c7abf516a223d0b5d9c8635f4ace689b0ca763ded",
     ABI_RECEIPT: "75fc1cc60907375b7306c484562f22d6944f5ea92f5203201a629fb3f5e6abdf",
-    CODEC_RECEIPT: "03f6adbac6499d8a48bc9342c5a29dadc3ec0fd871eb042559f27c1ffb2d971e",
+    CODEC_RECEIPT: "9775e72c0b257c1cc5ad8249a19d9ce65f76a81d64bd86cb98c9407c9f6fdb90",
     INVENTORY_RECEIPT: "2b8b158ef441ec374dc237c21157562c4fe02ce8fdcd76dadfe78cf8df686e9e",
     RUNTIME_RECEIPT: "77eb86a01a0c53a5e9998417f67b337aa38b96c0e5d62e1ee2ce333309eec45d",
 }
@@ -346,6 +362,7 @@ class PrivateRequest:
     live_read_opt_in: bool = False
     store_ref: str = ""
     channel_position: int = 0
+    stream: int = 1
 
     def __post_init__(self) -> None:
         if self.mode not in (
@@ -364,6 +381,10 @@ class PrivateRequest:
         if type(self.live_read_opt_in) is not bool or self.live_read_opt_in != (
             self.mode == "live"
         ):
+            fail()
+        if type(self.stream) is not int or self.stream not in (1, 2):
+            fail()
+        if self.mode != "live" and self.stream != 1:
             fail()
         if self.mode == "live":
             if (
@@ -445,12 +466,38 @@ class SafeResult:
     live_codec: str = "unavailable"
     live_width: int = 0
     live_height: int = 0
+    mux_terminal_observed: bool = False
+    mux_epoch_bound: bool = False
+    mux_callback_failed: bool = False
+    mux_callback_closed: bool = False
+    mux_queued_chunks: int = 0
+    mux_queued_bytes: int = 0
+    mux_ingress_ordinal: int = 0
+    mux_capacity_bytes: int = 0
 
     def to_json(self) -> bytes:
         return json.dumps(asdict(self), sort_keys=True).encode()
 
 
+def is_login_busy(result: SafeResult) -> bool:
+    """An exact rejected login outcome, never an authority or live-open grant."""
+    return (
+        type(result) is SafeResult
+        and result.stage == "handshake"
+        and result.failure == "rejected"
+        and result.native_error == 0x20000030
+        and not result.reply_accepted
+        and result.inventory_queries_sent == 0
+        and result.live_open_attempts == 0
+    )
+
+
 def parse_result(raw: bytes, generation: str) -> SafeResult:
+    from .local_live_diagnostics import (
+        NativeMuxTerminalRecord,
+        validate_mux_terminal_record,
+    )
+
     data = json_object(raw)
     defaults = asdict(SafeResult(generation))
     if set(data) != set(defaults) or data["generation"] != generation:
@@ -458,6 +505,33 @@ def parse_result(raw: bytes, generation: str) -> SafeResult:
     for key, default in defaults.items():
         if type(data[key]) is not type(default):
             fail()
+    try:
+        validate_mux_terminal_record(
+            NativeMuxTerminalRecord(
+                data["mux_epoch_bound"],
+                data["mux_callback_failed"],
+                data["mux_callback_closed"],
+                data["mux_queued_chunks"],
+                data["mux_queued_bytes"],
+                data["mux_ingress_ordinal"],
+                data["mux_capacity_bytes"],
+            )
+        )
+    except ValueError:
+        fail()
+    if not data["mux_terminal_observed"] and any(
+        data[name]
+        for name in (
+            "mux_epoch_bound",
+            "mux_callback_failed",
+            "mux_callback_closed",
+            "mux_queued_chunks",
+            "mux_queued_bytes",
+            "mux_ingress_ordinal",
+            "mux_capacity_bytes",
+        )
+    ):
+        fail()
     if (
         data["stage"] not in STAGES
         or data["failure"] not in FAILURES
@@ -553,8 +627,10 @@ def parse_result(raw: bytes, generation: str) -> SafeResult:
             or data["inventory_availability"] != "identity_available"
         ):
             fail()
-        if data["capture_status"] == "not_requested" and (
-            data["stage"] != "complete" or data["failure"] != "none"
+        if (
+            data["capture_status"] == "not_requested"
+            and (data["stage"] != "complete" or data["failure"] != "none")
+            and not (data["mux_terminal_observed"] and data["stage"] == "live")
         ):
             fail()
     elif data["permissions_availability"] != "unavailable":
@@ -668,6 +744,9 @@ def verify_review(config: ProviderConfig) -> list[dict[str, Any]]:
         "packages/core/src/wso_core/tvt/local_credentials.py",
         "packages/core/src/wso_core/tvt/local_service.py",
         "packages/contracts/src/wso_contracts/tvt/local_device.py",
+        "packages/core/src/wso_core/tvt/local_media_service.py",
+        "packages/contracts/src/wso_contracts/tvt/local_media.py",
+        "packages/contracts/src/wso_contracts/tvt/media.py",
     ):
         dependencies[path] = file_hash(ROOT / path)
     dependencies[RUNTIME_RECEIPT] = file_hash(ROOT / RUNTIME_RECEIPT)
@@ -802,6 +881,11 @@ def worker_command() -> list[str]:
     ]
 
 
+def mux_worker_command() -> list[str]:
+    """Same isolated Job admission bootstrap; strict mux packet selects its entry."""
+    return worker_command()
+
+
 class JobBasicLimits(ct.Structure):
     _fields_ = [
         ("process_time", ct.c_int64),
@@ -830,7 +914,12 @@ class JobExtendedLimits(ct.Structure):
 class OwnedJob:
     """One original interpreter; no descendants, breakaway or process lookup."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, process_memory_bytes: int | None = None) -> None:
+        if process_memory_bytes is not None and (
+            type(process_memory_bytes) is not int or process_memory_bytes != 512 << 20
+        ):
+            fail()
+        self.process_memory_bytes = process_memory_bytes
         self.kernel = ct.WinDLL("kernel32", use_last_error=True)
         k = self.kernel
         k.CreateJobObjectW.argtypes, k.CreateJobObjectW.restype = (
@@ -863,6 +952,9 @@ class OwnedJob:
             limits = JobExtendedLimits()
             limits.basic.flags = 0x2000 | 0x8  # KILL_ON_JOB_CLOSE | ACTIVE_PROCESS
             limits.basic.active_processes = 1
+            if self.process_memory_bytes is not None:
+                limits.basic.flags |= 0x100  # JOB_OBJECT_LIMIT_PROCESS_MEMORY
+                limits.process_memory = self.process_memory_bytes
             if not k.SetInformationJobObject(
                 self.handle, 9, ct.byref(limits), ct.sizeof(limits)
             ):
@@ -906,10 +998,18 @@ class ChildOwner:
     writer_start_attempted: bool = False
     job: OwnedJob | None = None
     service: ParentAuthority | None = None
+    mux_custodian: MuxOriginalCustodian | None = None
     _kill_claim: dict[str, object] = field(default_factory=dict)
+    _finish_lock: Any = field(default_factory=threading.RLock, repr=False)
 
     def request_stop(self) -> None:
         child = self.child
+        if (
+            child is not None
+            and self.mux_custodian is not None
+            and not self.mux_custodian.owns_process(child)
+        ):
+            return
         if child is not None and not self.kill_attempted and child.poll() is None:
             token = object()
             if self._kill_claim.setdefault("kill", token) is not token:
@@ -921,7 +1021,16 @@ class ChildOwner:
                 self.confirmed = False
 
     def finish(self, timeout: float = 1) -> bool:
+        with self._finish_lock:
+            return self._finish(timeout)
+
+    def _finish(self, timeout: float) -> bool:
         try:
+            if (
+                self.mux_custodian is not None
+                and not self.mux_custodian.constructor_settled()
+            ):
+                return False
             child, writer = self.child, self.writer
             if child is not None:
                 self.request_stop()
@@ -936,6 +1045,10 @@ class ChildOwner:
                 return False
             if writer is not None and writer.is_alive():
                 return False
+            if self.mux_custodian is not None and not self.mux_custodian.close_parent(
+                timeout
+            ):
+                return False
             if child is not None and child.stdin is not None and not child.stdin.closed:
                 child.stdin.close()
             for output in self.outputs:
@@ -945,6 +1058,14 @@ class ChildOwner:
                 if not self.service.close(timeout):
                     return False
                 self.service = None
+            if self.mux_custodian is not None and (
+                not self.mux_custodian.constructor_settled()
+                or child is not None
+                and not self.mux_custodian.ipc_custody_current()
+            ):
+                # A process exit cannot substitute for the original IPC parent's
+                # settlement. Keep the global uncertain-original fence charged.
+                return False
             self.confirmed = True
             return True
         except BaseException:  # noqa: BLE001 -- every cleanup phase preserves custody
@@ -961,12 +1082,49 @@ class ChildOwner:
 
 
 PENDING_OWNERS: list[ChildOwner] = []
+PENDING_OWNERS_LOCK = threading.Lock()
+
+
+def pending_owner_snapshot() -> tuple[ChildOwner, ...]:
+    """Stable membership; evaluate custody and operate on owners after unlocking."""
+    with PENDING_OWNERS_LOCK:
+        return tuple(PENDING_OWNERS)
+
+
+def register_pending_owner(owner: ChildOwner) -> None:
+    with PENDING_OWNERS_LOCK:
+        PENDING_OWNERS.append(owner)
+
+
+def remove_confirmed_owner(owner: ChildOwner) -> bool:
+    """Idempotently forget this original only after its own cleanup confirmed."""
+    with PENDING_OWNERS_LOCK:
+        if not owner.confirmed:
+            return False
+        for index, candidate in enumerate(PENDING_OWNERS):
+            if candidate is owner:
+                del PENDING_OWNERS[index]
+                return True
+    return False
+
+
 ATTEMPT_LOCK = threading.Lock()
+MAX_SERVICE_LIVE_SESSIONS = 16
+LIVE_ATTEMPT_WAIT_SECONDS = 10.0
 
 
 @contextmanager
-def attempt_scope(*, blocking: bool) -> Iterator[None]:
-    if not ATTEMPT_LOCK.acquire(blocking=blocking):
+def attempt_scope(*, blocking: bool, deadline: float | None = None) -> Iterator[None]:
+    acquired = (
+        ATTEMPT_LOCK.acquire(
+            timeout=max(
+                0.0, min(deadline - time.monotonic(), LIVE_ATTEMPT_WAIT_SECONDS)
+            )
+        )
+        if deadline is not None
+        else ATTEMPT_LOCK.acquire(blocking=blocking)
+    )
+    if not acquired:
         raise ProviderBusy()
     try:
         yield
@@ -974,9 +1132,325 @@ def attempt_scope(*, blocking: bool) -> Iterator[None]:
         ATTEMPT_LOCK.release()
 
 
+@contextmanager
+def mux_attempt_scope(*, deadline: float, check: Callable[[], None]) -> Iterator[None]:
+    """Bound lock contention by the same caller's Stop/current cadence."""
+    while True:
+        check()
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise ProviderBusy()
+        if ATTEMPT_LOCK.acquire(timeout=min(0.05, remaining)):
+            break
+    try:
+        check()
+        yield
+    finally:
+        ATTEMPT_LOCK.release()
+
+
+def mux_owner_can_coexist(owner: ChildOwner) -> bool:
+    from .local_live_mux_ownership import MuxOriginalCustodian
+
+    custodian = owner.mux_custodian
+    return type(custodian) is MuxOriginalCustodian and custodian.can_coexist(owner)
+
+
 class WindowsSocketProvider:
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        mux_config: ProviderConfig | None = None,
+        mux_custodian: MuxOriginalCustodian | None = None,
+    ) -> None:
         self.owner: ChildOwner | None = None
+        self._result_owner: ChildOwner | None = None
+        self._mux_config, self._mux_custodian = mux_config, mux_custodian
+        self._original_result_paths: (
+            tuple[Path, tuple[int, int], Path, tuple[int, int], str] | None
+        ) = None
+
+    def open_mux(
+        self,
+        serialized_input: bytes,
+        *,
+        deadline_monotonic: float,
+        current: Callable[[], bool],
+        cancel: threading.Event,
+    ) -> ChildOwner:
+        """Original launch only; Task7 supplies the native entry and parent setup."""
+        from .local_live_mux_ipc import parse_mux_worker_input
+        from .local_live_mux_ownership import MuxOriginalCustodian
+
+        def check() -> None:
+            if cancel.is_set() or time.monotonic() >= deadline_monotonic:
+                fail()
+            if current() is not True:
+                fail()
+            if cancel.is_set() or time.monotonic() >= deadline_monotonic:
+                fail()
+            if self.owner is not None and (
+                self._mux_custodian is None
+                or not self._mux_custodian.resources_current()
+            ):
+                fail()
+
+        if (
+            type(deadline_monotonic) not in (int, float)
+            or not math.isfinite(deadline_monotonic)
+            or not 0 < deadline_monotonic - time.monotonic() <= 30
+            or type(cancel) is not threading.Event
+            or not callable(current)
+        ):
+            fail()
+        check()
+        _, callback_generation, _ = parse_mux_worker_input(serialized_input)
+        custodian, config = self._mux_custodian, self._mux_config
+        if (
+            type(custodian) is not MuxOriginalCustodian
+            or type(config) is not ProviderConfig
+        ):
+            fail()
+        deadline = min(deadline_monotonic, time.monotonic() + LIVE_ATTEMPT_WAIT_SECONDS)
+        with mux_attempt_scope(deadline=deadline, check=check):
+            check()
+            if self.owner is not None and (
+                self.owner is not custodian.owner
+                or self.owner.child is not None
+                or self.owner.job is not None
+                or self.owner.writer is not None
+                or self.owner.confirmed
+            ):
+                fail()
+            while True:
+                pending = [
+                    o
+                    for o in pending_owner_snapshot()
+                    if o is not self.owner and not o.confirmed
+                ]
+                if len(pending) >= MAX_SERVICE_LIVE_SESSIONS:
+                    raise ProviderBusy()
+                if all(mux_owner_can_coexist(o) for o in pending):
+                    break
+                check()
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise ProviderBusy()
+                time.sleep(min(0.05, remaining))
+            # Publish original and bind its sealed reservation before any OS resource.
+            owner = self.owner
+            if owner is None:
+                owner = ChildOwner(None, None, cast(tuple[BinaryIO, BinaryIO], ()))
+                self.owner = owner
+                register_pending_owner(owner)
+                custodian.register(owner)
+            try:
+                with custodian.constructing():
+                    custodian.begin_acquisition()
+                    custodian.configure_input(callback_generation)
+                    command = mux_worker_command()
+                    check()
+                    manifest = verify_review(config)
+                    runtime_override(config)
+                    check_private_acl(config.review_receipt)
+                    validate_bundle(config.bundle, manifest)
+                    check_private_acl(config.bundle)
+                    for row in manifest:
+                        check_private_acl(config.bundle / row["name"])
+                    staging_id = identity(config.staging, directory=True)
+                    check_private_acl(config.staging)
+                    if config.staging.is_relative_to(ROOT):
+                        fail()
+                    generation = config.staging / custodian.native_generation.hex
+                    generation.mkdir()
+                    protect_created_acl(generation)
+                    if identity(config.staging, directory=True) != staging_id:
+                        fail()
+                    generation_id = identity(generation, directory=True)
+                    receipt = generation / "result.json"
+                    receipt.touch(exist_ok=False)
+                    receipt_id = identity(receipt)
+                    self._result_owner = owner
+                    self._original_result_paths = (
+                        generation,
+                        generation_id,
+                        receipt,
+                        receipt_id,
+                        custodian.native_generation.hex,
+                    )
+                    protect_created_acl(receipt)
+                    # Retain each output immediately; partial acquisition stays owned.
+                    for _ in range(2):
+                        output = Path(os.devnull).open("wb")  # noqa: SIM115
+                        custodian.retain_output(output)
+                    pipe = custodian.create_pipe(deadline_monotonic, cancel)
+                    custodian.retain_job(OwnedJob(process_memory_bytes=512 << 20))
+                    assert owner.job is not None
+                    owner.job.create()
+                    check()
+                    custodian.begin_process_creation()
+                    owner.child = subprocess.Popen(
+                        command,
+                        stdin=subprocess.PIPE,
+                        stdout=owner.outputs[0],
+                        stderr=owner.outputs[1],
+                        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                        env={
+                            k: v
+                            for k, v in os.environ.items()
+                            if k.upper() in ("SYSTEMROOT", "WINDIR", "TEMP", "TMP")
+                        },
+                        cwd=str(generation),
+                        shell=False,
+                    )
+                    custodian.retain_process(owner.child)
+                    child = owner.child
+                    custodian.watch_launch(deadline_monotonic, cancel)
+                    owner.job.admit(child)
+                    handle = pipe.duplicate_to(child)
+                    check()
+                    packet = json.dumps(
+                        {
+                            "version": 1,
+                            "mode": "mux",
+                            "config": {
+                                "bundle": str(config.bundle),
+                                "staging": str(generation),
+                                "review_receipt": str(config.review_receipt),
+                                "deadline_seconds": config.deadline_seconds,
+                                "runtime_receipt": str(config.runtime_receipt)
+                                if config.runtime_receipt
+                                else None,
+                            },
+                            "generation": custodian.native_generation.hex,
+                            "generation_identity": list(generation_id),
+                            "receipt_identity": list(receipt_id),
+                            "job_admitted": True,
+                            "deadline": deadline_monotonic,
+                            "service_authority_handle": handle,
+                            "mux_input": json.loads(serialized_input),
+                        },
+                        separators=(",", ":"),
+                    ).encode()
+                    if len(packet) > 32768:
+                        fail()
+
+                    def send_input() -> None:
+                        try:
+                            # SQL/current callbacks remain on the opening caller.
+                            if (
+                                cancel.is_set()
+                                or time.monotonic() >= deadline_monotonic
+                            ):
+                                fail()
+                            assert child.stdin is not None
+                            child.stdin.write(b"J\n" + packet)
+                            child.stdin.flush()
+                        except BaseException:  # noqa: BLE001 -- retained original only
+                            owner.request_stop()
+                        finally:
+                            if child.stdin is not None:
+                                child.stdin.close()
+
+                    custodian.retain_writer(
+                        threading.Thread(
+                            target=send_input, name="mux-private-input", daemon=False
+                        )
+                    )
+                    assert owner.writer is not None
+                    check()
+                    owner.writer_start_attempted = True
+                    owner.writer.start()
+                    owner.writer.join(
+                        max(0, min(0.2, deadline_monotonic - time.monotonic()))
+                    )
+                    if owner.writer.is_alive() or child.poll() is not None:
+                        fail()
+                    check()
+                return owner
+            except BaseException:
+                owner.finish(0.2)
+                raise
+
+    def recover_retired_login_busy(self) -> SafeResult | None:
+        paths = self._original_result_paths
+        owner = self.owner
+        if (
+            paths is None
+            or owner is None
+            or owner is not self._result_owner
+            or not owner.confirmed
+        ):
+            return None
+        directory, directory_id, receipt, receipt_id, generation = paths
+        try:
+            if identity(directory, directory=True) != directory_id:
+                return None
+            result = parse_result(read_original(receipt, receipt_id, CAP), generation)
+            if (
+                identity(directory, directory=True) != directory_id
+                or not owner.confirmed
+                or self.owner is not owner
+                or self._result_owner is not owner
+            ):
+                return None
+            if is_login_busy(result):
+                result.reaped = True
+                return result
+        except Exception:  # noqa: BLE001 -- only exact bounded result can classify BUSY
+            return None
+        return None
+
+    def original_mux_terminal(self) -> NativeMuxTerminalRecord | None:
+        """Read only this retired original's retained result inode/generation.
+
+        An absent/unflushed result means unmeasured terminal evidence. It never
+        certifies native cleanup or selects another SDK result by timestamp.
+        """
+        from .local_live_diagnostics import NativeMuxTerminalRecord
+
+        paths, owner, custodian = (
+            self._original_result_paths,
+            self.owner,
+            self._mux_custodian,
+        )
+        if (
+            paths is None
+            or owner is None
+            or owner is not self._result_owner
+            or not owner.confirmed
+            or custodian is None
+            or custodian.owner is not owner
+            or custodian.reservation.kind != "base"
+        ):
+            return None
+        directory, directory_id, receipt, receipt_id, generation = paths
+        try:
+            if identity(directory, directory=True) != directory_id:
+                return None
+            result = parse_result(read_original(receipt, receipt_id, CAP), generation)
+            if (
+                identity(directory, directory=True) != directory_id
+                or self._original_result_paths is not paths
+                or self.owner is not owner
+                or self._result_owner is not owner
+                or not owner.confirmed
+                or self._mux_custodian is not custodian
+                or custodian.owner is not owner
+                or not result.mux_terminal_observed
+            ):
+                return None
+            return NativeMuxTerminalRecord(
+                result.mux_epoch_bound,
+                result.mux_callback_failed,
+                result.mux_callback_closed,
+                result.mux_queued_chunks,
+                result.mux_queued_bytes,
+                result.mux_ingress_ordinal,
+                result.mux_capacity_bytes,
+            )
+        except Exception:  # noqa: BLE001 -- exact bounded result only
+            return None
 
     def run(
         self,
@@ -986,17 +1460,95 @@ class WindowsSocketProvider:
         service: ParentAuthority | None = None,
         current: Callable[[], bool] | None = None,
     ) -> SafeResult:
-        if service is not None and (request.mode != "inventory" or current is None):
+        from .local_live_ipc import LiveParentAuthority
+
+        custodian = self._mux_custodian
+        dedicated = custodian is not None and custodian.reservation.kind == "main"
+        live_authority = service if isinstance(service, LiveParentAuthority) else None
+        live_service = live_authority is not None
+        if service is not None and (
+            request.mode != ("live" if live_service else "inventory") or current is None
+        ):
             fail()
-        with attempt_scope(blocking=service is None):
-            if (self.owner is not None and not self.owner.confirmed) or any(
-                not owner.confirmed for owner in PENDING_OWNERS
+        attempt_deadline = None
+        if live_authority is not None:
+            # Full capacity is refused even while another startup owns the lock.
+            if (
+                sum(not owner.confirmed for owner in pending_owner_snapshot())
+                >= MAX_SERVICE_LIVE_SESSIONS
+            ):
+                raise ProviderBusy()
+            attempt_deadline = min(
+                live_authority.deadline, time.monotonic() + LIVE_ATTEMPT_WAIT_SECONDS
+            )
+        with attempt_scope(blocking=service is None, deadline=attempt_deadline):
+            if (
+                self.owner is not None
+                and not self.owner.confirmed
+                and not (
+                    dedicated
+                    and custodian is not None
+                    and self.owner is custodian.owner
+                    and self.owner.child is None
+                    and self.owner.job is None
+                    and self.owner.writer is None
+                )
             ):
                 fail()
-            result = SafeResult(uuid.uuid4().hex)
+            pending = [
+                owner
+                for owner in pending_owner_snapshot()
+                if not owner.confirmed and (not dedicated or owner is not self.owner)
+            ]
+            if live_service:
+                # Only explicitly handed-off healthy local-live originals may
+                # coexist. Unknown/uncertain or diagnostic custody still fences
+                # every new attempt; no socket/process/task is ever shared.
+                assert attempt_deadline is not None
+                while True:
+                    pending = [
+                        owner
+                        for owner in pending_owner_snapshot()
+                        if not owner.confirmed
+                        and (not dedicated or owner is not self.owner)
+                    ]
+                    if len(pending) >= MAX_SERVICE_LIVE_SESSIONS:
+                        raise ProviderBusy()
+                    if all(
+                        mux_owner_can_coexist(owner)
+                        if dedicated
+                        else (
+                            custodian is None
+                            and isinstance(owner.service, LiveParentAuthority)
+                            and owner.service.handed_off
+                            and owner.service.ready
+                            and not owner.service.failure
+                            and owner.child is not None
+                            and owner.child.poll() is None
+                        )
+                        for owner in pending
+                    ):
+                        break
+                    remaining = attempt_deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise ProviderBusy()
+                    # The original owner alone confirms/releases uncertain custody.
+                    time.sleep(min(0.05, remaining))
+            elif pending:
+                fail()
+            if dedicated:
+                assert custodian is not None
+                custodian.begin_acquisition()
+            result = SafeResult(
+                custodian.native_generation.hex
+                if dedicated and custodian is not None
+                else uuid.uuid4().hex
+            )
             outputs: tuple[BinaryIO, BinaryIO] | None = None
             generation: Path | None = None
             generation_id: tuple[int, int] | None = None
+            receipt: Path | None = None
+            receipt_id: tuple[int, int] | None = None
             try:
                 if service is not None:
                     assert current is not None
@@ -1023,18 +1575,31 @@ class WindowsSocketProvider:
                 receipt = generation / "result.json"
                 receipt.touch(exist_ok=False)
                 receipt_id = identity(receipt)
-                protect_created_acl(receipt)
-                outputs = cast(
-                    tuple[BinaryIO, BinaryIO],
-                    tuple(
-                        (
-                            Path(os.devnull).open("wb")  # noqa: SIM115 -- original ChildOwner retains and closes streams
-                            if service is not None
-                            else (generation / name).open("xb")
-                        )
-                        for name in ("native.stdout", "native.stderr")
-                    ),
+                self._original_result_paths = (
+                    generation,
+                    generation_id,
+                    receipt,
+                    receipt_id,
+                    result.generation,
                 )
+                protect_created_acl(receipt)
+                if dedicated:
+                    assert custodian is not None and self.owner is not None
+                    for _ in range(2):
+                        custodian.retain_output(Path(os.devnull).open("wb"))  # noqa: SIM115 -- retained original output
+                    outputs = self.owner.outputs
+                else:
+                    outputs = cast(
+                        tuple[BinaryIO, BinaryIO],
+                        tuple(
+                            (
+                                Path(os.devnull).open("wb")  # noqa: SIM115 -- original ChildOwner retains and closes streams
+                                if service is not None
+                                else (generation / name).open("xb")
+                            )
+                            for name in ("native.stdout", "native.stderr")
+                        ),
+                    )
                 if service is None:
                     for name in ("native.stdout", "native.stderr"):
                         protect_created_acl(generation / name)
@@ -1059,19 +1624,51 @@ class WindowsSocketProvider:
                     "service_authority_handle": None,
                 }
                 deadline = float(packet_data["deadline"])
+                if live_service:
+                    assert live_authority is not None
+                    selection = live_authority.selection
+                    selected_stream = 2 if selection.stream == "sub" else 1
+                    if (
+                        selection.stream not in ("main", "sub")
+                        or request.stream != selected_stream
+                    ):
+                        fail()
+                    packet_data["live_selection"] = {
+                        "channel_guid": selection.channel_guid.hex(),
+                        "raw_index": selection.raw_index,
+                        "window_index": selection.window_index,
+                        "ordinal": selection.ordinal,
+                        "stream": selected_stream,
+                    }
                 # Publish an owner BEFORE acquiring a child or constructing its
                 # writer. Every subsequent failure reaches this original owner.
-                self.owner = ChildOwner(None, None, outputs)
-                PENDING_OWNERS.append(self.owner)
+                if not dedicated:
+                    self.owner = ChildOwner(None, None, outputs)
+                    register_pending_owner(self.owner)
+                assert self.owner is not None
+                self._result_owner = self.owner
                 if service is not None:
                     assert current is not None
-                    self.owner.service = service
+                    if not dedicated:
+                        self.owner.service = service
                     if not service.check(current):
                         fail()
-                    service.bind(result.generation)
+                    if dedicated:
+                        assert custodian is not None
+                        custodian.create_legacy_pipe(service)
+                    else:
+                        service.bind(result.generation)
                 command = worker_command()
-                self.owner.job = OwnedJob()
+                if dedicated:
+                    assert custodian is not None
+                    custodian.retain_job(OwnedJob(process_memory_bytes=512 << 20))
+                else:
+                    self.owner.job = OwnedJob()
+                assert self.owner.job is not None
                 self.owner.job.create()
+                if dedicated:
+                    assert custodian is not None
+                    custodian.begin_process_creation()
                 self.owner.child = subprocess.Popen(
                     command,
                     stdin=subprocess.PIPE,
@@ -1087,8 +1684,12 @@ class WindowsSocketProvider:
                     shell=False,
                 )
                 child = self.owner.child
+                if dedicated:
+                    assert custodian is not None
+                    custodian.retain_process(child)
                 if service is not None:
                     service.start_watchdog(self.owner.request_stop)
+                assert self.owner.job is not None
                 self.owner.job.admit(child)
                 if service is not None:
                     packet_data["service_authority_handle"] = service.duplicate_to(
@@ -1115,8 +1716,17 @@ class WindowsSocketProvider:
                             except BaseException:  # noqa: BLE001 -- no thread diagnostics
                                 return
 
-                self.owner.writer = threading.Thread(target=send_input, daemon=False)
+                if dedicated:
+                    assert custodian is not None
+                    custodian.retain_writer(
+                        threading.Thread(target=send_input, daemon=False)
+                    )
+                else:
+                    self.owner.writer = threading.Thread(
+                        target=send_input, daemon=False
+                    )
                 self.owner.writer_start_attempted = True
+                assert self.owner.writer is not None
                 self.owner.writer.start()
                 while time.monotonic() < deadline:
                     if service is not None:
@@ -1128,6 +1738,15 @@ class WindowsSocketProvider:
                                 else "denied"
                             )
                             break
+                        if live_authority is not None and live_authority.ready:
+                            if child.poll() is not None or not service.check(current):
+                                fail()
+                            # Handoff preserves the exact original child, Job,
+                            # writer and IPC owner. No login request survives.
+                            packet_data["request"] = {}
+                            packet = b""
+                            live_authority.handed_off = True
+                            return result
                     if (
                         identity(generation, directory=True) != generation_id
                         or identity(receipt) != receipt_id
@@ -1163,13 +1782,45 @@ class WindowsSocketProvider:
             except BaseException:  # noqa: BLE001 -- retain child on interruptions
                 result.failure = "custody"
             finally:
-                if self.owner is not None:
+                if self.owner is not None and not (
+                    live_authority is not None and live_authority.handed_off
+                ):
                     result.reaped = self.owner.finish()
                 if outputs is not None and (
                     self.owner is None or self.owner.outputs is not outputs
                 ):
                     for output in outputs:
                         output.close()
+            if (
+                live_authority is not None
+                and not live_authority.handed_off
+                and live_authority.failure in ("protocol", "closed")
+                and result.failure in ("denied", "rejected")
+                and result.reaped
+                and self.owner is not None
+                and self.owner.confirmed
+                and generation is not None
+                and generation_id is not None
+                and receipt is not None
+                and receipt_id is not None
+            ):
+                # The child closes its pipe before writing this exact result.
+                # EOF may win the normal pump/read race. Only after all original
+                # custody settles may this bounded original receipt recover the
+                # one known login refusal; never reopen an owner or grant live.
+                try:
+                    if identity(generation, directory=True) != generation_id:
+                        fail()
+                    rejected = parse_result(
+                        read_original(receipt, receipt_id, CAP), result.generation
+                    )
+                    if identity(generation, directory=True) != generation_id:
+                        fail()
+                    if is_login_busy(rejected):
+                        rejected.reaped = True
+                        result = rejected
+                except Exception:  # noqa: BLE001,S110 -- absent/foreign/partial original cannot create BUSY.
+                    pass
             if (
                 request.mode == "live"
                 and result.reaped

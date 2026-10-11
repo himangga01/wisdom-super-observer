@@ -1,0 +1,60 @@
+{
+  "status": "SOURCE_ACCEPTED_UNPUBLISHED",
+  "files": {
+    "packages/core/src/wso_core/tvt/local_n9000.py": {
+      "bytes": 26426,
+      "sha256": "38c7c0f539b062e75d00ca34ae3f79ba548287e607500ee6481bdd6422f82bab"
+    },
+    "tests/tvt_parity/test_local_n9000.py": {
+      "bytes": 41542,
+      "sha256": "5539367dd754b32a21e6bf811e77456374a3c678eac4294fc3c47a9d20a0fbf8"
+    },
+    "docs/integrations/tvt-local-n9000-codec.md": {
+      "bytes": 34779,
+      "sha256": "1174b27a868cc180d172dd613324f201e24a15e44d37371c4082a07a769a544d"
+    },
+    "packages/core/src/wso_core/tvt/local_n9000_notifications.py": {
+      "bytes": 672,
+      "sha256": "96420059fe46a9d0e9d45947acbcf7a719590f5237bcde029ccdfcf3535984f9"
+    }
+  },
+  "report_full_read": true,
+  "review_full_read": true,
+  "review_sha256": "90a9c711ff6986c02d7e4fafe1891e298437efc92b9ab1af458d081636a2581d",
+  "critical": 0,
+  "important": 0,
+  "minor": 0,
+  "custody_files": 524,
+  "private_text_files": 462,
+  "known_private18_and_CCTV_UTF8_UTF16": "PASS",
+  "production_caller_adaptation": "pending",
+  "actual_authentication": false,
+  "offset16_success_field": "source parsed but unused; not rejection code",
+  "MATCHED": 0,
+  "release_ready": false,
+  "dependencies": {
+    "docs/analysis/2026-10-10-mux-notification-fix.md": {
+      "bytes": 7000,
+      "sha256": "98ffb5e5a6da85cf60adbb74081ceea9d0481535b7003ede3c7eccc908ba4da7"
+    },
+    "docs/analysis/2026-10-10-mux-notification-fix-review.md": {
+      "bytes": 7861,
+      "sha256": "6a96abb8067d614e0ab17b730a4b070e7cf6355719f650e8457ff226ecc14a80"
+    },
+    "docs/analysis/2026-10-10-mux-notification-fix-review-r1.md": {
+      "bytes": 4468,
+      "sha256": "06f1bbe495db9791caf9b568e95384d6be95abd0d25d1033582bc593bdcaff41"
+    },
+    "tests/tvt_parity/test_mux_notifications.py": {
+      "bytes": 6099,
+      "sha256": "b367d4224f3a2ce9cc075af0559ec93e24ef50a87c6f2abb7faed249db4cf130"
+    },
+    "tests/contract/test_mux_notification_ingress.py": {
+      "bytes": 1158,
+      "sha256": "63523afa3c021767d0fea7f6306422b40d39dfe80714e63cdaef839591a93ae0"
+    }
+  },
+  "supplemental_review_report": "docs/analysis/2026-10-10-mux-notification-fix-review-r1.md",
+  "supplemental_review_sha256": "06f1bbe495db9791caf9b568e95384d6be95abd0d25d1033582bc593bdcaff41",
+  "qualification": "R203 extracts unchanged N9000 primitive notification header validator and lengths into stdlib-only module; remaining legacy AST/serialization unchanged. Source R1 C0/I0/M0, isolated import and synthetic448 controls only. No new recorder/authentication/Chrome/parity acceptance."
+}

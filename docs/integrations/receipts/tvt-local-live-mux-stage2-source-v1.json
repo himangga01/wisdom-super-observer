@@ -1,0 +1,119 @@
+{
+  "status": "SOURCE_ACCEPTED_WITH_EVIDENCE_QUALIFICATION_UNPUBLISHED",
+  "files": {
+    "packages/core/src/wso_core/tvt/local_live.py": {
+      "bytes": 23215,
+      "sha256": "e38c21e3b54109293add89c5602ab5650c19c77dddf6248c821b0da6045737b3"
+    },
+    "packages/core/src/wso_core/tvt/local_live_mux.py": {
+      "bytes": 28295,
+      "sha256": "07584407d8ec628eb0216a514b9f696ecde8f5af9ede51ce9f165cefd591af2b"
+    },
+    "packages/core/src/wso_core/tvt/local_media_mux_types.py": {
+      "bytes": 15668,
+      "sha256": "3615fb305a21ba985f08b0b0eaa257b18e4aaaab83ed5fe9c0ef42d93b8f7d44"
+    },
+    "packages/core/src/wso_core/tvt/local_media_mux_admission.py": {
+      "bytes": 79645,
+      "sha256": "0a4162c6866d0d6f29f504ff5b185452b2964a7b1cda3ca1cc1b73f1cdc0f797"
+    },
+    "packages/core/src/wso_core/tvt/local_media_mux_service.py": {
+      "bytes": 108064,
+      "sha256": "9d0551019c0ceb8053dfbe89020c6e238379774ccf381693861d35db6d4169dc"
+    },
+    "packages/core/src/wso_core/tvt/local_media_admission.py": {
+      "bytes": 22606,
+      "sha256": "60286cf0edf5b0582df73df52ec5a0e343ed6ddb374c4485da47494a27969284"
+    },
+    "packages/core/src/wso_core/tvt/local_media_service.py": {
+      "bytes": 23137,
+      "sha256": "09c7f98232114f967cb415327198dbb3f24cfa314b63aec5ff5704dbcc57b8bc"
+    },
+    "infra/migrations/versions/0016_tvt_device_media_epochs.py": {
+      "bytes": 78092,
+      "sha256": "64e28f2008e548f33802afb821635e000536d4b9354c4ea931711f979a57aa92"
+    },
+    "tests/tvt_parity/test_local_live.py": {
+      "bytes": 33947,
+      "sha256": "ae6d538612a40b4856556a13afd64dd95300e75fb91ee55989cf92b0f01cd173"
+    },
+    "tests/tvt_parity/test_local_live_mux.py": {
+      "bytes": 27336,
+      "sha256": "ef46da7dd0641a50102a3a59244a838d3b044f9da6bef5bbd7edd821fd86148a"
+    },
+    "tests/tvt_parity/test_local_media_mux_service.py": {
+      "bytes": 79586,
+      "sha256": "96d6b76e08fccee45a144adcceccd4a1ed8befd56bc04cb4abcc8ce2859ccca7"
+    },
+    "tests/integration/test_local_media_mux_admission.py": {
+      "bytes": 94537,
+      "sha256": "cf013baee3cfb6361c7efa49d761a41da73c39da5a8d8f7c8f5d89f439202fe9"
+    },
+    "tests/contract/test_final_mux_handoff_refresh.py": {
+      "bytes": 27874,
+      "sha256": "766c4f70f17a9f37c2970088f1027fc8127eefc76d4f33b855c6eee566fcf373"
+    },
+    "docs/integrations/tvt-local-live-codec.md": {
+      "bytes": 30340,
+      "sha256": "a9a3d691579264564f718c060f8a4e0340f36caa4c28de1c5686b167abeba1ee"
+    },
+    "docs/integrations/tvt-local-live-mux-codec.md": {
+      "bytes": 15886,
+      "sha256": "2eb5e56c09f183a7f011329b1118766ea9ea81ed068448a6696c58bf83306b7e"
+    },
+    "docs/integrations/tvt-local-media-mux-admission.md": {
+      "bytes": 40307,
+      "sha256": "be54991f81c34138957d87345fdeee646364f47767682d00b7c3f2b6a08f29bd"
+    }
+  },
+  "dependencies": {
+    "packages/core/src/wso_core/tvt/frames.py": {
+      "bytes": 10485,
+      "sha256": "e5cd9dc73c8a0602e83e958ff2f5b36971b894b224c63498f9b6227f94a31b9f"
+    },
+    "packages/contracts/src/wso_contracts/tvt/local_media.py": {
+      "bytes": 1606,
+      "sha256": "624928686f1fa6350433727d8a849aa8bddee8c10608954d461591c602814f4d"
+    },
+    "packages/contracts/src/wso_contracts/tvt/local_media_mux.py": {
+      "bytes": 1253,
+      "sha256": "5ce29c14bd2ff6b09be7b6b7c42e4912ead4f555c39468f60c87c5b128e354d1"
+    },
+    "packages/contracts/src/wso_contracts/tvt/media.py": {
+      "bytes": 3555,
+      "sha256": "0b7f67cfaefadd7b14e0bfdab571801fa5cc54615fb1624eaa2758408f57f4ef"
+    },
+    "docs/analysis/final-combined-source-review-r0.md": {
+      "bytes": 23214,
+      "sha256": "d322c00f11d7bd6bee903e5a8c78628b14d30c779beac3bc4f89bf5d3a9def54"
+    },
+    "docs/analysis/final-combined-fix-report.md": {
+      "bytes": 17625,
+      "sha256": "22849eb4ca21279a3f7b55e1c9320b813d9650fc3cf5696e4a64665bbdde8541"
+    },
+    "docs/analysis/final-combined-source-review-r1.md": {
+      "bytes": 16124,
+      "sha256": "a33bb02ee1e0e6d99ba9c4b0e05b25af301a657420638e5aa499cd05a9a556dd"
+    }
+  },
+  "source_baseline": "6436748 plus final reviewed correction snapshot623dd831; unpublished",
+  "review_report": "docs/analysis/final-combined-source-review-r1.md",
+  "review_sha256": "a33bb02ee1e0e6d99ba9c4b0e05b25af301a657420638e5aa499cd05a9a556dd",
+  "review_full_read": true,
+  "report_full_read": true,
+  "reviewer_critical": 0,
+  "reviewer_important": 0,
+  "reviewer_minor": 0,
+  "open_blocking_source_findings": 0,
+  "actual_shared_recorder_frames": false,
+  "actual_shared_windows_profile": false,
+  "actual_shared_chrome_acceptance": false,
+  "qualification": "Independent final combined source gate only. Initial binding is separate from actual delivery, exact originals/credits/thread settlement retained. Actual Windows memory/nested Jobs, recorder notification/route/ACK,2/4 probes and12-camera300s Chrome with normal cleanup remain required. Historical failed receipts preserved; no APK MATCHED or release-ready claim.",
+  "unsupported": [
+    "unproved startup notifications",
+    "route/task variants outside strict reviewed codec",
+    "encrypted or unsupported media",
+    "unqualified host/profile/recorder/browser capacity",
+    "recovery after original custody loss"
+  ]
+}

@@ -138,8 +138,25 @@ class AccountRpcClient:
         self._flow_stub = rpc.FlowBridgeV1Stub(self._channel)
         self._directory_stub = rpc.DirectoryBridgeV1Stub(self._channel)
         self._local_stub = rpc.LocalDeviceBridgeV1Stub(self._channel)
+        self._media_stub = rpc.LocalMediaBridgeV1Stub(self._channel)
         self._close_lock = Lock()
         self._closed = False
+
+    def live_start(self, ticket: str, **kwargs: Any) -> Any:
+        from .local_media_rpc import call_media
+        return call_media(self._media_stub, self._registry, "start", ticket, **kwargs)
+
+    def live_offer(self, ticket: str, **kwargs: Any) -> Any:
+        from .local_media_rpc import call_media
+        return call_media(self._media_stub, self._registry, "offer", ticket, **kwargs)
+
+    def live_stop(self, ticket: str, **kwargs: Any) -> Any:
+        from .local_media_rpc import call_media
+        return call_media(self._media_stub, self._registry, "stop", ticket, **kwargs)
+
+    def live_playing(self, ticket: str, **kwargs: Any) -> Any:
+        from .local_media_rpc import call_media
+        return call_media(self._media_stub, self._registry, "playing", ticket, **kwargs)
 
     def _call(
         self,

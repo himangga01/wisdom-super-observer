@@ -1,0 +1,46 @@
+{
+  "status": "SOURCE_ACCEPTED_WITH_EVIDENCE_QUALIFICATION_UNPUBLISHED",
+  "files": {
+    "packages/core/src/wso_core/tvt/local_live.py": {
+      "bytes": 23215,
+      "sha256": "e38c21e3b54109293add89c5602ab5650c19c77dddf6248c821b0da6045737b3"
+    },
+    "tests/tvt_parity/test_local_live.py": {
+      "bytes": 33947,
+      "sha256": "ae6d538612a40b4856556a13afd64dd95300e75fb91ee55989cf92b0f01cd173"
+    },
+    "docs/integrations/tvt-local-live-codec.md": {
+      "bytes": 30340,
+      "sha256": "a9a3d691579264564f718c060f8a4e0340f36caa4c28de1c5686b167abeba1ee"
+    }
+  },
+  "dependencies": {
+    "packages/core/src/wso_core/tvt/frames.py": {
+      "bytes": 10485,
+      "sha256": "e5cd9dc73c8a0602e83e958ff2f5b36971b894b224c63498f9b6227f94a31b9f"
+    }
+  },
+  "source_baseline": "6436748 plus reviewed native fix1 tree791f2ee9",
+  "review_report": "docs/analysis/2026-10-05-multiview-stage1-native-review.md",
+  "review_sha256": "8782441cf78fad8a576e6c3710668bfc820c9e9158032300a3d909c09372ed52",
+  "review_full_read": true,
+  "report_full_read": true,
+  "reviewer_critical": 0,
+  "reviewer_important": 0,
+  "reviewer_minor": 0,
+  "open_blocking_source_findings": 0,
+  "taskless_route0_scope": "Explicit fresh original socket/generation, exclusive first task, stream1 or2; independent matching1281/1285 ACK before media; original current owner and ep3 channel/kind checks; parser cannot prove physical socket freshness or fabricate a wire task.",
+  "callback_qualification": "R120 call-entry SQL observation bound less than100ms, not SQL per callback; approved slow-success may cross expiry at return; ordinary cache reuse and emission permits remain clipped.",
+  "historical_qualification": "Earlier LIVE receipt history/custody qualifications remain historical; this receipt establishes reviewed current source only, not full historical TDD or recorder behavior.",
+  "unsupported": [
+    "route0 outside explicit fresh first-task scope",
+    "route1",
+    "encrypted media",
+    "audio/playback/Y7",
+    "unproved receive correlation variants"
+  ],
+  "actual_substream_frames": false,
+  "actual_multiview": false,
+  "MATCHED": 0,
+  "release_ready": false
+}

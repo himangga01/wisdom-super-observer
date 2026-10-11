@@ -41,8 +41,8 @@ from wso_contracts.tvt.directory import REQUEST_TYPES, DirectoryRequest, Directo
 from wso_core.tvt.account_projection import AccountFailure
 from wso_core.tvt.token_vault import token_budget
 
-from .generated import tvt_bridge_pb2 as pb
-from .generated import tvt_bridge_pb2_grpc as rpc
+from .generated import tvt_bridge_pb2 as generated_pb
+from .generated import tvt_bridge_pb2_grpc as generated_rpc
 from .selected import (
     GRPC_OPTIONS,
     MAX_DIRECTORY_FRAME_BYTES,
@@ -59,6 +59,9 @@ from .selected import (
     validate_request,
 )
 from .session_pool import SessionPool
+
+pb: Any = generated_pb
+rpc: Any = generated_rpc
 
 # Startup cannot return an owner on failure. Keep uncertain original callbacks
 # alive; no retry, worker recreation or sweep can release this quarantine.
@@ -431,7 +434,12 @@ class AccountRpcServer:
         flow_worker: AccountFlowWorker | None = None,
         directory_worker: DirectoryWorker | None = None,
         local_device_worker: LocalDeviceWorker | None = None,
+        local_media_worker: Any = None,
+        local_media_mux_worker: Any = None,
+        shared_media_enabled: bool = False,
     ) -> None:
+        if type(shared_media_enabled) is not bool:
+            raise failure("ACCOUNT_UNAVAILABLE")
         target = endpoint(config.bind, bind=True)
         if (
             not all(
@@ -489,6 +497,37 @@ class AccountRpcServer:
 
             rpc.add_LocalDeviceBridgeV1Servicer_to_server(
                 LocalDeviceRpcService(local_device_worker, config, self.pool),
+                self._server,
+            )
+            from .local_media_mux_rpc import (
+                LocalMediaMuxRpcService,
+                LocalMuxWorkerAdapter,
+                SharedLegacyControls,
+            )
+            from .local_media_rpc import LocalMediaRpcService
+
+            mux_worker = local_media_mux_worker
+            if (
+                shared_media_enabled
+                and mux_worker is None
+                and local_media_worker is not None
+            ):
+                mux_worker = LocalMuxWorkerAdapter(local_media_worker)
+
+            rpc.add_LocalMediaBridgeV1Servicer_to_server(
+                LocalMediaRpcService(
+                    SharedLegacyControls(local_media_worker)
+                    if shared_media_enabled
+                    else local_media_worker,
+                    config,
+                    self.pool,
+                ),
+                self._server,
+            )
+            rpc.add_LocalMediaMuxBridgeV1Servicer_to_server(
+                LocalMediaMuxRpcService(
+                    mux_worker if shared_media_enabled else None, config, self.pool
+                ),
                 self._server,
             )
             credentials = grpc.ssl_server_credentials(
@@ -632,16 +671,8 @@ def create_server_from_environment() -> AccountRpcServer:
             cast(AccountWorker, AccountWorkerExecutor(vault, endpoints)),
             dispose=dispose,
             flow_worker=flow_worker,
-            **(
-                {"local_device_worker": local_worker}
-                if local_worker is not None
-                else {}
-            ),
-            **(
-                {"directory_worker": directory_worker}
-                if directory_worker is not None
-                else {}
-            ),
+            local_device_worker=local_worker,
+            directory_worker=directory_worker,
         )
     except Exception:  # noqa: BLE001 - redact untrusted executor/config errors
         try:

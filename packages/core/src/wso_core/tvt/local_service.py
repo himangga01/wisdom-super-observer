@@ -13,6 +13,8 @@ from wso_contracts.tvt.local_device import LocalDeviceView
 
 from .local_credentials import LocalDeviceCredentials
 
+FIRST_FRAME_SECONDS = 10.0
+
 LOCAL_DEVICE_FAILURES = {
     "LOCAL_DEVICE_INPUT_INVALID": 422,
     "LOCAL_DEVICE_DENIED": 404,
@@ -23,6 +25,7 @@ LOCAL_DEVICE_FAILURES = {
     "LOCAL_DEVICE_UPSTREAM_REJECTED": 502,
     "LOCAL_DEVICE_UNAVAILABLE": 503,
     "LOCAL_DEVICE_DEADLINE_EXCEEDED": 504,
+    "LOCAL_DEVICE_NO_SIGNAL": 504,
 }
 
 

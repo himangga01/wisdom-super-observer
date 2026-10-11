@@ -116,11 +116,51 @@ owner must allocate sequences uniquely across its outstanding/replaced tasks; th
 codec has no cross-codec sequence registry. ACK handling never rebinds a task.
 **An acknowledgement grants no authority and is not frame or decode acceptance.**
 
-1285 replies use `oz0` in Z9, including error536871008; they are explicitly
-unsupported by this minimal receiver. Both request forms are byte-proven, but
-a complete stream2/capability>=5 control lifecycle remains an integration gap.
-The provider must not silently discard this failure. Stream1's legacy request
-remains source-selected even when R3>=5.
+Stream1's legacy request remains source-selected even when R3>=5.
+
+### Sub-stream open lifecycle (R123, 2026-10-05)
+
+Source (class:line only; read-only JADX of the same 1.18.1 DEX):
+`ServerNVMSHeader.a` (`ServerNVMSHeader.java:2701–2709`) classes a reply command
+below 0x10000000 as 1, below 0x20000000 as 2 (success) and below 0x30000000 as 3
+(failure). `cw3.Z9` (`cw3:5136–5145`) sends class 3 to `m8`; otherwise it switches
+on the low 28 command bits. `cw3` fields `N2=gg0`, `O2=wz0` (16) and `P2=yz0.a()`
+(72) are at `cw3:123–125`; `yz0.a()` is 72 (`yz0.java:17–19`). `oz0.a`
+(`oz0.java:15–33`) reads LE int code, GUID 16, LE short length and 246 text bytes
+(268 bytes; `lk2.b` is little-endian, `lk2.java:37–43`).
+
+| Step | Codec behavior |
+| --- | --- |
+| Open request | Unchanged builders. Stream 2 with R3>=5 builds the 1285 XML (`cw3.kb:6641–6688`); otherwise 1281 with ll2 carrying the stream. |
+| Success reply | Exactly one `0x10000505` for pending 1285, same sequence, external generation, state open, not yet acknowledged. Z9's 1285 case (`cw3:5200–5211`) reads yz0 at body+0 and oz0 at body+72; the codec requires a payload (bytes after wz0) of at least 76 and reads the LE int32 code at payload 72. |
+| oz0 code | Advisory only. `0x20000060` (Z9's only acted-on value) sets `LiveAcknowledgement.warning="SUB_STREAM_ADAPTATION_OFF"`; every other value sets no warning and is still an acknowledgement. The class 2 header and command decide success; the body never does. |
+| Rejected success replies | Wrong sequence, duplicate, before open, while closing, wrong generation, short payload, or a `0x10000505` while 1281 is pending raise `LiveError` and fence. |
+| Refusal | Class 3 command `[0x20000000,0x30000000)` whose low 28 bits equal the pending open (1281 or 1285), while state is open and unacknowledged, payload at least 76 bytes and yz0 task (payload 52–68) equal to the identity task. The wz0 sequence is not compared; m8 correlates by task only. The codec closes and raises `LiveRefused(reason)`: oz0 code `0x20000030` busy, `0x20000029` denied, anything else refused. |
+| Uncorrelated class 3 | Task mismatch, other low 28 command, after acknowledgement, while closing, or payload under 76 bytes: `UnsupportedLive` fence, as before. |
+| Media | Route 0 admitted for the exclusive first task after the accepted 1281 **or** 1285 acknowledgement; ep3 kind must still equal the requested stream (kind 2 for stream 2). |
+| Close | Always 1282 + yz0 action 2 + ll2 carrying the open's stream (`cw3:2533–2536,2554–2578`); `0x10000502` acknowledgement as before. |
+
+**Correction to the R123 planning text.** The plan assumed the refusal code was the
+wz0 command field. `cw3.m8` (`cw3:6969–7122`) dispatches on the wz0 command's
+low 28 bits (the failed request, so a refused open arrives as `0x20000501` or
+`0x20000505`). Its shared 1281/1285 branch (`cw3:7093–7122`) reads yz0 at body+0,
+reads the error code as `oz0.a` at body+72 (P2), and matches `yz0.b` against the
+channel's retained task (`n3`). The wz0 sequence is not compared; m8 correlates
+by task only. Success ACKs still require the exact pending sequence. It shows
+a no-authority prompt for
+`536870953` (0x20000029) and a busy overlay for `536870960` (0x20000030); other
+codes are only logged. The codec follows the source: the reason comes from the
+oz0 code, so a refusal needs a payload of at least 76 bytes, not 72. A class 3 reply
+whose wz0 command is itself 0x20000030 is not a correlated open failure and fences.
+
+**chNo evidence.** `cw3.r7` (`cw3:7459–7468`) returns `iz0.r` for the matching
+non-`p` channel and 0 otherwise. `kb` passes `r7(ch)` to `<chNo>` (`cw3:6647,6652`)
+and `jb` writes the same `r7(ch)` value to `ll2.c` (`cw3:2548,2571`; written as a
+byte by `ll2.java:27`). Both forms therefore use one rule, and the codec's single
+`channel_number` argument serves both unchanged.
+
+A sub-stream open on a real recorder has not been executed. These rules are
+synthetic-fixture verified only.
 
 ## Proven X7 branch and deliberate limits
 
@@ -174,11 +214,12 @@ denotes unimplemented behavior. Removed predicates are not vendor requirements.
 | gg0 magic | Removed: h4 consumes gg0.b but never gg0.a. Outgoing constant unchanged. |
 | og0 count/index/total/length bounds; stable group/count/total/tag; contiguous order; exact final sum; no interleaving | Source assembly fields plus stronger retained bounds/owner policy. Group/tag consistency and strict ordering are helper checks, not claimed APK checks. |
 | Inner header minimum16 | Bounds and exact wz0 structure size. |
-| ACK success class/command | Source ServerNVMSHeader.a and Z9; only0x10000501/502. Error/body bytes never become a success status. |
+| ACK success class/command | Source ServerNVMSHeader.a and Z9; only 0x10000501/502/505. Error/body bytes never become a success status. 0x10000505 additionally requires a payload of at least 76 bytes; its oz0 code at payload 72 only sets an advisory warning. |
+| Class 3 open refusal | Source m8 shared 1281/1285 branch: low 28 command equals the pending open, open/unacknowledged state, payload >= 76, yz0 task equals identity task. The wz0 sequence is not compared; m8 correlates by task only. Code from oz0 at payload 72. Closes and raises `LiveRefused`; all other class 3 replies remain unsupported fences. |
 | ACK pending command/action state, exact sequence, no duplicate | Retained owner policy explicitly required by Root. Generation checked before parsing. |
 | ACK route2, echoed GUID/action/reserved zeros, empty body, positive version, encoding1, declared-length equality | Removed: selected Z9 ACK branches consume none. Actual outer framing/quota bounds remain. |
-| Media command65537 | Selected Z9 dispatcher; other commands/prefix variants,1285 replies and playback remain unsupported subset. |
-| Default media route2,72 routing bytes, exact yz0 task | Owner task fence at source-backed field offset; unchanged. X7 does not itself compare the task. Route1 remains unsupported. Route0 only under the explicit exclusive-first-task/accepted-open-ACK contract below. |
+| Media command65537 | Selected Z9 dispatcher; other commands/prefix variants, uncorrelated class3 replies and playback remain unsupported subset. |
+| Default media route2,72 routing bytes, exact yz0 task | Owner task fence at source-backed field offset; unchanged. X7 does not itself compare the task. Route1 remains unsupported. Route0 only under the explicit exclusive-first-task/accepted 1281-or-1285 open-ACK contract below. |
 | Routing session/channel/request echoes, action/reserved fields | Removed/ignored: selected Z9/X7 do not read them. Original owner/generation binds session, yz0 binds task, ep3.e binds actual channel. |
 | Media wz0 version/encoding/declared length | Removed: encoding never passed by h4; selected Z9 branch ignores version and body length. No read/allocation depends on those ignored values. |
 | ep3 kind equals requested stream1/2; y41 type0 | Source0051/0054->071e and0723; exact requested stream is owner scope. |
@@ -200,18 +241,24 @@ nonnegative signed-int sequence, packet maximum, one lifecycle and current autho
 
 ### Explicit taskless first-task option
 
-`LiveCodec(..., stream=1, exclusive_first_task=True)` is an **owner assertion**, not
+`LiveCodec(..., stream=1 or 2, exclusive_first_task=True)` is an **owner assertion**, not
 proof produced by the parser. The owner must retain a fresh original socket and
 generation with exactly one first task/open, never replace/reuse that task or
 connection, and close after its bounded four-frame attempt. Literal bool is required;
-the default isFalse. True with stream2 is unsupported. Creating another codec with
+the default isFalse. Since R123 (2026-10-05) stream2 is admitted with the same
+contract. Creating another codec with
 the same old socket/generation cannot be detected locally and violates this contract.
 
-Only after this codec accepts the exact pending1281 success ACK (same command,
-open state, sequence and external generation) may route0/65537 enter X7's source
+Only after this codec accepts the exact pending open success ACK (`0x10000501`
+for1281 or `0x10000505` for1285; same command, open state, sequence and external
+generation) may route0/65537 enter X7's source
 offset0 path. Sequence0 on subsequent media is not an ACK and is not a task ID.
+A correlated class3 refusal before that ACK closes the codec with `LiveRefused`;
+the owner reports its `reason` (busy, denied, refused) and must not retry inside
+the same codec. A `SUB_STREAM_ADAPTATION_OFF` warning is advisory and changes no
+admission rule.
 The original immutable task/session identity stays attached as **owner context**;
-no wire task is claimed or synthesized. The actual ep3 channel, stream1, generation,
+no wire task is claimed or synthesized. The actual ep3 channel, requested stream, generation,
 all raw bounds and current read+live authority checks still apply. Duplicate open
 or reopen attempts on the opted-in codec fail closed. Close clears the opt-in.
 Route2's exact wire-task check and default strict behavior are unchanged.
@@ -343,3 +390,10 @@ Update log:2026-10-03 — original source implementation and qualified review.
 reader and retained owner/task/channel/authority fences; later M2 summary correction.
 2026-10-04 — explicit exclusive-first-task route0 option after matching open ACK;
 focused synthetic checks only, independent review and owner offline replay pending.
+2026-10-05 — R123 sub-stream lifecycle (multi-view stage1 Task2): exclusive first
+task admits stream2; `0x10000505` acknowledgement with advisory oz0 warning;
+task-correlated class3 open refusal as `LiveRefused(busy|denied|refused)` with the
+code read from oz0 per `cw3.m8` (correcting the plan's wz0-command assumption);
+route0 admitted after a 1281 or 1285 ACK. Synthetic tests only: the codec file
+passes 136 tests; no device, network, runtime or browser contact. The LIVE
+receipt for these three files is pending independent review by the controller.

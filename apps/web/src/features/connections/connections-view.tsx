@@ -15,11 +15,13 @@ export function ConnectionsView({
   initial,
   stores,
   csrf,
+  sharedMode = false,
 }: {
   tenantId: string;
   initial: ConnectionView[];
   stores: Store[];
   csrf: string;
+  sharedMode?: boolean;
 }) {
   const [items, setItems] = useState(initial);
   const [editing, setEditing] = useState<ConnectionView | "new" | null>(null);
@@ -283,7 +285,7 @@ export function ConnectionsView({
                   </dd>
                 </div>
               </dl>
-              {item.kind === "TVT_DEVICE" && <LocalDeviceInventory tenantId={tenantId} connection={item} stores={stores} csrf={csrf} disabled={busy} />}
+              {item.kind === "TVT_DEVICE" && <LocalDeviceInventory tenantId={tenantId} connection={item} stores={stores} csrf={csrf} disabled={busy} sharedMode={sharedMode} />}
               <div className="mt-5 flex flex-wrap gap-2 border-t border-[var(--wso-border)] pt-4">
                 <button
                   disabled={busy}

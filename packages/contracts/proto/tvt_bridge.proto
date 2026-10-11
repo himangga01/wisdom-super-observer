@@ -74,3 +74,32 @@ message LocalDeviceReply { bytes public_json = 1; string failure_code = 2; }
 service LocalDeviceBridgeV1 {
   rpc Verify(LocalDeviceVerifyRequest) returns (LocalDeviceReply);
 }
+
+// Media selectors stay in purpose-bound SQL tickets. Only bounded SDP crosses.
+message LocalMediaStartRequest { RpcContext context = 1; }
+message LocalMediaOfferRequest { RpcContext context = 1; bytes offer_json = 2; }
+message LocalMediaStopRequest { RpcContext context = 1; }
+message LocalMediaPlayingRequest { RpcContext context = 1; bytes started_json = 2; }
+message LocalMediaReply { bytes public_json = 1; string failure_code = 2; }
+service LocalMediaBridgeV1 {
+  rpc Start(LocalMediaStartRequest) returns (LocalMediaReply);
+  rpc Offer(LocalMediaOfferRequest) returns (LocalMediaReply);
+  rpc Stop(LocalMediaStopRequest) returns (LocalMediaReply);
+  rpc Playing(LocalMediaPlayingRequest) returns (LocalMediaReply);
+}
+
+// Every operation redeems its own SQL purpose; public selectors stay in SQL.
+message LocalMediaMuxRequest {
+  RpcContext context = 1;
+  reserved 2 to 15;
+  reserved "tenant_id", "actor_id", "session_digest", "wall_id", "focus_ref_id",
+    "connection_id", "channel_id", "direction", "outcome", "authority",
+    "native_generation", "master_id", "task_id", "cleanup_receipt";
+}
+service LocalMediaMuxBridgeV1 {
+  rpc StartShared(LocalMediaMuxRequest) returns (LocalMediaReply);
+  rpc WallHeartbeat(LocalMediaMuxRequest) returns (LocalMediaReply);
+  rpc StopWall(LocalMediaMuxRequest) returns (LocalMediaReply);
+  rpc FocusReserve(LocalMediaMuxRequest) returns (LocalMediaReply);
+  rpc FocusSettle(LocalMediaMuxRequest) returns (LocalMediaReply);
+}

@@ -1,0 +1,30 @@
+{
+  "status": "SOURCE_ACCEPTED_UNPUBLISHED",
+  "files": {
+    "packages/core/src/wso_core/tvt/local_inventory.py": {
+      "bytes": 37481,
+      "sha256": "e1761218b3f6fdaee672d40cb38c363b1c2b6d5f923a08d5bc4631361dd8597d"
+    },
+    "tests/tvt_parity/test_local_inventory.py": {
+      "bytes": 40186,
+      "sha256": "1ac896254da61d552d1aef27ac4e620ee8e7cae629b80eb7de44b3b6f72344cb"
+    },
+    "docs/integrations/tvt-local-inventory-codec.md": {
+      "bytes": 20892,
+      "sha256": "d00af8f16d8eb231e01e46f91e3ac9aeafbab11b10ea0ca9c369ed7f4d1aa9a1"
+    }
+  },
+  "report_full_read": true,
+  "review_full_read": true,
+  "review_sha256": "3a4c42734489097d81d455f0b992c8e5edfcf3f56c39c87c2fda8ab744fe75c9",
+  "critical": 0,
+  "important": 0,
+  "minor": 0,
+  "custody_files": 274,
+  "private_text_files": 251,
+  "known_private18_and_CCTV_UTF8_UTF16": "PASS",
+  "reviewed_login_dependency_sha256": "d53238cf2d6eda58995d1dc0c427ca28d226f7c44b730f85411d3c4b6bd509f4",
+  "current_provider_binding_and_actual_inventory": "pending",
+  "MATCHED": 0,
+  "release_ready": false
+}

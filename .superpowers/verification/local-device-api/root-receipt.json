@@ -1,0 +1,60 @@
+{
+  "status": "SOURCE_ACCEPTED_UNPUBLISHED",
+  "sources": {
+    "packages/contracts/proto/tvt_bridge.proto": {
+      "bytes": 4260,
+      "sha256": "02e8b9e86d67b7939bcc46a742ae4bdc08db6ee94000a8c31c4e3a0a101a57da"
+    },
+    "services/tvt-bridge/src/wso_tvt_bridge/generated/tvt_bridge_pb2.py": {
+      "bytes": 10675,
+      "sha256": "43f3faf6441815a650c5b1b2682d23fcacfc1f97e001454f838198aa4480b2ca"
+    },
+    "services/tvt-bridge/src/wso_tvt_bridge/generated/tvt_bridge_pb2_grpc.py": {
+      "bytes": 44939,
+      "sha256": "cbc8144b31f9260d6df1379b9cd07c1ef8d8038fa96896a4ed90f6df56e5bbb0"
+    },
+    "services/tvt-bridge/src/wso_tvt_bridge/client.py": {
+      "bytes": 20354,
+      "sha256": "a2dd02f3096a1fb24051a4b217262d25a6c83e880f87cdc2d0cad9a351b8c4f7"
+    },
+    "services/tvt-bridge/src/wso_tvt_bridge/server.py": {
+      "bytes": 24754,
+      "sha256": "534a76795de2ac0774a4ececc566fca89ab6fb76fa7d3f20b9fb370b9434ef69"
+    },
+    "services/tvt-bridge/src/wso_tvt_bridge/local_rpc.py": {
+      "bytes": 9519,
+      "sha256": "8c25e17d1722c5accf33ef969414823b5068c9a7d3bffbde9e2a51ebab0912d8"
+    },
+    "services/api/src/wso_api/tvt/local_devices.py": {
+      "bytes": 8717,
+      "sha256": "20deb2f1d3ea4320d36f68604577d0281072010eb11e183b71c9d65686b5817c"
+    },
+    "services/api/src/wso_api/tvt/local_device_service.py": {
+      "bytes": 420,
+      "sha256": "240b7882450bce0c1ef6a72f78d6bb7852d235d774fbca2e2c10a259e71e5641"
+    },
+    "services/api/src/wso_api/main.py": {
+      "bytes": 8692,
+      "sha256": "8c4770bef1c943814832198040423e98f2abbf66b025375d190e675a56d122b1"
+    },
+    "tests/tvt_parity/test_local_device_rpc_api.py": {
+      "bytes": 20843,
+      "sha256": "7779a0b82b4fc1018638634c151d8f91b853576d339d29b2233205b227cce151"
+    },
+    "docs/integrations/tvt-local-device-api.md": {
+      "bytes": 8102,
+      "sha256": "1150f9a1f1a2d1affc8a1345924b2686b06af62f02b0eeb589f4a43cd7eddc88"
+    }
+  },
+  "review": {
+    "path": ".superpowers\\verification\\local-device-api\\fix1-review.md",
+    "sha256": "f75861edd01315e06a195ff62e0b6b4df330e9da672dc4a71d66b7731f59cc84",
+    "critical": 0,
+    "important": 0,
+    "minor": 0
+  },
+  "known_private18": "PASS",
+  "actual_OWNER_native_browser_integration": "PENDING",
+  "MATCHED": 0,
+  "release_ready": false
+}
