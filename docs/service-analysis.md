@@ -1,5 +1,18 @@
 # Service implementation and remaining work
 
+## Git integration checkpoint: 2026-10-11
+
+Main now contains implementation commit `7f94c79` through merge `e454e9a`.
+Primary-only research and historical instructions were preserved. Read
+[Git integration record](analysis/2026-10-11-git-integration.md) before further
+publication. Main frontend600, related Python210 and TypeScript checks passed;
+fresh checkout preserved174 hash-qualified paths and nine required metadata
+anchors. Private/runtime artifacts remain ignored. These are Git/test gates,
+not new hardware or full-service acceptance. Remote publication is pending at
+this documentation checkpoint; earlier worktree-only/no-commit pointers are
+dated history. R210 runtime evidence and remaining product/test limits below
+remain unchanged.
+
 ## Latest actual checkpoint: R210, 2026-10-11
 
 Read [R210 live acceptance](analysis/2026-10-11-r210-live-acceptance.md) first.

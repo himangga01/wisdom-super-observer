@@ -1,5 +1,19 @@
 # Project instructions
 
+## Current Git integration authority (2026-10-11)
+
+- Main contains the latest implementation through merge `e454e9a` of feature
+  commit `7f94c79`. Read `docs/analysis/2026-10-11-git-integration.md` and the
+  canonical service report before later integration; update after source/ref/
+  publication checks. Older exclusive-worktree/no-commit pointers are history.
+- Nine immutable, nonsecret source-qualification JSON files are explicitly
+  tracked under `.superpowers`. All other generated runtime/private/evidence
+  files remain ignored. Preserve `.gitattributes` exact-byte rules for approved
+  source hashes; do not bulk-normalize them. SDK/configuration, local runtimes
+  and fresh hardware-execution approval are still provisioned locally.
+- Source publication does not mark twelve-camera, whole-APK or full-service
+  acceptance complete. Preserve R210 evidence and its remaining limitations.
+
 ## Personal working preferences on this Windows PC
 
 - Keep completing requested work. Prefer purpose-built or direct filesystem tools for routine inspection and edits.

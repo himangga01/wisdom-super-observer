@@ -30,6 +30,15 @@ The previously recorded broad Python failures/environment prerequisites and whol
 
 ## Integration execution
 
-Commit, merge, staged/fresh-checkout hash checks and push verification are pending at this initial record. Root will append actual commit IDs and remote equality evidence after execution. Do not infer completion from this planned sequence.
+Executed local history:
 
-Update log: Initial branch inclusion, privacy/ignore/byte rules and fresh verification evidence recorded before staging.
+- Primary research preservation: `ff304c6`.
+- Latest implementation commit on `codex/superlive-web-service`: `7f94c79` (295 changed files), including the earlier three unpublished commits in its ancestry.
+- Main merge: `e454e9a45837de6164ad8666307e3ab674ff5bdb`. Only AGENTS/service documentation conflicted. The reconciled files retain primary research/history and latest R210 evidence. The merged tree `3a0801b68edf23ac2ec1db685979247a20685c18` exactly matches the reviewed feature tree.
+- Staged raw-byte check: all174 protected paths matched working bytes and recorded hashes; nine qualification anchors plus their nested ignore file were the only `.superpowers` tracked paths.
+- Main checkout verification: full frontend600 passed, related Python210 passed and TypeScript passed. An initial Python run borrowed the feature interpreter and correctly failed the repository-local venv admission test. Main now has its own frozen-lock environment; the same210 tests pass. Dependency locks remain unchanged.
+- Fresh local clone verification: all174 raw hashes match, allnine anchors are present, no unexpected `.superpowers` paths, clean Git status. The deep temporary clone initially exceeded Windows pathname limits; checkout with `core.longpaths=true` succeeded. This configuration is local to the verification invocation and does not change application code or global Git settings.
+
+Remote push verification is the remaining step at this documentation checkpoint. Publication evidence will be appended after the actual push and remote readback.
+
+Update log: Initial inclusion review followed by committed implementation, explicit main merge, main test gates and staged/fresh-clone raw-byte verification. Remote publication is not inferred before execution.
