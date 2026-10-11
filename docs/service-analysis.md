@@ -1,5 +1,74 @@
 # Service implementation and remaining work
 
+## Selected delivery research and actual Chrome access — 2026-10-08
+
+The two parallel research reports are saved and the proposed integrated design
+is concrete: [selected APK operations](analysis/2026-10-08-apk-selected-features-research.md),
+[incident pipeline](analysis/2026-10-08-cctv-incident-research.md), and
+[service/incident design](superpowers/specs/2026-10-08-cctv-service-completion-design.md).
+The proposed service-owned source broker separates persistent service grants
+from fresh individual web publication grants; it requires a new architecture
+review because the current session-owned two-base profile cannot support two
+independent AI originals plus two independent web originals. Existing limits
+are not silently duplicated/relaxed. MP4 evidence also requires an actual media
+validation/storage/Range extension beyond JPEG/PNG assets. None of these new
+brokers, model adapters, incident workflows or selected-feature executors was
+implemented or runtime accepted while researching and writing the design.
+
+The user selected live12/measurement/lifecycle, recorder playback/export,
+capture/local recording/layouts, controls/settings, account/sharing and alarm/files,
+and emphasized CCTV abnormal-behavior detection/incidents as the main feature.
+Read [incident research](analysis/2026-10-08-cctv-incident-research.md) before
+implementing the new ingestion/detection/evidence/incident subsystem. It reuses
+the original YOLOX/ByteTrack/temporal-rule scope and distinguishes proposed
+models/contracts from measured behavior. Current viewer-scoped streams and
+JPEG/PNG assets do not provide a background analysis/archive port by themselves.
+
+[Actual Chrome access test](analysis/2026-10-08-chrome-access-test.md): GPT Chrome
+control connected and opened localhost3543 login, but the actual page showed
+ERR_CONNECTION_REFUSED. Independent bounded HTTPS3543/HTTP3000 requests also
+refused. Error screenshot saved; no certificate bypass, dummy server, product
+change or runtime startup occurred. This is no application/CCTV acceptance.
+The implementation worktree and Git metadata are read-only under current
+permissions; normal runtime writes there are not available. Research/report
+work proceeds in the writable primary checkout.
+
+## Original-plan remaining-work audit — 2026-10-08
+
+Current assessment: [Original plans and remaining work](analysis/2026-10-08-original-plans-remaining-work.md).
+Read this update with the implementation worktree's canonical report and ledger;
+the older primary-checkout snapshots below do not contain its latest source.
+Source authority is `codex/superlive-web-service`, HEAD6436748 with63 modified
+tracked and79 untracked status entries. All304 paths in its last browser source
+approval still match. Main remains at211d148; no merge/publication occurred.
+
+The audit checked SERVICE_PLAN, the original2026-09-21 wider-service plan,
+the2026-09-27 APK plan (W00-W25), current multiview plans, source/API routes,
+the141-row feature matrix,77-case static seed and actual saved receipts.
+Recorded inventory counts remain2 real accepted/12 implemented-unaccepted/
+14 partial/109 missing/4 not-applicable; these are unweighted historical feature
+groups, not a new full APK re-inventory or completion percentage. MATCHED remains0.
+
+Shared multiview source Tasks1-11 are complete. Actual bounded raw2/raw4 saved
+receipts are COMPLETE, and actual Chrome eight/four inventories were verified
+in the prior run. Twelve presented streams progressing together for300s,
+1/4/12 load measurements, shared focus/lifecycle cases and final normal runtime
+acceptance remain open. The latest readback confirms original Chrome exit0/reap;
+its old context remains, while the expired overall run remains FAILED. Today's
+CIM listening-port query failed, so current process/port liveness is unverified.
+
+Substantial original work remains: account security/sharing writes, recorder
+playback/export, capture/local recording, audio/Talk/doorbell, alarms/push,
+PTZ/device settings, AI/face/plate, cloud/VAS/Tyco, files/preferences/remote pages,
+actual APK comparison and production deployment. The wider plan also retains
+sales/OrderQueen, product/wholesale/barcode intake, detection/incident/CLI summary,
+mobile/notifications/broadcast and pilot delivery. Foundation models or generic
+jobs/assets do not complete those workflows. APK release readiness remainsfalse.
+
+Verification today was source and saved-evidence readback only; no application,
+device/browser test, dependency installation or Git integration was executed.
+The detailed report contains baselines, evidence, priorities and actual limits.
+
 Analysis date: **2026-10-04 (Asia/Seoul)**. Retained implementation/probe evidence
 below is dated2026-10-03 unless a later update is explicitly identified.
 
